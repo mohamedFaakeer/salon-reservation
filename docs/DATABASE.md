@@ -1,0 +1,187 @@
+# DATABASE.md — Data Model & Migrations
+
+**Engine:** PostgreSQL 17 (Neon free tier / Docker `postgres:17-alpine`) · **ORM:** TypeORM 1.1.0 · **Extension:** `btree_gist` (ships with Postgres contrib — free everywhere)
+
+---
+
+## 1. Principles
+
+1. **Historical records are immutable.** `AppointmentService` rows snapshot service name/price/duration at booking. Never reconstruct history from current `Service` rows.
+2. **Double-booking is prevented by the database** — GiST exclusion constraints on time ranges per staff, covering both appointments and temporary holds. No amount of app-level checking can override the DB.
+3. **Tenant isolation at the data layer.** Every tenant-owned table carries `tenantId`; all queries are scoped by the tenant-scoping interceptor.
+4. **Payments are idempotent** — unique `idempotencyKey` on every payment.
+5. **No hard deletes on business records.** Statuses (`CANCELLED`, `NO_SHOW`, `EXPIRED`, `RESCHEDULED`, `REMOVED`) preserve history.
+
+---
+
+## 2. Entity Catalog
+
+### 2.1 Platform / Identity
+
+**tenant** — `id (uuid PK)`, `slug (unique, used in public URL)`, `name`, `status` (`ACTIVE|SUSPENDED|TRIAL`), `currency` (default `LKR`, always LKR in MVP), `timezone` (default `Asia/Colombo`), `settings` (JSONB: advance rule, cancellation policy, booking window days, same-day lead minutes, no-show grace minutes, reminder offsets), `createdAt`, `updatedAt`.
+
+**branch** — `id (uuid PK)`, `tenantId (FK, NOT NULL)`, `name`, `address`, `phone`, `active`. MVP uses a single default branch per tenant; present in schema to avoid later table surgery.
+
+**user** — `id (uuid PK)`, `email (unique, NOT NULL)`, `passwordHash (NOT NULL)`, `name`, `status`, `lastLoginAt`, `createdAt`, `updatedAt`.
+
+**user_tenant_role** — `userId (FK)`, `tenantId (FK)`, `role` (`OWNER|MANAGER|RECEPTIONIST|STAFF`), `branchId (FK, nullable)`; composite PK `(userId, tenantId)`. Supports one user belonging to multiple tenants in the future; MVP uses one tenant per user.
+
+**refresh_session** — `id (uuid PK)`, `userId (FK → user, ON DELETE CASCADE)`, `tokenHash (varchar(64), UNIQUE — SHA-256 of the opaque refresh token; the raw token is never stored)`, `expiresAt (timestamptz)`, `revokedAt (timestamptz, nullable)`, `replacedBySessionId (varchar(64), nullable — session id (uuid-as-string) of the rotated-in session, set on rotation)`, `ipAddress (varchar(64), nullable)`, `userAgent (varchar(255), nullable)`, `createdAt (timestamptz)`. Indexes on `(userId)` and unique `(tokenHash)`. Rotation marks the old row `revokedAt` + `replacedBySessionId`; reuse of a revoked token revokes the whole token family via `UPDATE ... SET revokedAt = now() WHERE userId = ? AND revokedAt IS NULL` (session family cascade) — see DECISIONS.md §Token sessions. **Note:** `replacedBySessionId` is `varchar(64)` (not `uuid`) so the migration matches the `SessionService` rotation write path; the entity column in `apps/api/src/entities/refresh-session.entity.ts` reflects this.
+
+**role** (seed data, not runtime-managed in MVP) — codes `OWNER`, `MANAGER`, `RECEPTIONIST`, `STAFF`, `SUPER_ADMIN`. Permission matrix seeded at migration; enforced by `RolesGuard`.
+
+### 2.2 Salon Operations
+
+**service** — `id (uuid PK)`, `tenantId (FK)`, `branchId (FK, nullable)`, `name`, `description`, `category`, `durationMin (int, >0)`, `priceCents (integer — LKR in cents, see §5)`, `active (bool)`, `tenantIndex`. **No `deletedAt`** — inactive instead.
+
+**staff** — `id (uuid PK)`, `tenantId (FK)`, `branchId (FK, nullable)`, `userId (FK, nullable — staff may or may not have login)`, `name`, `phone`, `specialties` (text), `active (bool)`, `color` (calendar accent), `createdAt`, `updatedAt`.
+
+**staff_service** — composite PK `(staffId, serviceId)`, `tenantId (FK mirror)`. Only staff with a row here can be matched to that service. `serviceId` FK → `service.id`.
+
+**working_schedule** — `id (uuid PK)`, `staffId (FK)`, `tenantId (FK)`, `dayOfWeek (0=Mon..6=Sun)`, `startMin (int, minutes since midnight)`, `endMin (int)`, `breakStartMin (int, nullable)`, `breakEndMin (int, nullable)`. Weekly-recurring. A row's absence = day off. Unique `(staffId, dayOfWeek)`.
+
+**staff_leave** — `id (uuid PK)`, `staffId (FK)`, `tenantId (FK)`, `startDate (date)`, `endDate (date)`, `reason`, `createdBy (FK user)`, `createdAt`. **Note:** leave affects future appointments; adding leave triggers the "N appointments affected" flow (§24, PRD §3.9). Overlapping leave rows are allowed but the availability engine treats any overlap as unavailable.
+
+**closure** — `id (uuid PK)`, `tenantId (FK)`, `startDate (date)`, `endDate (date)`, `name` (e.g. "Poya day"), `createdAt`. Salon-wide closure.
+
+### 2.3 Customers
+
+**customer** — `id (uuid PK)`, `tenantId (FK)`, `firstName`, `lastName`, `phone (normalized, NOT NULL)`, `email (nullable)`, `notes`, `createdAt`, `updatedAt`. Unique index `(tenantId, phone)` AND `(tenantId, email)` (partial: `WHERE email IS NOT NULL`). Duplicate warning on create; no silent merges (spec §21).
+
+### 2.4 Appointments (the heart)
+
+**appointment** — `id (uuid PK)`, `tenantId (FK)`, `branchId (FK, nullable)`, `customerId (FK)`, `staffId (FK)`, `appointmentDate (date)`, `startTime (timestamptz)`, `endTime (timestamptz)`, `status` (`PENDING_PAYMENT|CONFIRMED|CHECKED_IN|IN_SERVICE|COMPLETED|CANCELLED|NO_SHOW|RESCHEDULED|EXPIRED`), `source` (`ONLINE|RECEPTIONIST|WALK_IN|PHONE|WHATSAPP`), `subtotalCents`, `discountCents`, `totalCents`, `advanceRequiredCents`, `advancePaidCents`, `balanceCents`, `notes`, `bookingReference (unique, e.g. ELN-7F3K2)`, `holdExpiresAt (nullable)`, `checkedInAt (nullable)`, `inServiceAt (nullable)`, `completedAt (nullable)`, `lateMinutes (int, default 0)`, `cancellationReason`, `cancelledAt`, `rescheduledFromId (FK self, nullable — new appointment created on reschedule)`, `version (int, optimistic lock)`, `createdAt`, `updatedAt`.
+
+**appointment_service** — `id (uuid PK)`, `appointmentId (FK, CASCADE on appointment — but status removed, never hard-deleted)`, `serviceId (FK, nullable after delete — but services are never hard-deleted; kept for reference)`, `nameSnapshot (service name at booking)`, `durationMinSnapshot`, `priceCentsSnapshot`, `status` (`ACTIVE|REMOVED`), `removedById (FK user, nullable)`, `removedAt`, `removedReason`, `createdAt`. **Snapshot fields are the immutable history** (spec §38).
+
+**slot_hold** — `id (uuid PK)`, `tenantId (FK)`, `staffId (FK)`, `startTime (timestamptz)`, `endTime (timestamptz)`, `status` (`HELD|CONSUMED|RELEASED|EXPIRED`), `expiresAt (timestamptz, = start − TTL if hold starts at booking)`, `sessionKey (idempotency token for the same customer retry)`, `createdAt`.
+
+### 2.5 Payments & refunds
+
+**payment** — `id (uuid PK)`, `tenantId (FK)`, `appointmentId (FK, nullable — filled on success)`, `customerId (FK)`, `amountCents`, `method` (`CASH|BANK_TRANSFER|CARD_CAPTURED|ONLINE|GATEWAY`), `state` (`PENDING|SUCCESS|FAILED|REFUNDED|PARTIALLY_REFUNDED|REQUIRES_RECONCILIATION`), `type` (`ADVANCE|FULL|BALANCE`), `idempotencyKey (uuid, UNIQUE NOT NULL)`, `provider` (`MANUAL|PAYHERE`), `providerPaymentRef (nullable)`, `recordedById (FK user)`, `recordedAt`, `createdAt`, `updatedAt`. **Unique `(idempotencyKey)`** enforces idempotency.
+
+**payment_attempt** — `id (uuid PK)`, `paymentId (FK)`, `provider`, `providerEventHandler`, `providerEventId (unique per provider+event)`, `payload (JSONB)`, `status` (`RECEIVED|PROCESSED|FAILED`), `createdAt`. Unique `(provider, providerEventId)` absorbs duplicate callbacks.
+
+**refund** — `id (uuid PK)`, `paymentId (FK)`, `amountCents`, `reason`, `state` (`PENDING|SUCCEEDED|FAILED`), `providerRef (nullable)`, `initiatedById (FK user)`, `createdAt`.
+
+### 2.6 Notifications & audit
+
+**notification** — `id (uuid PK)`, `tenantId (FK)`, `appointmentId (FK, nullable)`, `customerId (FK, nullable)`, `type` (`BOOKING_CONFIRMATION|PAYMENT_CONFIRMATION|REMINDER_24H|REMINDER_2H|CANCELLATION_CONFIRMATION|RESCHEDULE_CONFIRMATION|NO_SHOW|LATE_ARRIVAL`), `channel` (`CONSOLE|EMAIL|SMS|WHATSAPP`), `recipient`, `status` (`PENDING|SENT|FAILED`), `retryCount (int, 0)`, `nextRetryAt`, `lastError`, `providerMessageId (nullable)`, `createdAt`, `updatedAt`. Indexed `(status, nextRetryAt)` for the retry scheduler.
+
+**audit_log** — `id (uuid PK)`, `tenantId (FK, nullable for platform-level)`, `actorUserId (FK, nullable)`, `action`, `entityType`, `entityId`, `metadata (JSONB)`, `ipAddress`, `userAgent`, `createdAt`.
+
+---
+
+## 3. Concurrency Model — Double-Booking Protection
+
+### 3.1 Extension & exclusion constraints
+
+```sql
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
+-- Appointments that occupy staff time in an active state
+ALTER TABLE appointment
+  ADD CONSTRAINT uq_appointment_no_overlap_active
+  EXCLUDE USING gist (
+    staff_id WITH =,
+    tstzrange(start_time, end_time) WITH &&
+  )
+  WHERE (status IN ('PENDING_PAYMENT','CONFIRMED','CHECKED_IN','IN_SERVICE'));
+```
+
+> **Critical detail:** The `WHERE` clause on an exclusion constraint makes the "active status" scoping **atomic at the row level** — a `CANCELLED` appointment does not block future bookings, and changing an appointment's status re-evaluates the constraint (which is exactly why we don't need to hold the full table lock for this).
+
+```sql
+-- Held slots (during payment) occupy staff time too
+ALTER TABLE slot_hold
+  ADD CONSTRAINT uq_slot_hold_no_overlap_held
+  EXCLUDE USING gist (
+    staff_id WITH =,
+    tstzrange(start_time, end_time) WITH &&
+  )
+  WHERE (status = 'HELD');
+```
+
+- Two customers simultaneously requesting the same staff+time: each `INSERT` tries to satisfy the exclusion constraint; **the second one fails with a unique/exclusion violation** aborted transaction — no lost update, no double book.
+- A hold and a confirmed appointment for the same window **also conflict** — the hold `INSERT` or appointment `INSERT` fails correctly.
+- `ON CONFLICT DO NOTHING` + explicit conflict check in the service yields the user-friendly "That slot was just booked by another customer."
+
+> **PostgreSQL note:** Exclusion constraints operate on the **same table**. To prevent an appointment and a hold from conflicting *across* the two tables with a single constraint, we accept a minor limitation in MVP: appointment vs. hold conflicts are caught by the app inserting into `slot_hold` and then converting (both inside one transaction — see §3.2). A cross-table trigger-based constraint is a known enhancement if true cross-table adversarial concurrency is ever required; MVP's single-transaction conversion already makes the window safe.
+
+### 3.2 Hold → Appointment conversion (same transaction)
+
+```
+BEGIN;
+  INSERT INTO slot_hold (...) VALUES (... 'HELD' ...);          -- may fail: already taken
+  -- ... payment intent ...
+COMMIT;
+-- (hold now visible to others)
+
+BEGIN;
+  -- payment confirmed:
+  UPDATE payment SET state='SUCCESS' WHERE idempotency_key = $1 AND state='PENDING';
+  INSERT INTO appointment (staff_id, start_time, end_time, ...)
+    SELECT h.staff_id, h.start_time, h.end_time, ...
+    FROM slot_hold h
+    WHERE h.id = $hold AND h.status = 'HELD';                  -- atomic source
+  UPDATE slot_hold SET status='CONSUMED' WHERE id = $hold;
+COMMIT;
+```
+
+- The `INSERT ... SELECT` is **one statement** — the window can't be double-converted.
+- On payment failure/expiry: `UPDATE slot_hold SET status='RELEASED'`.
+
+### 3.3 Optimistic locking
+
+`appointment.version INTEGER NOT NULL DEFAULT 1`; status transitions use `UPDATE ... WHERE id=$1 AND version=$2`; on rowcount 0 → conflict → re-read → re-apply or 409. Prevents lost updates during concurrent check-in / cancel / add-service.
+
+### 3.4 Advisory locks for multi-row mutations
+
+Reschedule and cancel touch multiple rows (original appointment + new appointment). To serialize two operations on the same logical slot, take `pg_advisory_xact_lock(hashtextextended(tenant_id::text || ':' || staff_id::text || ':' || appointment_date::text, 0))` at the start of the transaction.
+
+---
+
+## 4. Key Indexes
+
+| Table | Index | Purpose |
+|---|---|---|
+| `appointment` | `(tenant_id, appointment_date, status)` | day calendar + dashboard |
+| `appointment` | `(staff_id, appointment_date)` | per-staff schedule |
+| `appointment` | `(customer_id)` | customer history |
+| `appointment` | `(booking_reference)` unique | lookup by customer reference |
+| `slot_hold` | `(status, expires_at)` | expiry sweeper |
+| `notification` | `(status, next_retry_at)` | retry scheduler |
+| `customer` | `(tenant_id, phone)` unique | duplicate prevention |
+| `customer` | `(tenant_id, email)` partial unique | dedupe |
+| `payment` | `(idempotency_key)` unique | idempotency |
+| `payment_attempt` | `(provider, provider_event_id)` unique | callback dedupe |
+| `audit_log` | `(tenant_id, created_at)` | audit queries |
+| `working_schedule` | `(staff_id, day_of_week)` unique | availability |
+
+---
+
+## 5. Money & Time Rules
+
+- **Money:** store `cents` as `INTEGER` (or `BIGINT` for future scale). No floats. LKR is an integer currency; cents modeling = `amount` in LKR exactly (e.g. `priceCents` = `price * 100`). Display divides by 100.
+- **Times:** all timestamps `TIMESTAMPTZ`; date selection uses `appointmentDate` (date) + `startTime (timestamptz)`; timezone `Asia/Colombo` enforced at the app layer for slot generation; DB stores UTC.
+- **Slot boundaries:** generated from service durations (no fixed 30/60 grid); must not cross `endMin`; break windows are excluded.
+
+---
+
+## 6. Migrations
+
+- TypeORM migrations in `apps/api/src/infrastructure/database/migrations/` (`<epoch>-<Name>.ts`).
+- Initial migration: `CREATE EXTENSION btree_gist` + all tables + constraints + indexes + seed roles + super-admin user + `INSERT` of one demo tenant (demo seed is a separate idempotent script, run on demand).
+- `npm run db:migrate` (local) against Docker Postgres; `npm run db:migrate:prod` against Neon URL with `SSL` required.
+- Migration policy: **never edit an applied migration**; new changes = new migration file. Rollback allowed only in dev.
+
+---
+
+## 7. Integrity Rules (enforced in code + where possible in DB)
+
+1. `endTime > startTime` (CHECK).
+2. `endTime <= staff working end on that day` (service-layer; DB can't easily enforce since it depends on WorkingSchedule).
+3. `advancePaidCents <= totalCents` (service-layer).
+4. `appointment.totalCents = subtotalCents − discountCents` (service-layer pricing; single PricingService).
+5. Unique `bookingReference` — generated `ELN-XXXXXX` from tenant slug prefix + random base32.
+6. No hard deletes on `appointment`, `appointment_service`, `payment`, `service`, `staff` (soft/inactive statuses only).

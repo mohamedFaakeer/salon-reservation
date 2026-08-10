@@ -1,0 +1,162 @@
+# DECISIONS.md — Architecture & Product Decision Log
+
+This document is the single source of truth for every architectural and product decision made for the Salon Reservation SaaS MVP. It also contains the **verified dependency compatibility ledger** (checked against the npm registry and official package metadata on 2026-08-08) that every future change must respect.
+
+---
+
+## 1. Product Decisions (Resolved with Product Owner)
+
+| # | Decision area | Resolution |
+|---|---|---|
+| Q1 | Technology stack | NestJS 11 + TypeORM 1.x + PostgreSQL · Next.js 16 (customer + admin apps) · Tailwind CSS 4 · npm workspaces · self-hosted auth (argon2 + jose, httpOnly JWT) |
+| Q2 | Customer account model | **Booking reference only.** Name + phone (+ optional email). No OTP, no password, no account. Customer manages appointments via phone + booking reference code. Data model keeps room to add OTP accounts later without schema changes. |
+| Q3 | Online payments | **Record-only.** Advances are recorded manually by staff (cash / bank transfer / card captured via WhatsApp). Full `PaymentProvider` abstraction layer is built; **PayHere adapter stub** behind a feature flag. Demo runs on a simulated/manual provider. |
+| Q4 | Notifications | **Log (console) + email only.** Full notification tracking/state machine/retry logic implemented. `SmsProvider` / `WhatsAppProvider` interfaces exist; real aggregator = one adapter class. Zero external cost in demo. |
+| Q5 | Booking window | **30 days ahead** (salon-configurable). Same-day booking allowed with **2-hour lead time** (salon-configurable). No booking into the past. Holidays/closures excluded automatically. Server-side enforced. |
+| Q6 | "Any Available Staff" | **Auto-assign earliest available qualified staff at booking.** Customer sees "10:00 — Kasun". Salon may reassign later via the availability engine (reassignment is concurrency-safe). |
+| Q7 | Salon onboarding | **Super-admin provisioning + one-click demo seeding.** No public self-serve signup in MVP. Data model keeps room for self-serve later. |
+| Q8 | Staff leave/availability management | **MANAGER / OWNER only.** STAFF role sees own schedule + appointments but cannot modify leave/schedules. Staff self-service request flow deferred; schema does not preclude it. |
+| Q9 | Cancellation / reschedule defaults | Self-service cancel/reschedule cutoff **2h before start**. Refund policy: **100% refund ≥24h before start, 0% <24h, 0% no-show**. No-show grace **15 min** (auto-convert flag-driven). All salon-configurable per tenant. |
+| Q10 | Demo deployment | **Deployed on free tier: Render (free web services) + Neon (Postgres free tier).** Docker Compose provided for local dev; codebase 100% deployable. |
+
+---
+
+## 2. Verified Dependency Ledger (2026-08-08)
+
+Verified live from the npm registry (`npm view <pkg> version engines peerDependencies`).
+
+| Package | Version | License | Node requirement | Compatibility status |
+|---|---|---|---|---|
+| `@nestjs/core` | 11.1.28 | MIT | `>= 20` | ✓ with Node 24.18.0 |
+| `@nestjs/common` | 11.1.28 | MIT | — | ✓ |
+| `@nestjs/platform-express` | 11.1.28 | MIT | — | ✓ |
+| `@nestjs/typeorm` | 11.0.3 | MIT | — | ✓ official Nest 11 pairing |
+| `@nestjs/config` | 4.0.4 | MIT | — | ✓ |
+| `@nestjs/schematics` | 11.1.0 | MIT | — | ✓ |
+| `@nestjs/cli` | 11.0.24 | MIT | — | ✓ |
+| `@nestjs/testing` | 11.1.28 | MIT | — | ✓ |
+| `@nestjs/swagger` | 11.4.6 | MIT | — | ✓ |
+| `@nestjs/schedule` | 6.1.3 | MIT | — | ✓ |
+| `@nestjs/jwt` | 11.0.2 | MIT | — | ✓ (for refresh tokens) |
+| `typeorm` | 1.1.0 | MIT | `^20.19.0 \|\| ^22.13.0 \|\| >=24.11.0` | ✓ satisfies @nestjs/typeorm peer `^0.3.0 \|\| ^1.0.0-dev` |
+| `pg` | 8.22.0 | MIT | — | ✓ satisfies TypeORM peer `^8.5.1` |
+| `@types/pg` | 8.21.0 | MIT | — | ✓ |
+| `next` | 16.3.0 | MIT | `>=20.9.0` | ✓ |
+| `react` | 19.2.8 | MIT | — | ✓ satisfies Next 16 peer `^18.2.0 \|\| ^19.0.0` |
+| `react-dom` | 19.2.8 | MIT | — | ✓ |
+| `@types/react` | 19.2.18 | MIT | — | ✓ |
+| `@types/react-dom` | 19.2.4 | MIT | — | ✓ |
+| `tailwindcss` | 4.3.3 | MIT | — | ✓ |
+| `@tailwindcss/postcss` | 4.3.3 | MIT | — | ✓ (official Next 16 PostCSS plugin) |
+| `typescript` | **5.9.3** | Apache-2.0 | — | ⚠️ see note below |
+| `rxjs` | 7.8.2 | Apache-2.0 | — | ✓ satisfies NestJS peer `^7.1.0` |
+| `reflect-metadata` | ^0.2.x (pin latest 0.2) | Apache-2.0 | — | ✓ satisfies NestJS peer `^0.1.12 \|\| ^0.2.0` |
+| `class-validator` | 0.15.1 | MIT | — | ✓ |
+| `class-transformer` | 0.5.1 | MIT | — | ✓ |
+| `argon2` | 0.45.1 | MIT | — | ✓ (native; prebuilt binaries) |
+| `jose` | 6.2.8 | MIT | — | ✓ (JWT) |
+| `vitest` | 4.1.10 | MIT | — | ✓ |
+| `supertest` | 7.2.2 | MIT | — | ✓ |
+| `eslint` | 10.8.1 | MIT | — | ✓ |
+| `prettier` | 3.9.6 | MIT | — | ✓ |
+
+### ⚠️ TypeScript version pin — CRITICAL
+
+- npm `latest` for TypeScript is **7.0.2** (the new Go-native compiler rewrite, released to `latest` tag).
+- NestJS 11, TypeORM 1.x, ts-node, ts-jest, and the Next.js toolchain are built for the **TypeScript 5.x line**. TS 7 compatibility is not yet guaranteed across this toolchain.
+- **Decision: pin `typescript@5.9.3`** (latest stable 5.x) in all workspaces.
+- Revisit only after NestJS / TypeORM / Next officially announce TS 7 support.
+
+### Peer-dependency pairing summary
+
+- `@nestjs/core@11` requires peers: `@nestjs/common@11`, `@nestjs/platform-express@11`, `@nestjs/websockets@11`, `@nestjs/microservices@11`, `reflect-metadata`, `rxjs@^7.1.0` → all satisfied.
+- `@nestjs/typeorm@11` requires: `@nestjs/common@^10||^11`, `@nestjs/core@^10||^11`, `reflect-metadata`, `rxjs@^7.2.0`, `typeorm@^0.3.0 || ^1.0.0-dev` → all satisfied (typeorm 1.1.0 satisfies `>=1.0.0-dev <2.0.0`).
+- `next@16` requires: `react@^18.2.0 || ^19.0.0`, `react-dom@^18.2.0 || ^19.0.0` → satisfied.
+
+### Node runtime
+
+- Local machine: **Node v24.18.0, npm 12.0.1** (pnpm is NOT installed — **npm workspaces** is the monorepo tool, no extra global installs).
+- `engines` field in root `package.json` will declare `"node": ">=24.11.0"` (floor set by TypeORM 1.1.0) and `"packageManager": "npm@12.0.1"`.
+
+---
+
+## 3. Free-Tier Verification
+
+| Resource | Free tier | Notes for demo |
+|---|---|---|
+| PostgreSQL (local dev) | Docker Compose `postgres:17-alpine` — free | `btree_gist` extension ships in contrib |
+| Neon Postgres (deployed) | Free tier: 0.5 GB storage, autosuspend after inactivity | Add `EXTENDED_QUERY_TIMEOUT` if needed; cold-ish resume on first query |
+| Render (deployed) | Free web services: 512 MB RAM, spins down after 15 min idle | Cold start ~30–60 s; warm before demo |
+| npm packages | All MIT/Apache-2.0 | No paid subscriptions |
+| SMTP (email) | Gmail/Outlook app password (free) or console/log provider (zero cost) | `ConsoleProvider` guaranteed offline demo |
+| SMS/WhatsApp | Not used in MVP (interface only) | Real aggregators cost money — explicitly deferred |
+
+---
+
+## 4. Rules for Future Development
+
+1. **One availability engine.** Every booking source calls the same NestJS `AvailabilityService`. Never fork booking logic per channel.
+2. **Pricing, cancellation/refund, permissions, tenantId = server-side only.** Frontends display; they never decide.
+3. **Historical records are immutable.** `AppointmentService` stores name/duration/price snapshots. Never reconstruct historical totals from current `Service` rows.
+4. **Double-booking is prevented by the database** (GiST exclusion constraints), never by app logic alone.
+5. **Payments are idempotent.** Every payment has a unique `idempotencyKey`. Duplicate callbacks are impossible by constraint.
+6. **Tenant isolation is enforced at the data-access layer** (TenantGuard + TypeORM global scoping interceptor), never trusted from the client.
+7. **TypeScript pinned to 5.9.x** until TS 7 support is official across the toolchain.
+8. **npm workspaces**, not pnpm (not installed on the demo machine). No new globals without justification.
+9. **No libraries added without justification** (spec §46). New deps require a note in this ledger.
+10. **Definition of Done (spec §48)** gates every feature: logic, DB, validation, auth, tenant isolation, UI states, responsive, tests, typecheck, lint, build, docs.
+
+---
+
+## 5. Security Decisions — Token Sessions (2026-08-10)
+
+**Motivation.** Self-hosted auth (Q1) needs refresh-token rotation + theft detection without bringing in a full identity provider.
+
+1. **Raw refresh token is never stored.** `refresh_session.tokenHash` stores only the SHA-256 hex digest of the 32-random-byte (`base64url`) opaque token. A DB leak cannot be replayed as live sessions; hash lookups still indexable (unique index).
+2. **Rotation on every refresh.** `POST /auth/refresh` verifies the presented token, then marks the old row `revokedAt = now()` + `replacedBySessionId = <new sid>` and issues a new refresh token + access token. The old token is single-use by construction.
+3. **Reuse detection revokes the whole family.** Presenting an already-rotated/revoked token means it leaked — the service revokes every active session for that user (`UPDATE refresh_session SET revokedAt = now() WHERE userId = ? AND revokedAt IS NULL`) and returns `401 UNAUTHENTICATED`. This kills a stolen session chain the moment the attacker replays an old token.
+4. **Expired sessions** are rejected with `401 TOKEN_EXPIRED` and cleaned up by a scheduled sweeper (`cleanupExpired`); revoked+expired rows are deleted in the same sweep.
+5. **Cookie + body dual transport.** Refresh token is set as an HttpOnly cookie (`AUTH_COOKIE_NAME`, `sameSite=strict`, `secure` in production, 7-day maxAge) and may also be supplied in the request body — the body path covers Next.js SSR/proxy contexts where cookie forwarding is awkward. Access token is returned in the body (never in an HttpOnly cookie) so the Next.js admin app can attach `Authorization: Bearer` for SSR.
+
+### Auth module structure
+
+- `AuthController` (`POST /auth/login|refresh|logout`, all `@Public()`) — thin HTTP layer: reads cookie/body token, sets/clears the cookie.
+- `AuthService` — orchestrates login (password verify → session create), refresh (session rotate → token issue), logout (session revoke).
+- `PasswordService` — argon2id hash/verify (from Q1).
+- `SessionService` — refresh-session lifecycle: `createSession`, `rotate`, `revoke`, `buildSessionUser`, `cleanupExpired`; owns the SHA-256 hashing and the reuse-detection family revoke.
+- `TokenService` — issues/verifies the short-lived access JWT (`JWT_SECRET`, jose), cookie name from `AUTH_COOKIE_NAME`.
+- `JwtAuthGuard` + `PublicDecorator` — route protection; `ApiExceptionFilter` normalizes `ApiError` into the §7 envelope of API.md.
+- Vitest note: API specs use **pure globals** (`describe/it/expect/vi`) with `globals: true` in `vitest.config.mts` and `"types": ["vitest/globals"]` in `tsconfig.json`. Never mix an explicit `import { describe } from "vitest"` with config-injected globals in the same worker — it caused `Vitest failed to find the current suite` (`Cannot read properties of undefined (reading 'config')`) via dual vitest copies in the npm-workspaces hoist.
+
+---
+
+## 6. RBAC, Guard Order & Super-Admin Provisioning (2026-08-11)
+
+**Motivation.** P4 (RBAC) was the next fixed-order phase (`DEVELOPMENT_PLAN.md`). While building it, two pre-existing gaps surfaced and were closed in the same pass rather than left as silent debt.
+
+1. **Permission-map location & guard order.** `Permission` enum + `ROLE_PERMISSIONS` map (API.md §5) live in `apps/api/src/common/authorization/` — API-only, **not** `packages/shared`. The capability map is enforcement logic, not identity data; CLAUDE.md forbids client-side business/authorization logic, and `apps/web` (public, no-login) has no business knowing the full admin permission matrix. The existing `roles: string[]` on the login response remains the frontends' hook for any future UI hinting. `RolesGuard` is a third global `APP_GUARD`, registered by a new `AuthorizationModule` imported in `app.module.ts` immediately after `TenantModule` — Nest resolves multiple `APP_GUARD` providers in module-import order, giving the chain `JwtAuthGuard → TenantGuard → RolesGuard`.
+2. **`@Permissions(a, b, ...)` uses OR semantics** — the caller needs any one of the listed permissions. Every route in this pass only ever lists one; OR is the documented default for any future multi-permission route.
+3. **`PATCH /tenant/:id/status`** stays exactly where it was (arbitrary `:id`, in `TenantController`) — decided **not** to relocate it under `/super-admin`. It is now gated `@Permissions(Permission.PLATFORM_ADMIN)`. Before this it had **zero** role guard: any authenticated tenant user (including STAFF) could suspend or activate any tenant by ID. One decorator closes the hole.
+4. **SUPER_ADMIN role-detection gap (found while building this, not a new design choice).** `SessionService.buildSessionUser()` derived JWT `roles` only from `user_tenant_role` rows, but that table's `tenantId` column is `NOT NULL` — a tenant-less platform role can't live there, and the initial migration never inserted one for `super.admin@salon.local`. Result: that account has always logged in with `roles: []`, meaning no `SUPER_ADMIN`-gated route could ever have worked for it. Fixed with a new `User.isSuperAdmin` boolean column (backfilled for the seeded platform account), merged into the JWT roles array by `buildSessionUser`. Flagged as a latent P2/P3 gap, surfaced by P4.
+5. **P3's missing SUPER_ADMIN provisioning endpoint is now built**, closing that phase's outstanding deliverable: `POST /super-admin/tenants` (provision tenant + default branch + OWNER user, one DB transaction so a taken owner email never leaves an orphan tenant behind) and `GET /super-admin/tenants` (paginated list), both `@Permissions(Permission.PLATFORM_ADMIN)`. `TenantService.createTenant` gained an optional `manager?: EntityManager` parameter so `SuperAdminService` can compose it inside that transaction — single source of truth for tenant creation preserved rather than duplicated.
+6. **`POST /super-admin/tenants/:id/demo-seed` is explicitly out of scope**, deferred to P19 — `seed-demo.ts` remains a placeholder; no real seed data (services/staff/schedules) exists yet to seed with.
+7. **S6 (STAFF mutates another staff's appointment → 403) is deferred to P10.** No Appointment resource exists yet; ownership checks can't be expressed by a role→permission map and must live in the service layer once Appointment exists. Documented in code at `apps/api/test/rbac.e2e-spec.ts` and in `role-permissions.ts`'s comment on `MANAGE_OWN_APPOINTMENT`.
+8. **Audit-log gap, explicitly tracked, not silently dropped.** No `AuditLog` entity/table exists anywhere in the codebase yet. `SECURITY.md` §3 calls for super-admin operations to carry "an explicit audit event" — `SuperAdminService.provisionTenant` and the newly-guarded `setStatus` are **not** audited by this work. To be closed when the audit log is built (unscheduled phase; `DATABASE.md` §2 already documents the target `audit_log` schema).
+9. **New dependency**: `class-transformer@^0.5.1` added to `packages/shared` (same pinned version already used by `apps/api`; already present in the workspace hoist via Nest's own dependency chain) — needed for `@Type(() => Number)` query-string coercion in the new `PaginationQueryDto`, the first shared pagination-query DTO, intended for reuse by every future list endpoint (services/staff/appointments/customers).
+10. **Fixed a silently-dead test file, and two bugs it had been hiding.** `apps/api/test/auth.e2e` was missing the `.ts` extension, so `tsconfig.e2e.json`'s `include: ["test/**/*.ts"]` never picked it up — these auth e2e tests (P2's own stated exit criterion) had never actually run. Renamed to `auth.e2e-spec.ts`; added the previously-missing S10 (tampered JWT signature → 401) and S11 (expired access token → 401, refresh recovers) cases. Running it for the first time surfaced two further pre-existing gaps in every e2e spec's `before()` bootstrap (all three files, none of which had ever executed against these code paths before): (a) `app.useGlobalFilters(new ApiExceptionFilter())` was never called, so thrown `ApiError`s fell through to Nest's default `BaseExceptionFilter`, which happens to preserve the right HTTP status (via its `isHttpError` duck-typing on `.statusCode`/`.message`) but drops the `code` field entirely; (b) `app.use(cookieParser())` was never called, so `req.cookies` was always `undefined` and every refresh-token-via-cookie flow silently fell through to "Missing refresh token." Both now match `main.ts`'s real bootstrap in all three spec files (`app.e2e-spec.ts`, `auth.e2e-spec.ts`, `rbac.e2e-spec.ts`).
+
+---
+
+## 7. Salon Setup — Settings, Branch & Closures (2026-08-11)
+
+**Motivation.** P5 (`DEVELOPMENT_PLAN.md`) is the next fixed-order phase: real settings defaults/validation, a manageable default branch, and the `Closure` entity.
+
+1. **`cancellationPolicy` shape** — not specified anywhere in the docs (API.md §3 only names the parent `cancellationPolicy` key). Defined as `{ selfServiceCutoffHours, refundPercentBeforeCutoff, refundPercentAfterCutoff, noShowRefundPercent }` in `packages/shared/src/tenant-settings.ts`, encoding Q9's numbers exactly (2h / 100% / 0% / 0%). Refund percents are kept separate for before/after cutoff and no-show since they can legitimately diverge per tenant.
+2. **`advanceRule` defaults to `NO_ADVANCE`** for every new tenant (user decision — DECISIONS.md had no prior default). Encoded in `DEFAULT_TENANT_SETTINGS`; applied both at `TenantService.createTenant` (so `SuperAdminService.provisionTenant` gets it for free) and backfilled onto pre-existing tenants by the `SalonSetup` migration.
+3. **`Closure` is hard-deletable.** `DATABASE.md` §2.2 defines no soft-delete/status column for it, and CLAUDE.md's "no hard deletes" rule (§1.8) scopes to *business records* (appointments, payments, refunds, audit) — closure is tenant scheduling config, not history. `ClosureService.remove` does a real `DELETE`.
+4. **Closures reuse `Permission.MANAGE_STAFF`** — no new Permission enum value. API.md §5 bundles "Staff CRUD + staff-service + schedules + leave **+ closures**" into one OWNER/MANAGER-only capability row; the P4-built permission map already covers it.
+5. **Closure `PATCH` deliberately omitted from MVP.** Only `POST`/`GET`/`DELETE` exist — three simple fields, delete+recreate is one extra round trip, and it keeps `createdAt` semantics unambiguous. Trivial to add later without a migration change.
+6. **Branch endpoints are singular**: `GET/PATCH /tenant/me/branch`, not a `/branches` collection. `DATABASE.md` states MVP is single-branch-per-tenant; a collection endpoint would misrepresent that and invite building list/create routes nobody needs yet. Implemented as a small `BranchModule` (service only, no controller — routes live on `TenantController` alongside `/tenant/me/settings`, which already established that pattern).
+7. **`advanceValueCents` cross-field validation deferred.** No phase yet consumes it to price anything (that's P13, `PricingService`), so a rule like "required when `advanceRule` is `FIXED_AMOUNT`/`PERCENTAGE`" would test/enforce a constraint with no current caller. P5 only stores and returns the value; it's nullable so a tenant can explicitly clear it.
+8. **`ApiExceptionFilter` `VALIDATION_ERROR` gap found and fixed.** `ValidationPipe` always throws `BadRequestException`, which previously fell through to the filter's generic `HttpException` branch and emitted `code: "HTTP_400"` instead of the `VALIDATION_ERROR` promised by API.md §7 and SECURITY.md S12. Invisible until now because no strictly-validated PATCH body existed before `TenantSettingsUpdateDto`. Fixed with a dedicated `BadRequestException` branch that surfaces class-validator's constraint messages under `details.errors`. Closes S12 for the first time.
+9. **Local dev-DB pollution, not a code bug.** The demo `elegance` tenant's `settings` column had accumulated a stray `testFlag` key from earlier P4-session e2e runs (predating `TenantSettingsUpdateDto`'s validation), so it was no longer `'{}'` and the migration's conditional backfill (`WHERE settings = '{}'::jsonb`) correctly skipped it — by design, so a tenant that already wrote real settings is never clobbered. Repaired directly via a one-off script against the local dev DB (not a new migration — this was test-run pollution specific to a persistent local Postgres instance, not something a fresh deploy would ever hit).

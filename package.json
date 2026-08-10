@@ -1,0 +1,47 @@
+{
+  "name": "salon-reservation",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Salon Reservation SaaS MVP — NestJS + Next.js monorepo (npm workspaces)",
+  "engines": {
+    "node": ">=24.11.0",
+    "npm": ">=10.0.0"
+  },
+  "packageManager": "npm@12.0.1",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "postinstall": "npm run build -w @salon/shared",
+    "dev": "concurrently -n api,web,admin -c blue,green,magenta \"npm:dev -w apps/api\" \"npm:dev -w apps/web\" \"npm:dev -w apps/admin\"",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "npm run test --workspaces --if-present",
+    "test:e2e": "npm run test:e2e --workspaces --if-present",
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down",
+    "db:migrate": "npm run db:migrate -w apps/api",
+    "db:migrate:prod": "npm run db:migrate:prod -w apps/api",
+    "db:seed:demo": "npm run db:seed:demo -w apps/api",
+    "db:rollback": "npm run db:rollback -w apps/api"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/cookie-parser": "^1.4.10",
+    "concurrently": "^10.0.4",
+    "eslint": "^10.8.1",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.9.0",
+    "prettier": "^3.9.6",
+    "typescript": "5.9.3",
+    "typescript-eslint": "^8.66.0"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7"
+  }
+}

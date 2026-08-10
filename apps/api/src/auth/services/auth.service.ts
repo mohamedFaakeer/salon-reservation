@@ -1,0 +1,124 @@
+import { Inject, Injectable } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import type { Repository } from "typeorm";
+import type { LoginDto } from "@salon/shared";
+import { ApiError } from "@salon/shared";
+import { User } from "../../entities/user.entity";
+import { PasswordService } from "./password.service";
+import { SessionService } from "./session.service";
+import { TokenService } from "./token.service";
+
+export interface AuthResult {
+  accessToken: string;
+  refreshToken: string;
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    tenantId: string | null;
+    roles: string[];
+  };
+}
+
+@Injectable()
+export class AuthService {
+  constructor(
+    @InjectRepository(User)
+    private readonly users: Repository<User>,
+    @Inject(PasswordService) private readonly password: PasswordService,
+    @Inject(SessionService) private readonly sessions: SessionService,
+    @Inject(TokenService) private readonly tokens: TokenService,
+  ) {}
+
+  async login(
+    dto: LoginDto,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<AuthResult> {
+    const user = await this.users.findOne({
+      where: { email: dto.email.toLowerCase() },
+    });
+    if (
+      !user ||
+      !(await this.password.verify(user.passwordHash, dto.password))
+    ) {
+      throw new ApiError({
+        statusCode: 401,
+        code: "INVALID_CREDENTIALS",
+        message: "Email or password is incorrect.",
+      });
+    }
+    if (user.status !== "ACTIVE") {
+      throw new ApiError({
+        statusCode: 403,
+        code: "ACCOUNT_DISABLED",
+        message: "This account has been disabled.",
+      });
+    }
+
+    const sessionUser = await this.sessions.buildSessionUser(user.id);
+    await this.users.update({ id: user.id }, { lastLoginAt: new Date() });
+    const session = await this.sessions.createSession({
+      userId: user.id,
+      ip,
+      userAgent,
+      ttlMs: refreshTtlMs(),
+    });
+
+    return {
+      accessToken: await this.tokens.sign(sessionUser),
+      refreshToken: session.refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        tenantId: sessionUser.tenantId,
+        roles: sessionUser.roles,
+      },
+    };
+  }
+
+  async refresh(
+    refreshToken: string,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<AuthResult> {
+    const rotated = await this.sessions.rotate({
+      refreshToken,
+      ip,
+      userAgent,
+      ttlMs: refreshTtlMs(),
+    });
+    return {
+      accessToken: await this.tokens.sign(rotated.sessionUser),
+      refreshToken: rotated.refreshToken,
+      user: {
+        id: rotated.sessionUser.userId,
+        email: rotated.sessionUser.email,
+        name: rotated.sessionUser.name,
+        tenantId: rotated.sessionUser.tenantId,
+        roles: rotated.sessionUser.roles,
+      },
+    };
+  }
+
+  async logout(refreshToken?: string): Promise<void> {
+    if (refreshToken) {
+      await this.sessions.revoke(refreshToken);
+    }
+  }
+}
+
+function refreshTtlMs(): number {
+  const ttl = process.env.JWT_REFRESH_TTL ?? "7d";
+  const m = /^(\d+)([smhd])$/.exec(ttl);
+  const mult: Record<string, number> = {
+    s: 1000,
+    m: 60_000,
+    h: 3_600_000,
+    d: 86_400_000,
+  };
+  const n = m ? Number(m[1]) : 7;
+  const u = m ? m[2] : "d";
+  return n * mult[u];
+}

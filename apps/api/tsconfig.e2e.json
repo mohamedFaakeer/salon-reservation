@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "module": "commonjs",
+    "moduleResolution": "node10",
+    "outDir": "./dist-e2e",
+    "rootDir": ".",
+    "declaration": false,
+    "sourceMap": false,
+    "removeComments": true
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}
