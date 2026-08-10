@@ -65,6 +65,7 @@ Rules: lock exact versions in `package.json` + `package-lock.json`. Do not intro
 5. **Never claim completion if typecheck/lint/tests/build fail.**
 6. **Phase order is fixed** (P1–P19 in `docs/DEVELOPMENT_PLAN.md`). Do not skip ahead to the next phase until the current one is stable.
 7. **Do not reuse separate booking logic**; the availability engine is the single path (rule §1).
+8. **Commit after every important update, and always at the end of a completed phase.** Verification (typecheck/lint/test/build) must be green before that commit. Use plain `git commit` (new commits, not amends) with a message describing what changed and why.
 
 ---
 
