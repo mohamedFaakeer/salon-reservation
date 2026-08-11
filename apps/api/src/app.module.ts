@@ -12,6 +12,7 @@ import { ServiceModule } from "./service/service.module";
 import { StaffModule } from "./staff/staff.module";
 import { ScheduleModule } from "./schedule/schedule.module";
 import { StaffLeaveModule } from "./staff-leave/staff-leave.module";
+import { AvailabilityModule } from "./availability/availability.module";
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { StaffLeaveModule } from "./staff-leave/staff-leave.module";
     StaffModule,
     ScheduleModule,
     StaffLeaveModule,
+    AvailabilityModule,
   ],
   controllers: [AppController],
 })

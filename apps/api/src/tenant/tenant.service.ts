@@ -68,6 +68,21 @@ export class TenantService {
     return tenant;
   }
 
+  /** Public salon lookup (no auth) — never leaks suspended/unknown tenants beyond a plain 404. */
+  async findActiveBySlug(slug: string): Promise<Tenant> {
+    const tenant = await this.tenants.findOne({
+      where: { slug, status: TenantStatus.ACTIVE },
+    });
+    if (!tenant) {
+      throw new ApiError({
+        statusCode: 404,
+        code: "SALON_NOT_FOUND",
+        message: "Salon not found.",
+      });
+    }
+    return tenant;
+  }
+
   async setStatus(tenantId: string, status: TenantStatus): Promise<Tenant> {
     const tenant = await this.findById(tenantId);
     tenant.status = status;
