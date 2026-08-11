@@ -3,6 +3,8 @@ export * from "./branch.entity";
 export * from "./closure.entity";
 export * from "./refresh-session.entity";
 export * from "./service.entity";
+export * from "./staff-service.entity";
+export * from "./staff.entity";
 export * from "./tenant.entity";
 export * from "./user-tenant-role.entity";
 export * from "./user.entity";

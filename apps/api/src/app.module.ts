@@ -9,6 +9,7 @@ import { SuperAdminModule } from "./super-admin/super-admin.module";
 import { ClosureModule } from "./closure/closure.module";
 import { AuditModule } from "./audit/audit.module";
 import { ServiceModule } from "./service/service.module";
+import { StaffModule } from "./staff/staff.module";
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { ServiceModule } from "./service/service.module";
     ClosureModule,
     AuditModule,
     ServiceModule,
+    StaffModule,
   ],
   controllers: [AppController],
 })
