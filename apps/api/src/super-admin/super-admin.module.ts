@@ -6,6 +6,7 @@ import { User } from "../entities/user.entity";
 import { UserTenantRole } from "../entities/user-tenant-role.entity";
 import { AuthModule } from "../auth/auth.module";
 import { TenantModule } from "../tenant/tenant.module";
+import { AuditModule } from "../audit/audit.module";
 import { SuperAdminController } from "./super-admin.controller";
 import { SuperAdminService } from "./super-admin.service";
 
@@ -14,6 +15,7 @@ import { SuperAdminService } from "./super-admin.service";
     TypeOrmModule.forFeature([Tenant, Branch, User, UserTenantRole]),
     TenantModule,
     AuthModule,
+    AuditModule,
   ],
   controllers: [SuperAdminController],
   providers: [SuperAdminService],

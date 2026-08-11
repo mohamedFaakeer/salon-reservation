@@ -7,6 +7,8 @@ import { TenantModule } from "./tenant/tenant.module";
 import { AuthorizationModule } from "./common/authorization/authorization.module";
 import { SuperAdminModule } from "./super-admin/super-admin.module";
 import { ClosureModule } from "./closure/closure.module";
+import { AuditModule } from "./audit/audit.module";
+import { ServiceModule } from "./service/service.module";
 
 @Module({
   imports: [
@@ -40,6 +42,8 @@ import { ClosureModule } from "./closure/closure.module";
     AuthorizationModule,
     SuperAdminModule,
     ClosureModule,
+    AuditModule,
+    ServiceModule,
   ],
   controllers: [AppController],
 })

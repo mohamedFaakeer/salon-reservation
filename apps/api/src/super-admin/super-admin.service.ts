@@ -9,6 +9,7 @@ import { UserTenantRole } from "../entities/user-tenant-role.entity";
 import { UserStatus } from "../enums/user-status.enum";
 import { PasswordService } from "../auth/services/password.service";
 import { TenantService } from "../tenant/tenant.service";
+import { AuditService } from "../audit/audit.service";
 
 @Injectable()
 export class SuperAdminService {
@@ -17,18 +18,18 @@ export class SuperAdminService {
     @InjectDataSource() private readonly dataSource: DataSource,
     @Inject(TenantService) private readonly tenantService: TenantService,
     @Inject(PasswordService) private readonly passwordService: PasswordService,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   /**
    * Provisions a tenant + default branch + OWNER user in one transaction, so
-   * a taken owner email can never leave an orphan ACTIVE tenant behind.
-   *
-   * AUDIT-LOG GAP: no AuditLog entity exists yet anywhere in this codebase.
-   * SECURITY.md §3 calls for super-admin ops to be audited — not built here;
-   * tracked in DECISIONS.md, not silently dropped.
+   * a taken owner email can never leave an orphan ACTIVE tenant behind. The
+   * TENANT_PROVISIONED audit entry is written with the same transaction
+   * manager, so it commits atomically with the rest (SECURITY.md §10).
    */
   async provisionTenant(
     dto: ProvisionTenantDto,
+    actorUserId: string,
   ): Promise<{
     tenant: Pick<Tenant, "id" | "slug" | "name" | "status" | "currency" | "timezone">;
     owner: { id: string; email: string; name: string };
@@ -73,6 +74,18 @@ export class SuperAdminService {
           role: UserRole.OWNER,
           branchId: branch.id,
         }),
+      );
+
+      await this.audit.record(
+        {
+          tenantId: tenant.id,
+          actorUserId,
+          action: "TENANT_PROVISIONED",
+          entityType: "Tenant",
+          entityId: tenant.id,
+          metadata: { slug: tenant.slug, ownerEmail: owner.email },
+        },
+        manager,
       );
 
       return {

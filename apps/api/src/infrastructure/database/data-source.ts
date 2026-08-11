@@ -2,7 +2,16 @@ import "reflect-metadata";
 import path from "node:path";
 import dotenv from "dotenv";
 import { DataSource } from "typeorm";
-import { Branch, Closure, RefreshSession, Tenant, User, UserTenantRole } from "../../entities";
+import {
+  AuditLog,
+  Branch,
+  Closure,
+  RefreshSession,
+  Service,
+  Tenant,
+  User,
+  UserTenantRole,
+} from "../../entities";
 
 // Load workspace-local .env first, then fall back to the repo-root .env.
 // (npm workspace scripts run with cwd = the workspace directory.)
@@ -14,7 +23,7 @@ const isProduction = process.env.NODE_ENV === "production";
 export const AppDataSource = new DataSource({
   type: "postgres",
   url: process.env.DATABASE_URL ?? "postgresql://salon:salon@localhost:5432/salon",
-  entities: [Branch, Closure, RefreshSession, Tenant, User, UserTenantRole],
+  entities: [AuditLog, Branch, Closure, RefreshSession, Service, Tenant, User, UserTenantRole],
   migrations: [path.join(__dirname, "migrations", "*.{ts,js}")],
   synchronize: false,
   logging: false,

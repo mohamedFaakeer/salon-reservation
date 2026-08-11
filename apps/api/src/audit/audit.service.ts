@@ -1,0 +1,79 @@
+import { Injectable } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import type { EntityManager } from "typeorm";
+// Repository must stay a VALUE import: NestJS resolves constructor
+// injection via design:paramtypes metadata at runtime; `import type` would
+// erase it and break DI.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { Between, LessThanOrEqual, MoreThanOrEqual, Repository } from "typeorm";
+import type { AuditQueryDto } from "@salon/shared";
+import { AuditLog } from "../entities/audit-log.entity";
+
+export interface RecordAuditInput {
+  tenantId: string | null;
+  actorUserId: string | null;
+  action: string;
+  entityType: string;
+  entityId: string;
+  metadata?: Record<string, unknown>;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}
+
+@Injectable()
+export class AuditService {
+  constructor(
+    @InjectRepository(AuditLog) private readonly logs: Repository<AuditLog>,
+  ) {}
+
+  /**
+   * Awaited by every caller — a failed audit write is a real error, not
+   * silently swallowed. Pass `manager` to make the write atomic with a
+   * caller's own transaction (same optional-manager pattern as
+   * TenantService.createTenant).
+   */
+  async record(input: RecordAuditInput, manager?: EntityManager): Promise<void> {
+    const repo = manager ? manager.getRepository(AuditLog) : this.logs;
+    await repo.save(
+      repo.create({
+        tenantId: input.tenantId,
+        actorUserId: input.actorUserId,
+        action: input.action,
+        entityType: input.entityType,
+        entityId: input.entityId,
+        metadata: input.metadata ?? {},
+        ipAddress: input.ipAddress ?? null,
+        userAgent: input.userAgent ?? null,
+      }),
+    );
+  }
+
+  async query(
+    tenantId: string,
+    filters: AuditQueryDto,
+  ): Promise<{ data: AuditLog[]; meta: { total: number; limit: number; offset: number } }> {
+    const where: Record<string, unknown> = { tenantId };
+    if (filters.entityType) {
+      where.entityType = filters.entityType;
+    }
+    if (filters.entityId) {
+      where.entityId = filters.entityId;
+    }
+    if (filters.from && filters.to) {
+      where.createdAt = Between(new Date(filters.from), new Date(filters.to));
+    } else if (filters.from) {
+      where.createdAt = MoreThanOrEqual(new Date(filters.from));
+    } else if (filters.to) {
+      where.createdAt = LessThanOrEqual(new Date(filters.to));
+    }
+
+    const [data, total] = await this.logs.findAndCount({
+      where,
+      order: { createdAt: "DESC" },
+      take: filters.limit,
+      skip: filters.offset,
+    });
+
+    return { data, meta: { total, limit: filters.limit, offset: filters.offset } };
+  }
+}

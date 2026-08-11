@@ -175,6 +175,16 @@ describe("RBAC (e2e)", () => {
       assert.equal(me.body.tenant.slug, slug);
       assert.notEqual(me.body.tenant.slug, "elegance");
 
+      // P6: provisioning is now audited (closes the P4-tracked gap). Checked
+      // before suspension below, since a suspended tenant correctly blocks
+      // all further access for its own owner.
+      const auditRes = await request(server())
+        .get(`/api/v1/audit?entityType=Tenant&entityId=${provision.body.tenant.id}`)
+        .set("Authorization", `Bearer ${newOwnerToken}`)
+        .expect(200);
+      assert.equal(auditRes.body.data.length, 1);
+      assert.equal(auditRes.body.data[0].action, "TENANT_PROVISIONED");
+
       // The now-guarded status route still works for the authorized role.
       await request(server())
         .patch(`/api/v1/tenant/${provision.body.tenant.id}/status`)
