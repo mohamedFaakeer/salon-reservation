@@ -9,10 +9,12 @@ import {
   RefreshSession,
   Service,
   Staff,
+  StaffLeave,
   StaffServiceAssignment,
   Tenant,
   User,
   UserTenantRole,
+  WorkingSchedule,
 } from "../../entities";
 
 // Load workspace-local .env first, then fall back to the repo-root .env.
@@ -32,10 +34,12 @@ export const AppDataSource = new DataSource({
     RefreshSession,
     Service,
     Staff,
+    StaffLeave,
     StaffServiceAssignment,
     Tenant,
     User,
     UserTenantRole,
+    WorkingSchedule,
   ],
   migrations: [path.join(__dirname, "migrations", "*.{ts,js}")],
   synchronize: false,

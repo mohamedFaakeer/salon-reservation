@@ -8,4 +8,6 @@ export * from "./dto/service.dto";
 export * from "./dto/audit.dto";
 export * from "./dto/staff.dto";
 export * from "./dto/staff-service.dto";
+export * from "./dto/working-schedule.dto";
+export * from "./dto/staff-leave.dto";
 export * from "./errors/api-error";

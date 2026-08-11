@@ -10,6 +10,8 @@ import { ClosureModule } from "./closure/closure.module";
 import { AuditModule } from "./audit/audit.module";
 import { ServiceModule } from "./service/service.module";
 import { StaffModule } from "./staff/staff.module";
+import { ScheduleModule } from "./schedule/schedule.module";
+import { StaffLeaveModule } from "./staff-leave/staff-leave.module";
 
 @Module({
   imports: [
@@ -46,6 +48,8 @@ import { StaffModule } from "./staff/staff.module";
     AuditModule,
     ServiceModule,
     StaffModule,
+    ScheduleModule,
+    StaffLeaveModule,
   ],
   controllers: [AppController],
 })
