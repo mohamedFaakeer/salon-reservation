@@ -13,6 +13,7 @@ import {
   type CreateAppointmentDto,
 } from "@salon/shared";
 import { Appointment } from "../entities/appointment.entity";
+import { AppointmentServiceLine } from "../entities/appointment-service.entity";
 import { Staff } from "../entities/staff.entity";
 import type { TenantContextData } from "../tenant/tenant-context";
 // TenantService/BookingService must stay VALUE imports: NestJS resolves
@@ -37,6 +38,7 @@ export class AppointmentService {
   constructor(
     @InjectRepository(Appointment) private readonly appointments: Repository<Appointment>,
     @InjectRepository(Staff) private readonly staff: Repository<Staff>,
+    @InjectRepository(AppointmentServiceLine) private readonly lines: Repository<AppointmentServiceLine>,
     private readonly tenantService: TenantService,
     private readonly booking: BookingService,
   ) {}
@@ -97,10 +99,14 @@ export class AppointmentService {
     return { data, meta: { total, limit: query.limit, offset: query.offset } };
   }
 
-  async findOne(tenantId: string, id: string, ctx: TenantContextData): Promise<Appointment> {
+  async findOne(
+    tenantId: string,
+    id: string,
+    ctx: TenantContextData,
+  ): Promise<Appointment & { lines: AppointmentServiceLine[] }> {
     const appointment = await this.findOwned(tenantId, id);
     await this.assertOwnershipIfStaffOnly(tenantId, ctx, appointment);
-    return appointment;
+    return this.attachLines(appointment);
   }
 
   /** OWNER/MANAGER/RECEPTIONIST only — gated at the controller, no ownership check needed here. */
@@ -159,12 +165,18 @@ export class AppointmentService {
   private async findOwned(tenantId: string, id: string): Promise<Appointment> {
     const appointment = await this.appointments.findOne({
       where: { id, tenantId },
-      relations: { customer: true },
+      relations: { customer: true, staff: true },
     });
     if (!appointment) {
       throw new ApiError({ statusCode: 404, code: "NOT_FOUND", message: "Appointment not found." });
     }
     return appointment;
+  }
+
+  /** The detail view needs the booked service lines — not a loaded relation by default. */
+  private async attachLines(appointment: Appointment): Promise<Appointment & { lines: AppointmentServiceLine[] }> {
+    const lines = await this.lines.find({ where: { appointmentId: appointment.id } });
+    return { ...appointment, lines };
   }
 
   private isElevated(ctx: TenantContextData): boolean {

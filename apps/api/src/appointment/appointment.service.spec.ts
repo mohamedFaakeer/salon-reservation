@@ -2,6 +2,7 @@ import type { ObjectLiteral, Repository } from "typeorm";
 import { AppointmentStatus, UserRole } from "@salon/shared";
 import { AppointmentService } from "./appointment.service";
 import type { Appointment } from "../entities/appointment.entity";
+import type { AppointmentServiceLine } from "../entities/appointment-service.entity";
 import type { Staff } from "../entities/staff.entity";
 import type { TenantService } from "../tenant/tenant.service";
 import type { BookingService } from "../booking/booking.service";
@@ -27,6 +28,7 @@ function staffCtx(userId = "user-staff"): TenantContextData {
 describe("AppointmentService", () => {
   let appointments: Repository<Appointment>;
   let staff: Repository<Staff>;
+  let lines: Repository<AppointmentServiceLine>;
   let tenantService: TenantService;
   let booking: BookingService;
   let service: AppointmentService;
@@ -34,9 +36,10 @@ describe("AppointmentService", () => {
   beforeEach(() => {
     appointments = mockRepo<Appointment>();
     staff = mockRepo<Staff>();
+    lines = mockRepo<AppointmentServiceLine>();
     tenantService = { findById: vi.fn(async () => ({ id: "tenant-1" })) } as unknown as TenantService;
     booking = { reserveAndConfirm: vi.fn(async () => ({ id: "appt-1" }) as Appointment) } as unknown as BookingService;
-    service = new AppointmentService(appointments, staff, tenantService, booking);
+    service = new AppointmentService(appointments, staff, lines, tenantService, booking);
   });
 
   describe("create", () => {
@@ -72,10 +75,12 @@ describe("AppointmentService", () => {
       });
     });
 
-    it("allows an elevated role to view any appointment", async () => {
+    it("allows an elevated role to view any appointment, enriched with service lines", async () => {
       vi.mocked(appointments.findOne).mockResolvedValue({ id: "appt-1", staffId: "staff-1" } as Appointment);
+      vi.mocked(lines.find).mockResolvedValue([{ id: "line-1" } as AppointmentServiceLine]);
       const result = await service.findOne("tenant-1", "appt-1", elevatedCtx());
       expect(result.id).toBe("appt-1");
+      expect(result.lines).toEqual([{ id: "line-1" }]);
     });
 
     it("S6: forbids STAFF from viewing another staff member's appointment", async () => {

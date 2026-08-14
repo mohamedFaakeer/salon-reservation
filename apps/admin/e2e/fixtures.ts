@@ -5,13 +5,13 @@ export const apiUrl = process.env.PLAYWRIGHT_API_URL ?? "http://localhost:3000/a
 const COLOMBO_OFFSET_MINUTES = 330;
 
 /** Colombo-local "today" — mirrors apps/api's time.util.ts `colomboNow` (fixed +05:30, no DST). */
-function colomboToday(): string {
+export function todayLocalDate(): string {
   return new Date(Date.now() + COLOMBO_OFFSET_MINUTES * 60_000).toISOString().slice(0, 10);
 }
 
 /** A date comfortably inside the default 30-day booking window, not "today". */
 export function inWindowDate(daysAhead: number): string {
-  const d = new Date(`${colomboToday()}T00:00:00Z`);
+  const d = new Date(`${todayLocalDate()}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + daysAhead);
   return d.toISOString().slice(0, 10);
 }
@@ -64,30 +64,37 @@ export async function assignServices(
   });
 }
 
-export async function createSchedule(
+/** Tolerates the demo-seeded staff row already having a schedule for today (persistent dev DB). */
+export async function createScheduleForToday(
   request: APIRequestContext,
   token: string,
   staffId: string,
-  dayOfWeek: number,
 ): Promise<void> {
+  const dayOfWeek = dayOfWeekOf(todayLocalDate());
+  const existing = await request.get(`${apiUrl}/schedules?staffId=${staffId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const rows = (await existing.json()) as Array<{ staffId: string; dayOfWeek: number }>;
+  if (rows.some((r) => r.staffId === staffId && r.dayOfWeek === dayOfWeek)) {
+    return;
+  }
   await request.post(`${apiUrl}/schedules`, {
     headers: { Authorization: `Bearer ${token}` },
-    data: { staffId, dayOfWeek, startMin: 540, endMin: 1020 },
+    data: { staffId, dayOfWeek, startMin: 0, endMin: 1439 },
   });
 }
 
-/** Creates a fresh staff+service+schedule combo so parallel spec files never collide on the same slot. */
+/** Creates a fresh staff+service+schedule combo, open all day today, so a booking always succeeds regardless of test run time. */
 export async function bookableFixture(
   request: APIRequestContext,
   namePrefix: string,
-): Promise<{ staffId: string; serviceId: string; serviceName: string; date: string }> {
+): Promise<{ staffId: string; serviceId: string; serviceName: string }> {
   const token = await login(request, "owner@demo.salon", "demo1234");
   const unique = `${namePrefix} ${Date.now()}`;
   const staffId = await createStaff(request, token, `${unique} Staff`);
   const serviceName = `${unique} Service`;
   const serviceId = await createService(request, token, serviceName, 30);
   await assignServices(request, token, staffId, [serviceId]);
-  const date = inWindowDate(2);
-  await createSchedule(request, token, staffId, dayOfWeekOf(date));
-  return { staffId, serviceId, serviceName, date };
+  await createScheduleForToday(request, token, staffId);
+  return { staffId, serviceId, serviceName };
 }

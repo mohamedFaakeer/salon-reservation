@@ -1,33 +1,67 @@
-import React from "react";
+"use client";
 
-export default function LoginPage(): React.JSX.Element {
+import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "../../context/auth-context";
+import { ApiRequestError } from "../../lib/api-client";
+
+export default function LoginPage() {
+  const router = useRouter();
+  const { login } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      await login(email, password);
+      router.replace("/today");
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.message : "Could not sign in. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <main className="flex min-h-screen items-center justify-center p-6">
-      <div className="w-full max-w-sm rounded-lg bg-white p-8 shadow-sm">
+      <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-lg bg-white p-8 shadow-sm">
         <h1 className="mb-2 text-2xl font-semibold text-slate-900">Salon Admin</h1>
-        <p className="mb-6 text-sm text-slate-500">
-          Sign in to manage your day. Auth flows arrive in Phase 2.
-        </p>
+        <p className="mb-6 text-sm text-slate-500">Sign in to manage your day.</p>
         <div className="space-y-3">
           <input
+            data-testid="login-email"
             type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             placeholder="you@salon.lk"
             className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
           />
           <input
+            data-testid="login-password"
             type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
             placeholder="Password"
             className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
           />
+          {error ? <p className="text-sm text-red-600">{error}</p> : null}
           <button
-            type="button"
-            disabled
-            className="w-full rounded bg-teal-600 px-3 py-2 text-sm font-medium text-white opacity-60"
+            data-testid="login-submit"
+            type="submit"
+            disabled={submitting}
+            className="w-full rounded bg-teal-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Sign in (coming in Phase 2)
+            {submitting ? "Signing in…" : "Sign in"}
           </button>
         </div>
-      </div>
+      </form>
     </main>
   );
 }

@@ -15,23 +15,14 @@ export function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-LK", { hour: "numeric", minute: "2-digit" });
 }
 
-export function formatDateLong(dateStr: string): string {
-  return new Date(`${dateStr}T00:00:00Z`).toLocaleDateString("en-LK", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
-
 /**
  * Colombo-local "today" (fixed +05:30, no DST — mirrors apps/api's
  * time.util.ts `colomboNow`). `new Date().toISOString().slice(0,10)` would
- * give the UTC calendar date, which is a different day from Colombo's for
- * ~5.5 hours of every day (UTC 18:30–23:59) — a real bug if used for
- * anything sent to the API, which operates in tenant-local (Colombo) terms.
+ * give the UTC calendar date, a different day from Colombo's for ~5.5 hours
+ * of every day (UTC 18:30–23:59) — a real bug for anything sent to the API,
+ * which operates in tenant-local (Colombo) terms.
  */
-export function colomboToday(): string {
+export function todayLocalDate(): string {
   const COLOMBO_OFFSET_MINUTES = 330;
   return new Date(Date.now() + COLOMBO_OFFSET_MINUTES * 60_000).toISOString().slice(0, 10);
 }

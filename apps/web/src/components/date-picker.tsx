@@ -1,6 +1,6 @@
 import type { SalonProfile } from "../lib/api-client";
 import type { BookingWizard } from "../hooks/use-booking-wizard";
-import { formatDateLong } from "../lib/format";
+import { colomboToday, formatDateLong } from "../lib/format";
 
 const DISPLAY_WINDOW_DAYS = 30;
 
@@ -21,7 +21,7 @@ function isClosed(dateStr: string, closures: SalonProfile["closures"]): boolean 
  */
 export function DatePicker({ salon, wizard }: { salon: SalonProfile; wizard: BookingWizard }) {
   const days: string[] = [];
-  const cursor = new Date();
+  const cursor = new Date(`${colomboToday()}T00:00:00Z`);
   for (let i = 0; i < DISPLAY_WINDOW_DAYS; i++) {
     days.push(toDateString(cursor));
     cursor.setUTCDate(cursor.getUTCDate() + 1);

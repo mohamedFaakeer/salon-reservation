@@ -13,6 +13,7 @@ import {
   type ReserveResponse,
   type SalonProfile,
 } from "../lib/api-client";
+import { colomboToday } from "../lib/format";
 
 export type WizardStep = "services" | "staff" | "date" | "slots" | "details" | "payment" | "success";
 
@@ -21,10 +22,6 @@ function generateIdempotencyKey(): string {
     return crypto.randomUUID();
   }
   return `key-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function todayLocalDate(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 /**
@@ -37,7 +34,7 @@ export function useBookingWizard(salon: SalonProfile) {
   const [step, setStep] = useState<WizardStep>("services");
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null); // null = "Any Available Staff"
-  const [selectedDate, setSelectedDate] = useState<string>(todayLocalDate());
+  const [selectedDate, setSelectedDate] = useState<string>(colomboToday());
   const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [slotsError, setSlotsError] = useState<string | null>(null);
