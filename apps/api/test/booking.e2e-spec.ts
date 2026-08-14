@@ -164,6 +164,9 @@ describe("Booking (e2e) — online flow", () => {
       .expect(200);
     assert.equal(confirmRes.body.appointment.status, "CONFIRMED");
     assert.equal(confirmRes.body.bookingReference, reserveRes.body.bookingReference);
+    assert.equal(confirmRes.body.appointment.staff.id, staffId);
+    assert.equal(confirmRes.body.appointment.lines.length, 1);
+    assert.equal(confirmRes.body.appointment.lines[0].serviceId, serviceId);
 
     // Confirming again with the same key is idempotent, not a duplicate appointment.
     const confirmAgain = await request(server())
@@ -177,6 +180,9 @@ describe("Booking (e2e) — online flow", () => {
       .get(`/api/v1/bookings/${confirmRes.body.bookingReference}?phone=${phone}`)
       .expect(200);
     assert.equal(lookupRes.body.bookingReference, confirmRes.body.bookingReference);
+    assert.equal(lookupRes.body.staff.id, staffId);
+    assert.equal(lookupRes.body.lines.length, 1);
+    assert.equal(lookupRes.body.lines[0].serviceId, serviceId);
 
     // Wrong phone must not reveal the booking.
     await request(server())

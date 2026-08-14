@@ -10,6 +10,7 @@ import { BookingService } from "./booking.service";
 import { SlotHold, type BookingSnapshot } from "../entities/slot-hold.entity";
 import { Appointment } from "../entities/appointment.entity";
 import { AppointmentServiceLine } from "../entities/appointment-service.entity";
+import { Staff } from "../entities/staff.entity";
 import type { Service } from "../entities/service.entity";
 import type { Tenant } from "../entities/tenant.entity";
 import type { Customer } from "../entities/customer.entity";
@@ -69,6 +70,7 @@ describe("BookingService", () => {
   let slotHoldsRepo: Repository<SlotHold>;
   let appointmentsRepo: Repository<Appointment>;
   let lineRepo: Repository<AppointmentServiceLine>;
+  let staffRepo: Repository<Staff>;
   let dataSource: DataSource;
   let availability: AvailabilityService;
   let customers: CustomerService;
@@ -80,12 +82,17 @@ describe("BookingService", () => {
     slotHoldsRepo = mockRepo<SlotHold>();
     appointmentsRepo = mockRepo<Appointment>();
     lineRepo = mockRepo<AppointmentServiceLine>();
+    staffRepo = {
+      ...mockRepo<Staff>(),
+      findOneOrFail: vi.fn(async () => ({ id: "staff-1", name: "Staff One" }) as Staff),
+    } as unknown as Repository<Staff>;
 
     const manager = {
       getRepository: (entity: unknown) => {
         if (entity === SlotHold) return slotHoldsRepo;
         if (entity === Appointment) return appointmentsRepo;
         if (entity === AppointmentServiceLine) return lineRepo;
+        if (entity === Staff) return staffRepo;
         throw new Error("unexpected entity in test manager");
       },
       query: vi.fn(async () => undefined),
@@ -114,6 +121,7 @@ describe("BookingService", () => {
       servicesRepo,
       slotHoldsRepo,
       appointmentsRepo,
+      lineRepo,
       availability,
       customers,
       audit,
@@ -236,7 +244,8 @@ describe("BookingService", () => {
       vi.mocked(appointmentsRepo.findOne).mockResolvedValue(existingAppointment);
 
       const result = await service.confirmHold(fakeTenant(), "hold-1", "session-1");
-      expect(result.appointment).toBe(existingAppointment);
+      expect(result.appointment).toMatchObject(existingAppointment);
+      expect(result.appointment.staff).toEqual({ id: "staff-1", name: "Staff One" });
     });
 
     it("throws HOLD_EXPIRED on a CONSUMED hold with a mismatched sessionKey", async () => {

@@ -16,6 +16,7 @@ import { AvailabilityModule } from "./availability/availability.module";
 import { CustomerModule } from "./customer/customer.module";
 import { BookingModule } from "./booking/booking.module";
 import { AppointmentModule } from "./appointment/appointment.module";
+import { SalonModule } from "./salon/salon.module";
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { AppointmentModule } from "./appointment/appointment.module";
     CustomerModule,
     BookingModule,
     AppointmentModule,
+    SalonModule,
   ],
   controllers: [AppController],
 })

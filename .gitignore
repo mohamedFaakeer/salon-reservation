@@ -17,6 +17,10 @@ out/
 # Coverage & test artifacts
 coverage/
 .vitest/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
 
 # Logs
 *.log

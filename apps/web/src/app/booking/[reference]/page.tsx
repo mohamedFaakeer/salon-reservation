@@ -1,149 +1,105 @@
-import React from "react";
+"use client";
+
+import { useState, type FormEvent } from "react";
 import { useParams } from "next/navigation";
-import { fetchBookingByReference, type FindBookingResponse } from "../../lib/api-client";
-import { useBooking } from "../../hooks/useBooking";
-import { BookingSource } from "../../constants/booking-sources";
+import { ApiRequestError, fetchBookingByReference, type BookingDetail } from "../../../lib/api-client";
+import { formatDurationMin, formatPriceCents, formatTime } from "../../../lib/format";
 
-export default function BookingReferencePage() {
-  const reference = useParams<{ reference: string }>()?.reference || "";
-  const phone = useRef<string>("");
+export default function ManageBookingPage() {
+  const params = useParams<{ reference: string }>();
+  const reference = params.reference;
 
-  const {
-    salon,
-    loadingSalon,
-    salonError,
-    availability,
-    loadingAvailability,
-    availabilityError,
-    setAvailability,
-    bookingReference,
-    holdExpiresAt,
-    paymentIntent,
-    setBooking,
-    cancelBooking,
-    rescheduleBooking,
-  } = useInitialSalonLoad();
+  const [phone, setPhone] = useState("");
+  const [booking, setBooking] = useState<BookingDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    async function loadBooking() {
-      if (!reference) return;
-      setLoadingSalon(true);
-      salonError = null;
-      try {
-        const result = await fetchBookingByReference(reference, phone.current);
-        setBooking(result.reference, result.holdExpiresAt, {
-          id: result.payment?.id || "",
-          amountCents: result.payment?.amountCents || 0,
-          status: result.payment?.status || "PENDING",
-        });
-      } catch (err) {
-        salonError = err instanceof Error ? err.message : "Failed to fetch booking";
-      } finally {
-        setLoadingSalon(false);
-      }
+  async function handleSubmit(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await fetchBookingByReference(reference, phone.trim());
+      setBooking(result);
+    } catch (err) {
+      setError(
+        err instanceof ApiRequestError
+          ? "We couldn't find a booking with that reference and phone number."
+          : "Something went wrong. Please try again.",
+      );
+      setBooking(null);
+    } finally {
+      setLoading(false);
     }
-    loadBooking();
-  }, [reference, setBooking]);
-
-  if (loadingSalon || !reference) {
-    return (
-      <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
-        <p className="text-slate-500">Loading booking...</p>
-      </main>
-    );
-  }
-
-  if (salonError) {
-    return (
-      <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
-        <p className="text-red-500">Error: {salonError}</p>
-        <p className="text-sm text-slate-400">
-          <a href="/">← Choose salon</a>
-        </p>
-      </main>
-    );
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
-      <h1 className="text-3xl font-semibold text-slate-900">
-        Booking Reference: {reference}
-      </h1>
+    <main className="mx-auto max-w-lg p-4">
+      <h1 className="text-2xl font-bold text-slate-900">Manage your booking</h1>
+      <p className="mt-1 text-sm text-slate-500">Reference: {reference}</p>
 
-      {bookingReference && (
-        <div className="max-w-3xl w-full space-y-6 p-8 rounded-lg border border-slate-300">
-          <div className="rounded-lg border border-slate-300 p-6">
-            <h2 className="text-2xl font-semibold text-slate-900">
-              Appointment Details
-            </h2>
+      {!booking ? (
+        <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-3">
+          <label className="flex flex-col gap-1 text-sm text-slate-700">
+            Phone number used at booking
+            <input
+              data-testid="lookup-phone"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              required
+              inputMode="tel"
+              className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
+            />
+          </label>
+          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          <button
+            type="submit"
+            disabled={loading}
+            className="min-h-11 rounded-md bg-teal-600 px-4 py-2 font-medium text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            {loading ? "Looking up…" : "View booking"}
+          </button>
+        </form>
+      ) : (
+        <div className="mt-6 flex flex-col gap-4">
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <p className="text-sm text-slate-500">Status</p>
+            <p data-testid="booking-status" className="font-semibold text-slate-900">
+              {booking.status}
+            </p>
+            <p className="mt-3 text-sm text-slate-500">When</p>
+            <p className="font-medium text-slate-900">
+              {formatTime(booking.startTime)} with {booking.staff.name}
+            </p>
+            <p className="mt-3 text-sm text-slate-500">Services</p>
+            <ul className="text-sm text-slate-700">
+              {booking.lines.map((line) => (
+                <li key={line.id}>
+                  {line.nameSnapshot} ({formatDurationMin(line.durationMinSnapshot)}) —{" "}
+                  {formatPriceCents(line.priceCentsSnapshot)}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 font-semibold text-slate-900">{formatPriceCents(booking.totalCents)}</p>
+          </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-slate-600 mb-6">
-              <div>
-                <strong>Reference:</strong> {bookingReference}
-              </div>
-              <div>
-                <strong>Status:</strong> {paymentIntent?.status.toLowerCase()}
-              </div>
-              <div>
-                <strong>Hold expires:</strong> {new Date(holdExpiresAt).toLocaleString()}
-              </div>
-            </div>
-
-            {paymentIntent?.status === "PENDING" && (
-              <p className="text-slate-500 text-sm">
-                Please complete payment within 10 minutes to confirm your appointment.
-              </p>
-            )}
-
-            {paymentIntent?.status === "SUCCEEDED" && (
-              <div>
-                <p className="text-slate-600 mb-2">Customer:</p>
-                <p className="font-medium text-slate-800">
-                  {salon?.name} appointment confirmed
-                </p>
-              </div>
-            )}
-
-            {/* Actions */}
-            {paymentIntent?.status === "PENDING" && (
-              <div className="mt-6 p-4 rounded-lg border-t-4 border-primary-500 bg-primary-50">
-                <h3 className="font-semibold text-slate-900">Actions</h3>
-                <div className="space-y-3">
-                  <button
-                    onClick={() => cancelBooking(reference, phone.current)}
-                    className="w-full rounded bg-red-500 px-4 py-2 text-sm font-medium text-white"
-                  >
-                    Cancel appointment
-                  </button>
-                  <button
-                    onClick={() => window.location.href = `/`}
-                    className="w-full rounded bg-teal-500 px-4 py-2 text-sm font-medium text-white"
-                  >
-                    Go home
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {paymentIntent?.status === "SUCCEEDED" && (
-              <div className="mt-6 p-4 rounded-lg border-t-4 border-green-500 bg-green-50">
-                <h3 className="font-semibold text-slate-900">Actions</h3>
-                <div className="space-y-3">
-                  <button
-                    onClick={() => rescheduleBooking(reference, phone.current, "", "")}
-                    className="w-full rounded bg-teal-500 px-4 py-2 text-sm font-medium text-white"
-                  >
-                    Reschedule
-                  </button>
-                  <button
-                    onClick={() => window.location.href = `/`}
-                    className="w-full rounded bg-teal-500 px-4 py-2 text-sm font-medium text-white"
-                  >
-                    Go home
-                  </button>
-                </div>
-              </div>
-            )}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled
+              title="Coming soon"
+              className="min-h-11 flex-1 rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-400"
+            >
+              Reschedule (coming soon)
+            </button>
+            <button
+              type="button"
+              disabled
+              title="Coming soon"
+              className="min-h-11 flex-1 rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-400"
+            >
+              Cancel (coming soon)
+            </button>
           </div>
         </div>
       )}

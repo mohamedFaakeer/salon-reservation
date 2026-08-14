@@ -18,6 +18,7 @@ import { Service } from "../entities/service.entity";
 import { SlotHold, type BookingSnapshot, type BookingSnapshotLine } from "../entities/slot-hold.entity";
 import { Appointment } from "../entities/appointment.entity";
 import { AppointmentServiceLine } from "../entities/appointment-service.entity";
+import { Staff } from "../entities/staff.entity";
 import type { Tenant } from "../entities/tenant.entity";
 import { canBook } from "../availability/availability.engine";
 import { colomboNow } from "../availability/time.util";
@@ -84,21 +85,27 @@ export class BookingService {
     @InjectRepository(Service) private readonly services: Repository<Service>,
     @InjectRepository(SlotHold) private readonly slotHolds: Repository<SlotHold>,
     @InjectRepository(Appointment) private readonly appointments: Repository<Appointment>,
+    @InjectRepository(AppointmentServiceLine)
+    private readonly appointmentServiceLines: Repository<AppointmentServiceLine>,
     private readonly availability: AvailabilityService,
     private readonly customers: CustomerService,
     private readonly audit: AuditService,
   ) {}
 
   /** GET /bookings/:reference?phone= — no :slug in this route; bookingReference is globally unique. */
-  async findByReferenceAndPhone(reference: string, phone: string): Promise<Appointment> {
+  async findByReferenceAndPhone(
+    reference: string,
+    phone: string,
+  ): Promise<Appointment & { lines: AppointmentServiceLine[] }> {
     const appointment = await this.appointments.findOne({
       where: { bookingReference: reference },
-      relations: { customer: true },
+      relations: { customer: true, staff: true },
     });
     if (!appointment || appointment.customer.phone !== normalizePhone(phone)) {
       throw new ApiError({ statusCode: 404, code: "NOT_FOUND", message: "Booking not found." });
     }
-    return appointment;
+    const lines = await this.appointmentServiceLines.find({ where: { appointmentId: appointment.id } });
+    return { ...appointment, lines };
   }
 
   /** `/payments/:intentId/...` routes carry no slug — derive the tenant from the hold row itself. */
@@ -200,7 +207,7 @@ export class BookingService {
     tenant: Tenant,
     holdId: string,
     sessionKey: string,
-  ): Promise<{ appointment: Appointment; bookingReference: string }> {
+  ): Promise<{ appointment: Appointment & { staff: Staff; lines: AppointmentServiceLine[] }; bookingReference: string }> {
     return this.dataSource.transaction(async (manager) => {
       const slotHoldRepo = manager.getRepository(SlotHold);
       const hold = await slotHoldRepo.findOne({ where: { id: holdId, tenantId: tenant.id } });
@@ -226,7 +233,8 @@ export class BookingService {
             message: "This payment intent could not be confirmed.",
           });
         }
-        return { appointment, bookingReference: appointment.bookingReference };
+        const enriched = await this.attachStaffAndLines(manager, appointment);
+        return { appointment: enriched, bookingReference: appointment.bookingReference };
       }
 
       if (hold.status !== SlotHoldStatus.HELD || hold.expiresAt <= new Date() || !hold.bookingSnapshot) {
@@ -265,8 +273,21 @@ export class BookingService {
         manager,
       );
 
-      return { appointment, bookingReference: appointment.bookingReference };
+      const enriched = await this.attachStaffAndLines(manager, appointment);
+      return { appointment: enriched, bookingReference: appointment.bookingReference };
     });
+  }
+
+  /** The success response needs the staff name + service lines to display — neither is a loaded relation by default. */
+  private async attachStaffAndLines(
+    manager: EntityManager,
+    appointment: Appointment,
+  ): Promise<Appointment & { staff: Staff; lines: AppointmentServiceLine[] }> {
+    const [staff, lines] = await Promise.all([
+      manager.getRepository(Staff).findOneOrFail({ where: { id: appointment.staffId } }),
+      manager.getRepository(AppointmentServiceLine).find({ where: { appointmentId: appointment.id } }),
+    ]);
+    return { ...appointment, staff, lines };
   }
 
   /** POST /payments/:intentId/cancel — releases the hold; no appointment ever existed to expire. */

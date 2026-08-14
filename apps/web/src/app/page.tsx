@@ -1,15 +1,16 @@
-import React from "react";
+import { fetchSalons } from "../lib/api-client";
+import { SalonList } from "../components/salon-list";
 
-export default function Home(): React.JSX.Element {
+export default async function HomePage() {
+  const salons = await fetchSalons();
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
-      <h1 className="text-3xl font-semibold text-slate-900">Salon Booking</h1>
-      <p className="text-center text-slate-600">
-        Book your salon appointment in under 60 seconds.
-      </p>
-      <p className="text-sm text-slate-400">
-        Salon directory coming in Phase 11 — this page will list salons.
-      </p>
+    <main className="mx-auto max-w-lg p-4">
+      <h1 className="text-2xl font-bold text-slate-900">Book your salon visit</h1>
+      <p className="mt-1 text-sm text-slate-500">Pick a salon to see services and available times.</p>
+      <div className="mt-6">
+        <SalonList salons={salons} />
+      </div>
     </main>
   );
 }
