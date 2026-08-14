@@ -11,6 +11,9 @@ import {
   BookingSource,
   SlotHoldStatus,
   AppointmentStatus,
+  PaymentMethod,
+  PaymentProviderName,
+  PaymentType,
   type CreateBookingDto,
   type CreateCustomerDto,
 } from "@salon/shared";
@@ -34,6 +37,10 @@ import { AvailabilityService } from "../availability/availability.service";
 import { CustomerService } from "../customer/customer.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { AuditService } from "../audit/audit.service";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { PricingService } from "../pricing/pricing.service";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { PaymentService } from "../payment/payment.service";
 
 /** Maps `canBook`'s rejection codes to HTTP statuses (API.md §7's list is illustrative, not exhaustive). */
 const CAN_BOOK_ERROR_STATUS: Record<string, number> = {
@@ -49,6 +56,9 @@ const CAN_BOOK_ERROR_STATUS: Record<string, number> = {
 export interface ReserveResult {
   holdId: string;
   amountCents: number;
+  /** Display figure only: `amountCents - advanceRequiredCents` — the appointment's real `balanceCents` starts at `amountCents` until the advance is actually recorded. */
+  advanceRequiredCents: number;
+  balanceCents: number;
   expiresAt: Date;
   bookingReference: string;
 }
@@ -90,6 +100,8 @@ export class BookingService {
     private readonly availability: AvailabilityService,
     private readonly customers: CustomerService,
     private readonly audit: AuditService,
+    private readonly pricing: PricingService,
+    private readonly payments: PaymentService,
   ) {}
 
   /** GET /bookings/:reference?phone= — no :slug in this route; bookingReference is globally unique. */
@@ -120,7 +132,8 @@ export class BookingService {
   /** POST /salons/:slug/bookings — creates a 10-min HELD SlotHold; no Appointment yet. */
   async reserve(tenant: Tenant, dto: CreateBookingDto, sessionKey: string): Promise<ReserveResult> {
     const lines = await this.resolveServiceLines(tenant.id, dto.serviceIds);
-    const amountCents = lines.reduce((sum, l) => sum + l.priceCentsSnapshot, 0);
+    const totals = this.pricing.computeTotals(lines, tenant.settings);
+    const amountCents = totals.totalCents;
     const durationMin = lines.reduce((sum, l) => sum + l.durationMinSnapshot, 0);
     const start = new Date(dto.start);
     const end = new Date(start.getTime() + durationMin * 60_000);
@@ -136,6 +149,8 @@ export class BookingService {
           return {
             holdId: existing.id,
             amountCents,
+            advanceRequiredCents: totals.advanceRequiredCents,
+            balanceCents: totals.balanceCents,
             expiresAt: existing.expiresAt,
             bookingReference: (existing.bookingSnapshot as BookingSnapshot).bookingReference,
           };
@@ -184,7 +199,14 @@ export class BookingService {
           throw this.translateSlotUnavailable(err);
         }
 
-        return { holdId: hold.id, amountCents, expiresAt: hold.expiresAt, bookingReference };
+        return {
+          holdId: hold.id,
+          amountCents,
+          advanceRequiredCents: totals.advanceRequiredCents,
+          balanceCents: totals.balanceCents,
+          expiresAt: hold.expiresAt,
+          bookingReference,
+        };
       });
     } catch (err) {
       if (isUniqueViolation(err)) {
@@ -193,6 +215,8 @@ export class BookingService {
           return {
             holdId: winner.id,
             amountCents,
+            advanceRequiredCents: totals.advanceRequiredCents,
+            balanceCents: totals.balanceCents,
             expiresAt: winner.expiresAt,
             bookingReference: (winner.bookingSnapshot as BookingSnapshot).bookingReference,
           };
@@ -257,6 +281,20 @@ export class BookingService {
         holdExpiresAt: hold.expiresAt,
         bookingReference: snapshot.bookingReference,
       });
+
+      // Same transaction as the appointment insert — either both commit or
+      // neither does (payment matrix P1: no orphan payment/booking possible
+      // with this synchronous, in-transaction ManualProvider).
+      if (appointment.advanceRequiredCents > 0) {
+        await this.payments.recordPayment(manager, tenant, appointment, {
+          amountCents: appointment.advanceRequiredCents,
+          method: PaymentMethod.ONLINE,
+          type: appointment.advanceRequiredCents >= appointment.totalCents ? PaymentType.FULL : PaymentType.ADVANCE,
+          provider: PaymentProviderName.MANUAL,
+          recordedById: null,
+          idempotencyKey: sessionKey,
+        });
+      }
 
       hold.status = SlotHoldStatus.CONSUMED;
       await slotHoldRepo.save(hold);
@@ -444,7 +482,7 @@ export class BookingService {
   ): Promise<Appointment> {
     const appointmentRepo = manager.getRepository(Appointment);
     const lineRepo = manager.getRepository(AppointmentServiceLine);
-    const subtotalCents = spec.lines.reduce((sum, l) => sum + l.priceCentsSnapshot, 0);
+    const totals = this.pricing.computeTotals(spec.lines, tenant.settings);
     const appointmentDate = colomboNow(spec.startTime).date;
     const now = new Date();
 
@@ -464,12 +502,20 @@ export class BookingService {
             endTime: spec.endTime,
             status: spec.checkInNow ? AppointmentStatus.CHECKED_IN : AppointmentStatus.CONFIRMED,
             source: spec.source,
-            subtotalCents,
-            discountCents: 0,
-            totalCents: subtotalCents,
-            advanceRequiredCents: 0,
+            subtotalCents: totals.subtotalCents,
+            discountCents: totals.discountCents,
+            totalCents: totals.totalCents,
+            advanceRequiredCents: totals.advanceRequiredCents,
             advancePaidCents: 0,
-            balanceCents: subtotalCents,
+            // Nothing is paid yet at creation — balanceCents starts equal to
+            // totalCents and is only ever reduced by a real recordPayment()
+            // call (e.g. the advance recorded immediately below in
+            // confirmHold, same transaction). PricingService's own
+            // `balanceCents` (total minus advance) is a *display* figure for
+            // "what you'd still owe after paying the advance" — writing it
+            // here directly would double-count once the advance payment
+            // itself also decrements this column.
+            balanceCents: totals.totalCents,
             notes: spec.notes,
             bookingReference,
             holdExpiresAt: spec.holdExpiresAt,

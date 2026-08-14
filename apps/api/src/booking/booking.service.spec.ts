@@ -17,6 +17,8 @@ import type { Customer } from "../entities/customer.entity";
 import type { AvailabilityService } from "../availability/availability.service";
 import type { CustomerService } from "../customer/customer.service";
 import type { AuditService } from "../audit/audit.service";
+import { PricingService } from "../pricing/pricing.service";
+import type { PaymentService } from "../payment/payment.service";
 
 function mockRepo<T extends ObjectLiteral>() {
   return {
@@ -75,6 +77,7 @@ describe("BookingService", () => {
   let availability: AvailabilityService;
   let customers: CustomerService;
   let audit: AuditService;
+  let payments: PaymentService;
   let service: BookingService;
 
   beforeEach(() => {
@@ -115,6 +118,7 @@ describe("BookingService", () => {
     } as unknown as CustomerService;
 
     audit = { record: vi.fn() } as unknown as AuditService;
+    payments = { recordPayment: vi.fn() } as unknown as PaymentService;
 
     service = new BookingService(
       dataSource,
@@ -125,6 +129,8 @@ describe("BookingService", () => {
       availability,
       customers,
       audit,
+      new PricingService(),
+      payments,
     );
   });
 

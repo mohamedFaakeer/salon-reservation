@@ -17,6 +17,7 @@ import { CustomerModule } from "./customer/customer.module";
 import { BookingModule } from "./booking/booking.module";
 import { AppointmentModule } from "./appointment/appointment.module";
 import { SalonModule } from "./salon/salon.module";
+import { PaymentModule } from "./payment/payment.module";
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { SalonModule } from "./salon/salon.module";
     BookingModule,
     AppointmentModule,
     SalonModule,
+    PaymentModule,
   ],
   controllers: [AppController],
 })

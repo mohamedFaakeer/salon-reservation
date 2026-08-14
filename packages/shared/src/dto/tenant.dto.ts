@@ -85,6 +85,12 @@ export class TenantSettingsUpdateDto {
   advanceValueCents?: number | null;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  advancePercent?: number | null;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => CancellationPolicyUpdateDto)
   cancellationPolicy?: CancellationPolicyUpdateDto;

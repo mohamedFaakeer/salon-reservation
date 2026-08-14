@@ -12,3 +12,13 @@ export function canManageAppointments(roles: string[]): boolean {
 export function canActOnOwnAppointment(roles: string[]): boolean {
   return roles.includes("STAFF");
 }
+
+/** Mirrors RECORD_PAYMENT (OWNER, MANAGER, RECEPTIONIST). */
+export function canRecordPayment(roles: string[]): boolean {
+  return roles.some((r) => r === "OWNER" || r === "MANAGER" || r === "RECEPTIONIST");
+}
+
+/** Mirrors ISSUE_REFUND (OWNER, MANAGER only). */
+export function canIssueRefund(roles: string[]): boolean {
+  return roles.some((r) => r === "OWNER" || r === "MANAGER");
+}

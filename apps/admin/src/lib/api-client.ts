@@ -76,6 +76,9 @@ export interface AppointmentRecord {
   customerId: string;
   subtotalCents: number;
   totalCents: number;
+  advanceRequiredCents: number;
+  advancePaidCents: number;
+  balanceCents: number;
   bookingReference: string;
   checkedInAt: string | null;
   inServiceAt: string | null;
@@ -88,6 +91,19 @@ export interface AppointmentDetail extends AppointmentRecord {
   customer: CustomerRecord;
   staff: StaffMember;
   lines: AppointmentServiceLineView[];
+}
+
+export type PaymentMethod = "CASH" | "BANK_TRANSFER" | "CARD_CAPTURED" | "ONLINE" | "GATEWAY";
+export type PaymentType = "ADVANCE" | "FULL" | "BALANCE";
+
+export interface PaymentRecord {
+  id: string;
+  amountCents: number;
+  method: PaymentMethod;
+  state: string;
+  type: PaymentType;
+  recordedAt: string | null;
+  createdAt: string;
 }
 
 export class ApiRequestError extends Error {
@@ -253,4 +269,27 @@ export function inService(id: string): Promise<AppointmentRecord> {
 
 export function complete(id: string): Promise<AppointmentRecord> {
   return request<AppointmentRecord>(`/appointments/${id}/complete`, { method: "POST" });
+}
+
+export function fetchPayments(appointmentId: string): Promise<{ data: PaymentRecord[] }> {
+  return request<{ data: PaymentRecord[] }>(`/payments?appointmentId=${appointmentId}`);
+}
+
+export function recordPayment(
+  appointmentId: string,
+  input: { amountCents: number; method: PaymentMethod; type: PaymentType },
+  idempotencyKey: string,
+): Promise<PaymentRecord> {
+  return request<PaymentRecord>(`/appointments/${appointmentId}/payments`, {
+    method: "POST",
+    body: JSON.stringify(input),
+    idempotencyKey,
+  });
+}
+
+export function refundPayment(paymentId: string, input: { amountCents: number; reason: string }): Promise<unknown> {
+  return request<unknown>(`/payments/${paymentId}/refund`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }

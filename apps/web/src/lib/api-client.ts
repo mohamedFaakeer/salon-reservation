@@ -65,7 +65,13 @@ export interface CustomerDetailsInput {
 export interface ReserveResponse {
   bookingReference: string;
   holdExpiresAt: string;
-  paymentIntent: { id: string; amountCents: number; status: string };
+  paymentIntent: {
+    id: string;
+    amountCents: number;
+    advanceRequiredCents: number;
+    balanceCents: number;
+    status: string;
+  };
 }
 
 export interface AppointmentServiceLineView {
@@ -83,6 +89,9 @@ export interface BookingDetail {
   endTime: string;
   subtotalCents: number;
   totalCents: number;
+  advanceRequiredCents: number;
+  advancePaidCents: number;
+  balanceCents: number;
   notes: string | null;
   bookingReference: string;
   staff: SalonStaff;

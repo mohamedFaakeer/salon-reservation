@@ -36,7 +36,13 @@ export class BookingController {
     return {
       bookingReference: result.bookingReference,
       holdExpiresAt: result.expiresAt,
-      paymentIntent: { id: result.holdId, amountCents: result.amountCents, status: "PENDING" },
+      paymentIntent: {
+        id: result.holdId,
+        amountCents: result.amountCents,
+        advanceRequiredCents: result.advanceRequiredCents,
+        balanceCents: result.balanceCents,
+        status: "PENDING",
+      },
     };
   }
 

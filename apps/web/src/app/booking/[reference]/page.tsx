@@ -81,6 +81,10 @@ export default function ManageBookingPage() {
               ))}
             </ul>
             <p className="mt-3 font-semibold text-slate-900">{formatPriceCents(booking.totalCents)}</p>
+            {booking.advancePaidCents > 0 ? (
+              <p className="text-sm text-slate-600">Advance paid: {formatPriceCents(booking.advancePaidCents)}</p>
+            ) : null}
+            <p className="text-sm text-slate-600">Balance due: {formatPriceCents(booking.balanceCents)}</p>
           </div>
 
           <div className="flex gap-2">

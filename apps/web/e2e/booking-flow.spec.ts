@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { bookableFixture } from "./fixtures";
+import { bookableFixture, inWindowDate } from "./fixtures";
 
 test("customer books a salon appointment end-to-end", async ({ page, request }) => {
   const { serviceId, date } = await bookableFixture(request, "Playwright Happy Path");
@@ -27,10 +27,9 @@ test("customer books a salon appointment end-to-end", async ({ page, request }) 
   await page.getByTestId("customer-phone").fill(`077${Date.now().toString().slice(-7)}`);
   await page.getByTestId("reserve-slot").click();
 
-  await expect(page.getByRole("heading", { name: "Confirm & pay" })).toBeVisible();
-  await expect(page.getByText("Slot held for")).toBeVisible();
-  await page.getByTestId("confirm-payment").click();
-
+  // The demo tenant's advanceRule is NO_ADVANCE (default) — the wizard
+  // skips the "Confirm & pay" step entirely per UX.md and confirms
+  // automatically (P13: real advance-rule branching).
   await expect(page.getByRole("heading", { name: "You're booked!" })).toBeVisible();
   const reference = await page.getByTestId("booking-reference").innerText();
   expect(reference).toMatch(/^[A-Z0-9]{2,4}-[A-Z0-9]{5}$/);
@@ -46,9 +45,12 @@ test("customer books a salon appointment end-to-end", async ({ page, request }) 
 
 test("shows an empty state when a day has no open slots", async ({ page, request }) => {
   const { serviceId } = await bookableFixture(request, "Playwright Empty Day");
-  const farDate = new Date();
-  farDate.setUTCDate(farDate.getUTCDate() + 3); // a day this staff member has no schedule row for
-  const farDateStr = farDate.toISOString().slice(0, 10);
+  // A day this staff member has no schedule row for — `bookableFixture`
+  // schedules day+2 (Colombo-local), so day+3 always lands on a different
+  // weekday. Must use the same Colombo-aware helper as the fixture (not a
+  // raw `new Date()`), or the two can collide during the ~5.5h/day UTC/
+  // Colombo divergence window (UTC 18:30–23:59) — see DECISIONS.md.
+  const farDateStr = inWindowDate(3);
 
   await page.goto("/salon/elegance");
   await page.getByTestId(`service-option-${serviceId}`).click();

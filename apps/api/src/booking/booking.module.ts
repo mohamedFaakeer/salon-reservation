@@ -8,6 +8,8 @@ import { AvailabilityModule } from "../availability/availability.module";
 import { CustomerModule } from "../customer/customer.module";
 import { AuditModule } from "../audit/audit.module";
 import { TenantModule } from "../tenant/tenant.module";
+import { PricingModule } from "../pricing/pricing.module";
+import { PaymentModule } from "../payment/payment.module";
 import { BookingController } from "./booking.controller";
 import { BookingService } from "./booking.service";
 
@@ -18,6 +20,8 @@ import { BookingService } from "./booking.service";
     CustomerModule,
     AuditModule,
     TenantModule,
+    PricingModule,
+    PaymentModule,
   ],
   controllers: [BookingController],
   providers: [BookingService],

@@ -38,13 +38,15 @@ export enum SlotHoldStatus {
   EXPIRED = "EXPIRED",
 }
 
+/** CLAUDE.md §1.6: PENDING → SUCCESS | FAILED | REQUIRES_RECONCILIATION; refund states folded into the same field per DATABASE.md §2.5. */
 export enum PaymentStatus {
   PENDING = "PENDING",
-  SUCCEEDED = "SUCCEEDED",
+  SUCCESS = "SUCCESS",
   FAILED = "FAILED",
   EXPIRED = "EXPIRED",
   REFUNDED = "REFUNDED",
   PARTIALLY_REFUNDED = "PARTIALLY_REFUNDED",
+  REQUIRES_RECONCILIATION = "REQUIRES_RECONCILIATION",
 }
 
 export enum RefundStatus {
@@ -56,6 +58,26 @@ export enum RefundStatus {
 export enum PaymentProviderName {
   MANUAL = "manual",
   PAYHERE = "payhere",
+}
+
+export enum PaymentMethod {
+  CASH = "CASH",
+  BANK_TRANSFER = "BANK_TRANSFER",
+  CARD_CAPTURED = "CARD_CAPTURED",
+  ONLINE = "ONLINE",
+  GATEWAY = "GATEWAY",
+}
+
+export enum PaymentType {
+  ADVANCE = "ADVANCE",
+  FULL = "FULL",
+  BALANCE = "BALANCE",
+}
+
+export enum PaymentAttemptStatus {
+  RECEIVED = "RECEIVED",
+  PROCESSED = "PROCESSED",
+  FAILED = "FAILED",
 }
 
 export enum AdvanceRule {

@@ -14,3 +14,6 @@ export * from "./customer.entity";
 export * from "./slot-hold.entity";
 export * from "./appointment.entity";
 export * from "./appointment-service.entity";
+export * from "./payment.entity";
+export * from "./payment-attempt.entity";
+export * from "./refund.entity";

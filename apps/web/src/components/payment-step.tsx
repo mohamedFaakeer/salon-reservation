@@ -37,11 +37,16 @@ export function PaymentStep({ wizard }: { wizard: BookingWizard }) {
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <p className="text-sm text-slate-500">Amount due now</p>
+        <p className="text-sm text-slate-500">Advance required to confirm</p>
         <p className="text-2xl font-semibold text-slate-900">
-          {formatPriceCents(wizard.hold.paymentIntent.amountCents)}
+          {formatPriceCents(wizard.hold.paymentIntent.advanceRequiredCents)}
         </p>
-        <p className="mt-2 text-xs text-slate-500">(demo) Payment will be recorded by the salon.</p>
+        {wizard.hold.paymentIntent.balanceCents > 0 ? (
+          <p className="mt-1 text-sm text-slate-600">
+            Balance due at the salon: {formatPriceCents(wizard.hold.paymentIntent.balanceCents)}
+          </p>
+        ) : null}
+        <p className="mt-2 text-xs text-slate-500">(demo) confirmed by the salon.</p>
       </div>
 
       {expired ? (

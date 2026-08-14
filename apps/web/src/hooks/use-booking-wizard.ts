@@ -106,6 +106,28 @@ export function useBookingWizard(salon: SalonProfile) {
     setStep("details");
   }, []);
 
+  /** Shared by the payment step's button and the NO_ADVANCE auto-skip below — takes the intent id explicitly rather than reading `hold` state, which wouldn't be updated yet right after `setHold()`. */
+  const runConfirm = useCallback(
+    async (paymentIntentId: string) => {
+      setSubmitting(true);
+      setError(null);
+      try {
+        const res = await confirmPayment(paymentIntentId, idempotencyKey);
+        setConfirmed(res);
+        setStep("success");
+      } catch (err) {
+        setError(
+          err instanceof ApiRequestError
+            ? err.message
+            : "Could not confirm this booking. Please start again.",
+        );
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [idempotencyKey],
+  );
+
   /** Submits customer details and immediately reserves the slot (10-min hold). */
   const submitDetailsAndReserve = useCallback(
     async (input: CustomerDetailsInput, notesInput: string) => {
@@ -129,7 +151,12 @@ export function useBookingWizard(salon: SalonProfile) {
           idempotencyKey,
         );
         setHold(res);
-        setStep("payment");
+        if (res.paymentIntent.advanceRequiredCents === 0) {
+          // UX.md: NO_ADVANCE tenants skip the payment step entirely.
+          await runConfirm(res.paymentIntent.id);
+        } else {
+          setStep("payment");
+        }
       } catch (err) {
         if (err instanceof ApiRequestError && err.code === "SLOT_UNAVAILABLE") {
           setSlotTakenNotice(true);
@@ -143,29 +170,15 @@ export function useBookingWizard(salon: SalonProfile) {
         setSubmitting(false);
       }
     },
-    [salon.slug, selectedServiceIds, selectedSlot, idempotencyKey, loadSlots],
+    [salon.slug, selectedServiceIds, selectedSlot, idempotencyKey, loadSlots, runConfirm],
   );
 
   const confirm = useCallback(async () => {
     if (!hold) {
       return;
     }
-    setSubmitting(true);
-    setError(null);
-    try {
-      const res = await confirmPayment(hold.paymentIntent.id, idempotencyKey);
-      setConfirmed(res);
-      setStep("success");
-    } catch (err) {
-      setError(
-        err instanceof ApiRequestError
-          ? err.message
-          : "Could not confirm this booking. Please start again.",
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  }, [hold, idempotencyKey]);
+    await runConfirm(hold.paymentIntent.id);
+  }, [hold, runConfirm]);
 
   const cancel = useCallback(async () => {
     if (!hold) {

@@ -33,6 +33,10 @@ export function SuccessScreen({ wizard }: { wizard: BookingWizard }) {
           {formatDurationMin(wizard.totalDurationMin)}
         </p>
         <p className="mt-2 font-semibold text-slate-900">{formatPriceCents(appointment.totalCents)}</p>
+        {appointment.advancePaidCents > 0 ? (
+          <p className="mt-1 text-slate-600">Advance paid: {formatPriceCents(appointment.advancePaidCents)}</p>
+        ) : null}
+        <p className="text-slate-600">Balance due at the salon: {formatPriceCents(appointment.balanceCents)}</p>
       </div>
 
       <p className="text-xs text-slate-500">A confirmation will be sent to you shortly.</p>
