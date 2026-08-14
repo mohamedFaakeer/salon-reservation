@@ -12,13 +12,19 @@ import { Service } from "../entities/service.entity";
 import { WorkingSchedule } from "../entities/working-schedule.entity";
 import { StaffLeave } from "../entities/staff-leave.entity";
 import { Closure } from "../entities/closure.entity";
+import { Appointment } from "../entities/appointment.entity";
+import { SlotHold } from "../entities/slot-hold.entity";
+import {
+  ACTIVE_APPOINTMENT_STATUSES,
+  ACTIVE_SLOT_HOLD_STATUS,
+} from "../appointment/appointment-status.constants";
 // TenantService must stay a VALUE import: NestJS resolves constructor
 // injection via design:paramtypes metadata at runtime; `import type` would
 // erase it and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { TenantService } from "../tenant/tenant.service";
-import { dayOfWeekOf } from "./time.util";
-import { findSlots, type StaffContext } from "./availability.engine";
+import { colomboNow, dayOfWeekOf } from "./time.util";
+import { findSlots, type BusyInterval, type StaffContext } from "./availability.engine";
 
 export interface AvailabilitySlot {
   staffId: string;
@@ -38,6 +44,8 @@ export class AvailabilityService {
     private readonly schedules: Repository<WorkingSchedule>,
     @InjectRepository(StaffLeave) private readonly leaves: Repository<StaffLeave>,
     @InjectRepository(Closure) private readonly closures: Repository<Closure>,
+    @InjectRepository(Appointment) private readonly appointments: Repository<Appointment>,
+    @InjectRepository(SlotHold) private readonly slotHolds: Repository<SlotHold>,
     private readonly tenantService: TenantService,
   ) {}
 
@@ -65,10 +73,11 @@ export class AvailabilityService {
     const dayOfWeek = dayOfWeekOf(dto.date);
     const staffIds = qualifiedStaff.map((s) => s.id);
 
-    const [scheduleRows, leaveRows, closureRows] = await Promise.all([
+    const [scheduleRows, leaveRows, closureRows, busyByStaff] = await Promise.all([
       this.schedules.find({ where: { staffId: In(staffIds), dayOfWeek } }),
       this.leaves.find({ where: { staffId: In(staffIds) } }),
       this.closures.find({ where: { tenantId: tenant.id } }),
+      this.loadBusyIntervals(tenant.id, staffIds, dto.date),
     ]);
     const scheduleByStaff = new Map(scheduleRows.map((r) => [r.staffId, r]));
     const salonClosed = closureRows.some((c) => c.startDate <= dto.date && dto.date <= c.endDate);
@@ -90,10 +99,7 @@ export class AvailabilityService {
             }
           : null,
         onLeave,
-        // Wired to real Appointment/SlotHold busy intervals in P10 — those
-        // tables don't exist yet (ARCHITECTURE.md §4.1 pure engine now,
-        // §4.2 transactional reserve in P10). See docs/DECISIONS.md.
-        busyIntervals: [],
+        busyIntervals: busyByStaff.get(s.id) ?? [],
       };
     });
 
@@ -159,5 +165,113 @@ export class AvailabilityService {
       }
     }
     return qualified;
+  }
+
+  /**
+   * Single-staff context for `BookingService.reserve`/`confirmHold`'s
+   * `canBook` re-validation — reuses the exact same schedule/leave/busy
+   * data sources as `findSlots`, just scoped to one staff member instead of
+   * looping the whole tenant. One data source, never duplicated.
+   */
+  async loadStaffContext(tenantId: string, staffId: string, date: string): Promise<StaffContext> {
+    const staffRow = await this.staff.findOne({ where: { id: staffId, tenantId, active: true } });
+    if (!staffRow) {
+      throw new ApiError({
+        statusCode: 404,
+        code: "STAFF_NOT_FOUND",
+        message: "Staff member not found.",
+      });
+    }
+
+    const dayOfWeek = dayOfWeekOf(date);
+    const [scheduleRow, leaveRows, busyByStaff] = await Promise.all([
+      this.schedules.findOne({ where: { staffId, dayOfWeek } }),
+      this.leaves.find({ where: { staffId } }),
+      this.loadBusyIntervals(tenantId, [staffId], date),
+    ]);
+    const onLeave = leaveRows.some((l) => l.startDate <= date && date <= l.endDate);
+
+    return {
+      staffId: staffRow.id,
+      staffName: staffRow.name,
+      schedule: scheduleRow
+        ? {
+            startMin: scheduleRow.startMin,
+            endMin: scheduleRow.endMin,
+            breakStartMin: scheduleRow.breakStartMin,
+            breakEndMin: scheduleRow.breakEndMin,
+          }
+        : null,
+      onLeave,
+      busyIntervals: busyByStaff.get(staffId) ?? [],
+    };
+  }
+
+  async isSalonClosed(tenantId: string, date: string): Promise<boolean> {
+    const closureRows = await this.closures.find({ where: { tenantId } });
+    return closureRows.some((c) => c.startDate <= date && date <= c.endDate);
+  }
+
+  async isQualified(tenantId: string, staffId: string, serviceIds: string[]): Promise<boolean> {
+    const qualifiedIds = await this.qualifiedStaffIds(tenantId, serviceIds);
+    return qualifiedIds.has(staffId);
+  }
+
+  /**
+   * Busy intervals from real `Appointment` (active statuses) + `SlotHold`
+   * (HELD, not yet expired) rows, keyed by staffId, in local minutes for the
+   * given date. Public so `BookingService` can reuse it for the same
+   * single-staff `canBook` re-validation inside `reserve`/`confirmHold` — one
+   * engine, one data source, never duplicated (CLAUDE.md rule 1/2).
+   *
+   * A `SlotHold` past its `expiresAt` is treated as not-busy here (read-only
+   * display concern); `BookingService.reserve` additionally does a lazy
+   * `UPDATE ... SET status='EXPIRED'` sweep before inserting, so the DB
+   * exclusion constraint — which only reads `status`, not `expiresAt` — is
+   * accurate at write time too (see DECISIONS.md).
+   */
+  async loadBusyIntervals(
+    tenantId: string,
+    staffIds: string[],
+    date: string,
+  ): Promise<Map<string, BusyInterval[]>> {
+    const map = new Map<string, BusyInterval[]>();
+    if (staffIds.length === 0) {
+      return map;
+    }
+
+    const now = new Date();
+    const [appointmentRows, holdRows] = await Promise.all([
+      this.appointments.find({
+        where: {
+          tenantId,
+          staffId: In(staffIds),
+          appointmentDate: date,
+          status: In(ACTIVE_APPOINTMENT_STATUSES),
+        },
+      }),
+      this.slotHolds.find({
+        where: { tenantId, staffId: In(staffIds), status: ACTIVE_SLOT_HOLD_STATUS },
+      }),
+    ]);
+
+    const add = (staffId: string, start: Date, end: Date): void => {
+      const startMin = colomboNow(start).minutes;
+      const endMin = startMin + (end.getTime() - start.getTime()) / 60_000;
+      const list = map.get(staffId) ?? [];
+      list.push({ startMin, endMin });
+      map.set(staffId, list);
+    };
+
+    for (const appointment of appointmentRows) {
+      add(appointment.staffId, appointment.startTime, appointment.endTime);
+    }
+    for (const hold of holdRows) {
+      if (hold.expiresAt > now && colomboNow(hold.startTime).date === date) {
+        add(hold.staffId, hold.startTime, hold.endTime);
+      }
+    }
+
+    return map;
   }
 }

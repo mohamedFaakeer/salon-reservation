@@ -3,11 +3,15 @@ import path from "node:path";
 import dotenv from "dotenv";
 import { DataSource } from "typeorm";
 import {
+  Appointment,
+  AppointmentServiceLine,
   AuditLog,
   Branch,
   Closure,
+  Customer,
   RefreshSession,
   Service,
+  SlotHold,
   Staff,
   StaffLeave,
   StaffServiceAssignment,
@@ -28,11 +32,15 @@ export const AppDataSource = new DataSource({
   type: "postgres",
   url: process.env.DATABASE_URL ?? "postgresql://salon:salon@localhost:5432/salon",
   entities: [
+    Appointment,
+    AppointmentServiceLine,
     AuditLog,
     Branch,
     Closure,
+    Customer,
     RefreshSession,
     Service,
+    SlotHold,
     Staff,
     StaffLeave,
     StaffServiceAssignment,

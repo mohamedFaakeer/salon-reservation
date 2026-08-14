@@ -1,0 +1,370 @@
+import type { DataSource, EntityManager, ObjectLiteral, Repository } from "typeorm";
+import {
+  AdvanceRule,
+  AppointmentStatus,
+  BookingSource,
+  SlotHoldStatus,
+  type CreateBookingDto,
+} from "@salon/shared";
+import { BookingService } from "./booking.service";
+import { SlotHold, type BookingSnapshot } from "../entities/slot-hold.entity";
+import { Appointment } from "../entities/appointment.entity";
+import { AppointmentServiceLine } from "../entities/appointment-service.entity";
+import type { Service } from "../entities/service.entity";
+import type { Tenant } from "../entities/tenant.entity";
+import type { Customer } from "../entities/customer.entity";
+import type { AvailabilityService } from "../availability/availability.service";
+import type { CustomerService } from "../customer/customer.service";
+import type { AuditService } from "../audit/audit.service";
+
+function mockRepo<T extends ObjectLiteral>() {
+  return {
+    create: vi.fn((e: Partial<T>) => e as T),
+    save: vi.fn(async (e: T) => ({ id: "generated-id", ...e }) as T),
+    find: vi.fn(async () => [] as T[]),
+    findOne: vi.fn(async () => null as T | null),
+  } as unknown as Repository<T>;
+}
+
+/** A date comfortably inside the default 30-day booking window, not "today". */
+function inWindowDate(daysAhead: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + daysAhead);
+  return d.toISOString().slice(0, 10);
+}
+
+const BOOKING_START = `${inWindowDate(2)}T04:00:00.000Z`; // ~09:30 Colombo local
+
+function fakeTenant(): Tenant {
+  return {
+    id: "tenant-1",
+    slug: "elegance",
+    settings: {
+      advanceRule: AdvanceRule.NO_ADVANCE,
+      advanceValueCents: null,
+      cancellationPolicy: {
+        selfServiceCutoffHours: 2,
+        refundPercentBeforeCutoff: 100,
+        refundPercentAfterCutoff: 0,
+        noShowRefundPercent: 0,
+      },
+      bookingWindowDays: 30,
+      sameDayLeadMinutes: 120,
+      noShowGraceMinutes: 15,
+      reminderOffsets: [24, 2],
+    },
+  } as Tenant;
+}
+
+const QUALIFIED_STAFF_CONTEXT = {
+  staffId: "staff-1",
+  staffName: "Staff One",
+  schedule: { startMin: 0, endMin: 1440 },
+  onLeave: false,
+  busyIntervals: [],
+};
+
+describe("BookingService", () => {
+  let servicesRepo: Repository<Service>;
+  let slotHoldsRepo: Repository<SlotHold>;
+  let appointmentsRepo: Repository<Appointment>;
+  let lineRepo: Repository<AppointmentServiceLine>;
+  let dataSource: DataSource;
+  let availability: AvailabilityService;
+  let customers: CustomerService;
+  let audit: AuditService;
+  let service: BookingService;
+
+  beforeEach(() => {
+    servicesRepo = mockRepo<Service>();
+    slotHoldsRepo = mockRepo<SlotHold>();
+    appointmentsRepo = mockRepo<Appointment>();
+    lineRepo = mockRepo<AppointmentServiceLine>();
+
+    const manager = {
+      getRepository: (entity: unknown) => {
+        if (entity === SlotHold) return slotHoldsRepo;
+        if (entity === Appointment) return appointmentsRepo;
+        if (entity === AppointmentServiceLine) return lineRepo;
+        throw new Error("unexpected entity in test manager");
+      },
+      query: vi.fn(async () => undefined),
+    } as unknown as EntityManager;
+
+    dataSource = {
+      transaction: vi.fn(async (cb: (manager: EntityManager) => Promise<unknown>) => cb(manager)),
+    } as unknown as DataSource;
+
+    availability = {
+      loadStaffContext: vi.fn(async () => QUALIFIED_STAFF_CONTEXT),
+      isSalonClosed: vi.fn(async () => false),
+      isQualified: vi.fn(async () => true),
+    } as unknown as AvailabilityService;
+
+    customers = {
+      findOrCreateForBooking: vi.fn(async () => ({ id: "customer-1", phone: "+94771234567" }) as Customer),
+      create: vi.fn(async () => ({ id: "customer-2", phone: "+94770000000" }) as Customer),
+      findById: vi.fn(async () => ({ id: "customer-3", phone: "+94779999999" }) as Customer),
+    } as unknown as CustomerService;
+
+    audit = { record: vi.fn() } as unknown as AuditService;
+
+    service = new BookingService(
+      dataSource,
+      servicesRepo,
+      slotHoldsRepo,
+      appointmentsRepo,
+      availability,
+      customers,
+      audit,
+    );
+  });
+
+  function bookingDto(overrides: Partial<CreateBookingDto> = {}): CreateBookingDto {
+    return {
+      serviceIds: ["svc-1"],
+      staffId: "staff-1",
+      start: BOOKING_START,
+      customer: { firstName: "Amaya", lastName: "Perera", phone: "+94771234567" },
+      ...overrides,
+    } as CreateBookingDto;
+  }
+
+  describe("reserve", () => {
+    it("throws SERVICE_NOT_FOUND when a requested service doesn't resolve", async () => {
+      vi.mocked(servicesRepo.find).mockResolvedValue([]);
+      await expect(service.reserve(fakeTenant(), bookingDto(), "session-1")).rejects.toMatchObject({
+        statusCode: 404,
+        code: "SERVICE_NOT_FOUND",
+      });
+    });
+
+    it("returns the existing hold unchanged on a repeated Idempotency-Key", async () => {
+      vi.mocked(servicesRepo.find).mockResolvedValue([
+        { id: "svc-1", name: "Cut", durationMin: 30, priceCents: 5000 } as Service,
+      ]);
+      const snapshot: BookingSnapshot = {
+        bookingReference: "ELE-EXIST1",
+        customerId: "customer-1",
+        notes: null,
+        lines: [],
+      };
+      vi.mocked(slotHoldsRepo.findOne).mockResolvedValue({
+        id: "hold-1",
+        expiresAt: new Date(Date.now() + 10 * 60_000),
+        bookingSnapshot: snapshot,
+      } as unknown as SlotHold);
+
+      const result = await service.reserve(fakeTenant(), bookingDto(), "session-1");
+
+      expect(result).toMatchObject({ holdId: "hold-1", bookingReference: "ELE-EXIST1" });
+      expect(availability.loadStaffContext).not.toHaveBeenCalled();
+    });
+
+    it("rejects via canBook when the staff isn't qualified", async () => {
+      vi.mocked(servicesRepo.find).mockResolvedValue([
+        { id: "svc-1", name: "Cut", durationMin: 30, priceCents: 5000 } as Service,
+      ]);
+      vi.mocked(availability.isQualified).mockResolvedValue(false);
+
+      await expect(service.reserve(fakeTenant(), bookingDto(), "session-1")).rejects.toMatchObject({
+        statusCode: 400,
+        code: "STAFF_NOT_QUALIFIED",
+      });
+    });
+
+    it("creates a HELD hold with a booking snapshot on the happy path", async () => {
+      vi.mocked(servicesRepo.find).mockResolvedValue([
+        { id: "svc-1", name: "Cut", durationMin: 30, priceCents: 5000 } as Service,
+      ]);
+
+      const result = await service.reserve(fakeTenant(), bookingDto(), "session-1");
+
+      expect(result.amountCents).toBe(5000);
+      expect(result.bookingReference).toMatch(/^ELE-[A-Z2-9]{5}$/);
+      const created = vi.mocked(slotHoldsRepo.create).mock.calls[0][0] as SlotHold;
+      expect(created.status).toBe(SlotHoldStatus.HELD);
+      expect(created.sessionKey).toBe("session-1");
+      expect((created.bookingSnapshot as BookingSnapshot).customerId).toBe("customer-1");
+    });
+
+    it("translates an exclusion-constraint violation into SLOT_UNAVAILABLE", async () => {
+      vi.mocked(servicesRepo.find).mockResolvedValue([
+        { id: "svc-1", name: "Cut", durationMin: 30, priceCents: 5000 } as Service,
+      ]);
+      vi.mocked(slotHoldsRepo.save).mockRejectedValue(Object.assign(new Error("exclusion"), { code: "23P01" }));
+
+      await expect(service.reserve(fakeTenant(), bookingDto(), "session-1")).rejects.toMatchObject({
+        statusCode: 409,
+        code: "SLOT_UNAVAILABLE",
+      });
+    });
+  });
+
+  describe("confirmHold", () => {
+    it("throws HOLD_NOT_FOUND when the hold doesn't exist", async () => {
+      vi.mocked(slotHoldsRepo.findOne).mockResolvedValue(null);
+      await expect(service.confirmHold(fakeTenant(), "hold-1", "session-1")).rejects.toMatchObject({
+        statusCode: 404,
+        code: "HOLD_NOT_FOUND",
+      });
+    });
+
+    it("throws HOLD_EXPIRED when the hold is past its expiry", async () => {
+      vi.mocked(slotHoldsRepo.findOne).mockResolvedValue({
+        id: "hold-1",
+        status: SlotHoldStatus.HELD,
+        expiresAt: new Date(Date.now() - 1000),
+        bookingSnapshot: { bookingReference: "ELE-X", customerId: "c1", notes: null, lines: [] },
+      } as unknown as SlotHold);
+
+      await expect(service.confirmHold(fakeTenant(), "hold-1", "session-1")).rejects.toMatchObject({
+        statusCode: 409,
+        code: "HOLD_EXPIRED",
+      });
+    });
+
+    it("returns the existing appointment on an idempotent retry (CONSUMED, same sessionKey)", async () => {
+      vi.mocked(slotHoldsRepo.findOne).mockResolvedValue({
+        id: "hold-1",
+        status: SlotHoldStatus.CONSUMED,
+        sessionKey: "session-1",
+        staffId: "staff-1",
+        startTime: new Date(BOOKING_START),
+      } as unknown as SlotHold);
+      const existingAppointment = { id: "appt-1", bookingReference: "ELE-DONE1" } as Appointment;
+      vi.mocked(appointmentsRepo.findOne).mockResolvedValue(existingAppointment);
+
+      const result = await service.confirmHold(fakeTenant(), "hold-1", "session-1");
+      expect(result.appointment).toBe(existingAppointment);
+    });
+
+    it("throws HOLD_EXPIRED on a CONSUMED hold with a mismatched sessionKey", async () => {
+      vi.mocked(slotHoldsRepo.findOne).mockResolvedValue({
+        id: "hold-1",
+        status: SlotHoldStatus.CONSUMED,
+        sessionKey: "other-session",
+      } as unknown as SlotHold);
+
+      await expect(service.confirmHold(fakeTenant(), "hold-1", "session-1")).rejects.toMatchObject({
+        statusCode: 409,
+        code: "HOLD_EXPIRED",
+      });
+    });
+
+    it("creates the appointment + service lines and marks the hold CONSUMED", async () => {
+      const start = new Date(BOOKING_START);
+      const end = new Date(start.getTime() + 30 * 60_000);
+      vi.mocked(slotHoldsRepo.findOne).mockResolvedValue({
+        id: "hold-1",
+        status: SlotHoldStatus.HELD,
+        expiresAt: new Date(Date.now() + 60_000),
+        staffId: "staff-1",
+        startTime: start,
+        endTime: end,
+        bookingSnapshot: {
+          bookingReference: "ELE-PRE01",
+          customerId: "customer-1",
+          notes: "Please be gentle",
+          lines: [{ serviceId: "svc-1", nameSnapshot: "Cut", durationMinSnapshot: 30, priceCentsSnapshot: 5000 }],
+        } satisfies BookingSnapshot,
+      } as unknown as SlotHold);
+
+      const { appointment, bookingReference } = await service.confirmHold(fakeTenant(), "hold-1", "session-1");
+
+      expect(bookingReference).toBe("ELE-PRE01");
+      expect(appointment.status).toBe(AppointmentStatus.CONFIRMED);
+      expect(appointment.subtotalCents).toBe(5000);
+      expect(lineRepo.save).toHaveBeenCalled();
+      const savedHold = vi.mocked(slotHoldsRepo.save).mock.calls[0][0] as SlotHold;
+      expect(savedHold.status).toBe(SlotHoldStatus.CONSUMED);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "APPOINTMENT_CREATED" }),
+        expect.anything(),
+      );
+    });
+  });
+
+  describe("cancelHold", () => {
+    it("releases a HELD hold", async () => {
+      vi.mocked(slotHoldsRepo.findOne).mockResolvedValue({ id: "hold-1", status: SlotHoldStatus.HELD } as SlotHold);
+
+      await service.cancelHold(fakeTenant(), "hold-1");
+
+      expect(slotHoldsRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ status: SlotHoldStatus.RELEASED }),
+      );
+    });
+
+    it("is a no-op for an already-consumed hold", async () => {
+      vi.mocked(slotHoldsRepo.findOne).mockResolvedValue({
+        id: "hold-1",
+        status: SlotHoldStatus.CONSUMED,
+      } as SlotHold);
+
+      await service.cancelHold(fakeTenant(), "hold-1");
+
+      expect(slotHoldsRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("reserveAndConfirm", () => {
+    it("rejects when neither customerId nor newCustomer is provided", async () => {
+      await expect(
+        service.reserveAndConfirm(
+          fakeTenant(),
+          { serviceIds: ["svc-1"], staffId: "staff-1", start: BOOKING_START, source: BookingSource.WALK_IN },
+          "session-1",
+          "user-1",
+        ),
+      ).rejects.toMatchObject({ statusCode: 400, code: "VALIDATION_ERROR" });
+    });
+
+    it("creates a CONFIRMED appointment in one transaction, using an existing customerId", async () => {
+      vi.mocked(servicesRepo.find).mockResolvedValue([
+        { id: "svc-1", name: "Cut", durationMin: 30, priceCents: 5000 } as Service,
+      ]);
+
+      const appointment = await service.reserveAndConfirm(
+        fakeTenant(),
+        {
+          customerId: "customer-3",
+          serviceIds: ["svc-1"],
+          staffId: "staff-1",
+          start: BOOKING_START,
+          source: BookingSource.WALK_IN,
+        },
+        "session-2",
+        "user-1",
+      );
+
+      expect(appointment.status).toBe(AppointmentStatus.CONFIRMED);
+      expect(appointment.source).toBe(BookingSource.WALK_IN);
+      expect(customers.findById).toHaveBeenCalledWith("tenant-1", "customer-3");
+      expect(audit.record).toHaveBeenCalled();
+    });
+
+    it("checks the appointment straight in when checkInNow is set", async () => {
+      vi.mocked(servicesRepo.find).mockResolvedValue([
+        { id: "svc-1", name: "Cut", durationMin: 30, priceCents: 5000 } as Service,
+      ]);
+
+      const appointment = await service.reserveAndConfirm(
+        fakeTenant(),
+        {
+          customerId: "customer-3",
+          serviceIds: ["svc-1"],
+          staffId: "staff-1",
+          start: BOOKING_START,
+          source: BookingSource.WALK_IN,
+          checkInNow: true,
+        },
+        "session-3",
+        "user-1",
+      );
+
+      expect(appointment.status).toBe(AppointmentStatus.CHECKED_IN);
+      expect(appointment.checkedInAt).toBeInstanceOf(Date);
+    });
+  });
+});

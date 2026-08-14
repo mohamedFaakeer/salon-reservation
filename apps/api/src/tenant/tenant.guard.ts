@@ -7,7 +7,7 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Reflector } from "@nestjs/core";
 import type { Request } from "express";
-import { Repository } from "typeorm";
+import type { Repository } from "typeorm";
 import { ApiError, UserRole } from "@salon/shared";
 import { Tenant } from "../entities/tenant.entity";
 import { TenantStatus } from "../enums/tenant-status.enum";

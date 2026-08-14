@@ -6,6 +6,8 @@ import { Service } from "../entities/service.entity";
 import { WorkingSchedule } from "../entities/working-schedule.entity";
 import { StaffLeave } from "../entities/staff-leave.entity";
 import { Closure } from "../entities/closure.entity";
+import { Appointment } from "../entities/appointment.entity";
+import { SlotHold } from "../entities/slot-hold.entity";
 import { TenantModule } from "../tenant/tenant.module";
 import { AvailabilityController } from "./availability.controller";
 import { AvailabilityService } from "./availability.service";
@@ -19,6 +21,8 @@ import { AvailabilityService } from "./availability.service";
       WorkingSchedule,
       StaffLeave,
       Closure,
+      Appointment,
+      SlotHold,
     ]),
     TenantModule,
   ],

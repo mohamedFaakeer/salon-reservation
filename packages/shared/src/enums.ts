@@ -33,7 +33,7 @@ export enum BookingSource {
 
 export enum SlotHoldStatus {
   HELD = "HELD",
-  CONFIRMED = "CONFIRMED",
+  CONSUMED = "CONSUMED",
   RELEASED = "RELEASED",
   EXPIRED = "EXPIRED",
 }

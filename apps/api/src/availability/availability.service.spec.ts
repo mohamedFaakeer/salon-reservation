@@ -8,8 +8,11 @@ import type { Service } from "../entities/service.entity";
 import type { WorkingSchedule } from "../entities/working-schedule.entity";
 import type { StaffLeave } from "../entities/staff-leave.entity";
 import type { Closure } from "../entities/closure.entity";
+import type { Appointment } from "../entities/appointment.entity";
+import type { SlotHold } from "../entities/slot-hold.entity";
 import type { Tenant } from "../entities/tenant.entity";
 import type { TenantService } from "../tenant/tenant.service";
+import { localMinutesToUtc } from "./time.util";
 
 function mockRepo<T extends ObjectLiteral>() {
   return {
@@ -56,6 +59,8 @@ describe("AvailabilityService", () => {
   let schedules: Repository<WorkingSchedule>;
   let leaves: Repository<StaffLeave>;
   let closures: Repository<Closure>;
+  let appointments: Repository<Appointment>;
+  let slotHolds: Repository<SlotHold>;
   let tenantService: TenantService;
   let service: AvailabilityService;
 
@@ -66,6 +71,8 @@ describe("AvailabilityService", () => {
     schedules = mockRepo<WorkingSchedule>();
     leaves = mockRepo<StaffLeave>();
     closures = mockRepo<Closure>();
+    appointments = mockRepo<Appointment>();
+    slotHolds = mockRepo<SlotHold>();
     tenantService = { findActiveBySlug: vi.fn(async () => fakeTenant()) } as unknown as TenantService;
     service = new AvailabilityService(
       staff,
@@ -74,6 +81,8 @@ describe("AvailabilityService", () => {
       schedules,
       leaves,
       closures,
+      appointments,
+      slotHolds,
       tenantService,
     );
   });
@@ -185,5 +194,43 @@ describe("AvailabilityService", () => {
 
     const result = await service.findSlots("elegance", dto());
     expect(result).toEqual({ slots: [] });
+  });
+
+  it("excludes slots overlapping a real active Appointment or an unexpired HELD SlotHold", async () => {
+    vi.mocked(services.find).mockResolvedValue([{ id: "svc-1", durationMin: 30 } as Service]);
+    vi.mocked(staff.find).mockResolvedValue([{ id: "staff-1", name: "Staff One" } as Staff]);
+    vi.mocked(assignments.find).mockResolvedValue([
+      { staffId: "staff-1", serviceId: "svc-1" } as StaffServiceAssignment,
+    ]);
+    vi.mocked(schedules.find).mockResolvedValue([
+      { staffId: "staff-1", dayOfWeek: TEST_DAY_OF_WEEK, startMin: 540, endMin: 660, breakStartMin: null, breakEndMin: null } as WorkingSchedule,
+    ]);
+    vi.mocked(appointments.find).mockResolvedValue([
+      {
+        staffId: "staff-1",
+        startTime: localMinutesToUtc(TEST_DATE, 540),
+        endTime: localMinutesToUtc(TEST_DATE, 600),
+      } as Appointment,
+    ]);
+    vi.mocked(slotHolds.find).mockResolvedValue([
+      {
+        staffId: "staff-1",
+        startTime: localMinutesToUtc(TEST_DATE, 600),
+        endTime: localMinutesToUtc(TEST_DATE, 630),
+        expiresAt: new Date(Date.now() + 10 * 60_000),
+      } as SlotHold,
+      {
+        // Already expired -> must NOT block (lazily treated as not-busy for reads).
+        staffId: "staff-1",
+        startTime: localMinutesToUtc(TEST_DATE, 630),
+        endTime: localMinutesToUtc(TEST_DATE, 660),
+        expiresAt: new Date(Date.now() - 60_000),
+      } as SlotHold,
+    ]);
+
+    const result = await service.findSlots("elegance", dto());
+    const startMinutes = result.slots.map((s) => (new Date(s.start).getTime() - localMinutesToUtc(TEST_DATE, 0).getTime()) / 60_000);
+    // [540,600) busy via appointment, [600,630) busy via unexpired hold -> only [630,660) is free.
+    expect(startMinutes).toEqual([630]);
   });
 });

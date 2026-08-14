@@ -16,6 +16,8 @@ export default tseslint.config(
       "**/coverage/**",
       "**/.vitest/**",
       "**/*.tsbuildinfo",
+      "**/.claude/**",
+      "**/.agents/**",
     ],
   },
   eslint.configs.recommended,

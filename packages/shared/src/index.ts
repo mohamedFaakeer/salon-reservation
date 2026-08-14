@@ -11,4 +11,7 @@ export * from "./dto/staff-service.dto";
 export * from "./dto/working-schedule.dto";
 export * from "./dto/staff-leave.dto";
 export * from "./dto/availability.dto";
+export * from "./dto/customer.dto";
+export * from "./dto/booking.dto";
+export * from "./dto/appointment.dto";
 export * from "./errors/api-error";

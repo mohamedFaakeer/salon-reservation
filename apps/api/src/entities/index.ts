@@ -10,3 +10,7 @@ export * from "./tenant.entity";
 export * from "./working-schedule.entity";
 export * from "./user-tenant-role.entity";
 export * from "./user.entity";
+export * from "./customer.entity";
+export * from "./slot-hold.entity";
+export * from "./appointment.entity";
+export * from "./appointment-service.entity";
