@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../context/auth-context";
 import {
+  addAppointmentService,
   ApiRequestError,
   cancelAppointment,
   checkIn,
@@ -10,18 +11,21 @@ import {
   fetchAppointment,
   fetchAvailability,
   fetchPayments,
+  fetchServices,
   fetchTenantMe,
   fetchTenantSettings,
   inService,
   markNoShow,
   recordPayment,
   refundPayment,
+  removeAppointmentService,
   rescheduleAppointment,
   type AppointmentDetail,
   type AvailabilitySlot,
   type PaymentMethod,
   type PaymentRecord,
   type PaymentType,
+  type ServiceItem,
 } from "../lib/api-client";
 import { canActOnOwnAppointment, canIssueRefund, canManageAppointments, canRecordPayment } from "../lib/permissions";
 import { formatDurationMin, formatPriceCents, formatTime, todayLocalDate } from "../lib/format";
@@ -80,6 +84,17 @@ export function AppointmentDetailDrawer({
   const [loadingRescheduleSlots, setLoadingRescheduleSlots] = useState(false);
   const [rescheduleSubmitting, setRescheduleSubmitting] = useState(false);
   const [rescheduleError, setRescheduleError] = useState<string | null>(null);
+
+  const [showAddService, setShowAddService] = useState(false);
+  const [addableServices, setAddableServices] = useState<ServiceItem[]>([]);
+  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
+  const [addServiceError, setAddServiceError] = useState<string | null>(null);
+  const [addServiceSubmitting, setAddServiceSubmitting] = useState(false);
+
+  const [removingLineId, setRemovingLineId] = useState<string | null>(null);
+  const [removeReason, setRemoveReason] = useState("");
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const [removeSubmitting, setRemoveSubmitting] = useState(false);
 
   function load(): void {
     setLoading(true);
@@ -225,6 +240,54 @@ export function AppointmentDetailDrawer({
     }
   }
 
+  async function openAddService(): Promise<void> {
+    setAddServiceError(null);
+    setSelectedServiceIds([]);
+    setShowAddService(true);
+    const res = await fetchServices();
+    const activeLineServiceIds = new Set(
+      (appointment?.lines ?? []).filter((l) => l.status === "ACTIVE").map((l) => l.serviceId),
+    );
+    setAddableServices(res.filter((s) => s.active && !activeLineServiceIds.has(s.id)));
+  }
+
+  async function submitAddService(): Promise<void> {
+    if (!appointment || selectedServiceIds.length === 0) {
+      return;
+    }
+    setAddServiceSubmitting(true);
+    setAddServiceError(null);
+    try {
+      await addAppointmentService(appointment.id, selectedServiceIds);
+      setShowAddService(false);
+      load();
+      onChanged();
+    } catch (err) {
+      setAddServiceError(err instanceof ApiRequestError ? err.message : "Could not add the service.");
+    } finally {
+      setAddServiceSubmitting(false);
+    }
+  }
+
+  async function submitRemoveService(lineId: string): Promise<void> {
+    if (!appointment || !removeReason.trim()) {
+      return;
+    }
+    setRemoveSubmitting(true);
+    setRemoveError(null);
+    try {
+      await removeAppointmentService(appointment.id, lineId, removeReason.trim());
+      setRemovingLineId(null);
+      setRemoveReason("");
+      load();
+      onChanged();
+    } catch (err) {
+      setRemoveError(err instanceof ApiRequestError ? err.message : "Could not remove this service.");
+    } finally {
+      setRemoveSubmitting(false);
+    }
+  }
+
   const roles = user?.roles ?? [];
   const isLate = Boolean(appointment?.checkedInAt) && (appointment?.lateMinutes ?? 0) > graceMinutes;
   const cancellable = appointment ? !NOT_CANCELLABLE_STATUSES.has(appointment.status) : false;
@@ -291,15 +354,134 @@ export function AppointmentDetailDrawer({
 
             <div>
               <p className="mb-1 text-sm font-medium text-slate-700">Services</p>
-              <ul className="text-sm text-slate-600">
-                {appointment.lines.map((line) => (
-                  <li key={line.id}>
-                    {line.nameSnapshot} ({formatDurationMin(line.durationMinSnapshot)}) —{" "}
-                    {formatPriceCents(line.priceCentsSnapshot)}
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-1 font-semibold text-slate-900">{formatPriceCents(appointment.totalCents)}</p>
+              {(() => {
+                const activeLines = appointment.lines.filter((l) => l.status === "ACTIVE");
+                return (
+                  <ul className="text-sm text-slate-600">
+                    {activeLines.map((line) => (
+                      <li key={line.id} className="flex items-center justify-between gap-2 py-0.5">
+                        <span>
+                          {line.nameSnapshot} ({formatDurationMin(line.durationMinSnapshot)}) —{" "}
+                          {formatPriceCents(line.priceCentsSnapshot)}
+                        </span>
+                        {canManageAppointments(roles) && cancellable && activeLines.length > 1 ? (
+                          <button
+                            type="button"
+                            data-testid={`action-remove-service-${line.id}`}
+                            onClick={() => {
+                              setRemovingLineId(line.id);
+                              setRemoveReason("");
+                              setRemoveError(null);
+                            }}
+                            className="shrink-0 text-xs text-red-700 underline hover:text-red-800"
+                          >
+                            Remove
+                          </button>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })()}
+              <p data-testid="detail-total" className="mt-1 font-semibold text-slate-900">
+                {formatPriceCents(appointment.totalCents)}
+              </p>
+
+              {removingLineId ? (
+                <div className="mt-2 flex flex-col gap-2 rounded border border-red-200 bg-red-50 p-2">
+                  <label className="text-xs text-red-700">
+                    Reason
+                    <input
+                      type="text"
+                      data-testid="remove-service-reason"
+                      value={removeReason}
+                      onChange={(e) => setRemoveReason(e.target.value)}
+                      className="mt-1 w-full rounded border border-red-300 px-2 py-1 text-sm"
+                    />
+                  </label>
+                  {removeError ? <p className="text-xs text-red-600">{removeError}</p> : null}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setRemovingLineId(null)}
+                      className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-white"
+                    >
+                      Never mind
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="confirm-remove-service"
+                      disabled={removeSubmitting || !removeReason.trim()}
+                      onClick={() => void submitRemoveService(removingLineId)}
+                      className="flex-1 rounded bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-60"
+                    >
+                      {removeSubmitting ? "Removing…" : "Confirm removal"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {cancellable && (canManageAppointments(roles) || canActOnOwnAppointment(roles)) ? (
+                showAddService ? (
+                  <div className="mt-2 flex flex-col gap-2 rounded border border-slate-200 p-2">
+                    {addableServices.length === 0 ? (
+                      <p className="text-xs text-slate-500">No other services available to add.</p>
+                    ) : (
+                      <ul className="flex flex-col gap-1">
+                        {addableServices.map((s) => (
+                          <li key={s.id}>
+                            <button
+                              type="button"
+                              data-testid={`add-service-option-${s.id}`}
+                              onClick={() =>
+                                setSelectedServiceIds((prev) =>
+                                  prev.includes(s.id) ? prev.filter((id) => id !== s.id) : [...prev, s.id],
+                                )
+                              }
+                              className={`flex w-full items-center justify-between rounded border p-2 text-left text-xs ${
+                                selectedServiceIds.includes(s.id)
+                                  ? "border-teal-600 bg-teal-50"
+                                  : "border-slate-200 hover:border-slate-300"
+                              }`}
+                            >
+                              <span>{s.name}</span>
+                              <span className="font-medium">{formatPriceCents(s.priceCents)}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {addServiceError ? <p className="text-xs text-red-600">{addServiceError}</p> : null}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowAddService(false)}
+                        className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="submit-add-service"
+                        disabled={addServiceSubmitting || selectedServiceIds.length === 0}
+                        onClick={() => void submitAddService()}
+                        className="flex-1 rounded bg-teal-600 px-2 py-1 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-60"
+                      >
+                        {addServiceSubmitting ? "Adding…" : "Add"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    data-testid="show-add-service"
+                    onClick={() => void openAddService()}
+                    className="mt-2 rounded border border-teal-600 px-3 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50"
+                  >
+                    Add service
+                  </button>
+                )
+              ) : null}
             </div>
 
             <div className="rounded border border-slate-200 p-3 text-sm">

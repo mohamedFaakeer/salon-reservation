@@ -66,12 +66,32 @@ export function BookingDrawer({
       setSlots([]);
       return;
     }
+    // Selecting a service and then a staff member in quick succession fires
+    // this effect twice; without a staleness guard, a slower first response
+    // arriving after a faster second one would silently clobber the correct
+    // result — ignore any response that isn't from the most recent request.
+    let stale = false;
     setLoadingSlots(true);
     setSlotTakenNotice(false);
     fetchAvailability(slug, { serviceIds: selectedServiceIds, staffId: selectedStaffId, date })
-      .then((res) => setSlots(res.slots))
-      .catch(() => setSlots([]))
-      .finally(() => setLoadingSlots(false));
+      .then((res) => {
+        if (!stale) {
+          setSlots(res.slots);
+        }
+      })
+      .catch(() => {
+        if (!stale) {
+          setSlots([]);
+        }
+      })
+      .finally(() => {
+        if (!stale) {
+          setLoadingSlots(false);
+        }
+      });
+    return () => {
+      stale = true;
+    };
   }, [slug, selectedServiceIds, selectedStaffId, date]);
 
   function toggleService(id: string): void {

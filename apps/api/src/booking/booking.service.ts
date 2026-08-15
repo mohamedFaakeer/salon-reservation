@@ -96,6 +96,17 @@ export interface MarkNoShowInput {
   actorUserId: string | null;
 }
 
+export interface AddServiceInput {
+  serviceIds: string[];
+  actorUserId: string | null;
+}
+
+export interface RemoveServiceInput {
+  lineId: string;
+  reason: string;
+  actorUserId: string | null;
+}
+
 export interface ReserveAndConfirmInput {
   customerId?: string;
   newCustomer?: CreateCustomerDto;
@@ -426,7 +437,7 @@ export class BookingService {
       });
 
       if (refund.refundCents > 0) {
-        await this.applyRefund(manager, tenant, appointment.id, refund.refundCents, input.actorUserId);
+        await this.applyRefund(manager, tenant, appointment.id, refund.refundCents, input.actorUserId, "Cancellation refund");
       }
 
       await this.applyOptimisticUpdate(manager, appointment, {
@@ -607,7 +618,7 @@ export class BookingService {
       });
 
       if (refund.refundCents > 0) {
-        await this.applyRefund(manager, tenant, appointment.id, refund.refundCents, input.actorUserId);
+        await this.applyRefund(manager, tenant, appointment.id, refund.refundCents, input.actorUserId, "No-show refund");
       }
 
       await this.applyOptimisticUpdate(manager, appointment, { status: AppointmentStatus.NO_SHOW });
@@ -632,6 +643,125 @@ export class BookingService {
     );
 
     return result;
+  }
+
+  /**
+   * POST /appointments/:id/services (API.md §3) — appends new service lines
+   * to an already-confirmed appointment and recomputes totals. Doesn't touch
+   * `startTime`/`endTime`: the documented contract only mentions "recomputes
+   * totals," so the appointment's slot stays fixed rather than re-running
+   * the availability engine for what's scoped as a pricing-only operation.
+   */
+  async addService(tenant: Tenant, appointment: Appointment, input: AddServiceInput): Promise<Appointment> {
+    this.assertMutable(appointment, tenant, false, new Date());
+    const newLines = await this.resolveServiceLines(tenant.id, input.serviceIds);
+
+    return this.dataSource.transaction(async (manager) => {
+      const lineRepo = manager.getRepository(AppointmentServiceLine);
+      await lineRepo.save(
+        newLines.map((l) =>
+          lineRepo.create({
+            appointmentId: appointment.id,
+            serviceId: l.serviceId,
+            nameSnapshot: l.nameSnapshot,
+            durationMinSnapshot: l.durationMinSnapshot,
+            priceCentsSnapshot: l.priceCentsSnapshot,
+            status: "ACTIVE",
+          }),
+        ),
+      );
+
+      const activeLines = await lineRepo.find({ where: { appointmentId: appointment.id, status: "ACTIVE" } });
+      const subtotalCents = activeLines.reduce((sum, l) => sum + l.priceCentsSnapshot, 0);
+      const totalCents = subtotalCents - appointment.discountCents;
+      const balanceCents = totalCents - appointment.advancePaidCents;
+
+      await this.applyOptimisticUpdate(manager, appointment, { subtotalCents, totalCents, balanceCents });
+
+      await this.audit.record(
+        {
+          tenantId: tenant.id,
+          actorUserId: input.actorUserId,
+          action: "APPOINTMENT_SERVICE_ADDED",
+          entityType: "Appointment",
+          entityId: appointment.id,
+          metadata: { serviceIds: input.serviceIds, totalCents },
+        },
+        manager,
+      );
+
+      return manager.getRepository(Appointment).findOneOrFail({ where: { id: appointment.id } });
+    });
+  }
+
+  /**
+   * DELETE /appointments/:id/services/:appointmentServiceId (API.md §3) —
+   * marks a line REMOVED (never hard-deleted) and recomputes totals. If the
+   * amount already paid now exceeds the new total, the difference is
+   * refunded via the same FIFO `applyRefund` helper cancel/no-show use —
+   * this is a plain overpayment calculation, not a `RefundCalculator`
+   * policy-percentage refund (there's no cutoff/no-show concept for "a
+   * service was dropped mid-appointment").
+   */
+  async removeService(tenant: Tenant, appointment: Appointment, input: RemoveServiceInput): Promise<Appointment> {
+    this.assertMutable(appointment, tenant, false, new Date());
+
+    return this.dataSource.transaction(async (manager) => {
+      const lineRepo = manager.getRepository(AppointmentServiceLine);
+      const line = await lineRepo.findOne({ where: { id: input.lineId, appointmentId: appointment.id } });
+      if (!line || line.status === "REMOVED") {
+        throw new ApiError({ statusCode: 404, code: "NOT_FOUND", message: "Service line not found." });
+      }
+
+      const activeLines = await lineRepo.find({ where: { appointmentId: appointment.id, status: "ACTIVE" } });
+      if (activeLines.length <= 1) {
+        throw new ApiError({
+          statusCode: 400,
+          code: "BAD_STATE",
+          message: "An appointment must have at least one active service.",
+        });
+      }
+
+      line.status = "REMOVED";
+      line.removedById = input.actorUserId;
+      line.removedAt = new Date();
+      line.removedReason = input.reason;
+      await lineRepo.save(line);
+
+      const subtotalCents = activeLines
+        .filter((l) => l.id !== line.id)
+        .reduce((sum, l) => sum + l.priceCentsSnapshot, 0);
+      const totalCents = subtotalCents - appointment.discountCents;
+      const refundCents = Math.max(0, appointment.advancePaidCents - totalCents);
+
+      if (refundCents > 0) {
+        await this.applyRefund(manager, tenant, appointment.id, refundCents, input.actorUserId, "Service removed");
+      }
+
+      // `refundWithManager` (inside applyRefund) writes `advancePaidCents`/`balanceCents`
+      // directly, bypassing this class's own in-memory `appointment` object — re-read
+      // before computing the final balance so this write doesn't clobber that one.
+      const refreshedAppointment = await manager
+        .getRepository(Appointment)
+        .findOneOrFail({ where: { id: appointment.id } });
+      const balanceCents = totalCents - refreshedAppointment.advancePaidCents;
+
+      await this.applyOptimisticUpdate(manager, refreshedAppointment, { subtotalCents, totalCents, balanceCents });
+
+      await this.audit.record(
+        {
+          tenantId: tenant.id,
+          actorUserId: input.actorUserId,
+          action: "APPOINTMENT_SERVICE_REMOVED",
+          entityType: "Appointment",
+          entityId: appointment.id,
+          metadata: { lineId: input.lineId, reason: input.reason, refundCents, totalCents },
+        },
+        manager,
+      );
+
+      return manager.getRepository(Appointment).findOneOrFail({ where: { id: appointment.id } });
+    });
   }
 
   /** Shared by cancel/reschedule: not already terminal, and (if self-service) still outside the cutoff window. */
@@ -663,6 +793,7 @@ export class BookingService {
     appointmentId: string,
     refundCents: number,
     actorUserId: string | null,
+    reason: string,
   ): Promise<void> {
     const paymentRepo = manager.getRepository(Payment);
     const refundRepo = manager.getRepository(Refund);
@@ -683,13 +814,7 @@ export class BookingService {
         continue;
       }
       const amount = Math.min(remaining, refundableFromThis);
-      await this.payments.refundWithManager(
-        manager,
-        tenant,
-        payment.id,
-        { amountCents: amount, reason: "Cancellation refund" },
-        actorUserId,
-      );
+      await this.payments.refundWithManager(manager, tenant, payment.id, { amountCents: amount, reason }, actorUserId);
       remaining -= amount;
     }
   }
@@ -698,7 +823,18 @@ export class BookingService {
   private async applyOptimisticUpdate(
     manager: EntityManager,
     appointment: Appointment,
-    patch: Partial<Pick<Appointment, "status" | "cancellationReason" | "cancelledAt">>,
+    patch: Partial<
+      Pick<
+        Appointment,
+        | "status"
+        | "cancellationReason"
+        | "cancelledAt"
+        | "subtotalCents"
+        | "totalCents"
+        | "balanceCents"
+        | "advancePaidCents"
+      >
+    >,
   ): Promise<void> {
     const result = await manager
       .createQueryBuilder()

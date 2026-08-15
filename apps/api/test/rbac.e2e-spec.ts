@@ -1,11 +1,13 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import request from "supertest";
 import cookieParser from "cookie-parser";
 import { Test } from "@nestjs/testing";
 import { ValidationPipe, type INestApplication } from "@nestjs/common";
 import { AppModule } from "../src/app.module";
 import { ApiExceptionFilter } from "../src/common/filters/api-exception.filter";
+import { dayOfWeekOf } from "../src/availability/time.util";
 
 // TokenService requires JWT_SECRET at construction time (compile of AppModule).
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? "e2e-test-secret";
@@ -191,6 +193,141 @@ describe("RBAC (e2e)", () => {
         .set("Authorization", `Bearer ${superToken}`)
         .send({ status: "SUSPENDED" })
         .expect(200);
+    });
+  });
+
+  /**
+   * P17 gap closure — S3/S4 (forged tenantId/price) and S12 (extra field /
+   * over-length string) weren't adversarially exercised anywhere: booking
+   * DTOs simply have no `tenantId`/price field to begin with, so
+   * `forbidNonWhitelisted` was trusted but never actually proven against an
+   * attacker-supplied one.
+   */
+  describe("S3/S4/S12 — forged fields and oversized input are rejected, never silently dropped or trusted", () => {
+    function inWindowDate(daysAhead: number): string {
+      const d = new Date();
+      d.setUTCDate(d.getUTCDate() + daysAhead);
+      return d.toISOString().slice(0, 10);
+    }
+
+    /** Unique per call — the dev DB is persistent across e2e runs, so fixed numbers collide. */
+    let phoneCounter = 0;
+    function uniquePhone(): string {
+      const suffix = `${Date.now()}${phoneCounter++}`.slice(-8);
+      return `077${suffix}`;
+    }
+
+    async function bookableFixture(
+      owner: string,
+      namePrefix: string,
+    ): Promise<{ staffId: string; serviceId: string; slotStart: string }> {
+      const staffId = await request(server())
+        .post("/api/v1/staff")
+        .set("Authorization", `Bearer ${owner}`)
+        .send({ name: `${namePrefix} Staff` })
+        .expect(201)
+        .then((r) => r.body.id as string);
+      const serviceId = await request(server())
+        .post("/api/v1/services")
+        .set("Authorization", `Bearer ${owner}`)
+        .send({ name: `${namePrefix} Service`, durationMin: 30, priceCents: 500000 })
+        .expect(201)
+        .then((r) => r.body.id as string);
+      await request(server())
+        .put(`/api/v1/staff/${staffId}/services`)
+        .set("Authorization", `Bearer ${owner}`)
+        .send({ serviceIds: [serviceId] })
+        .expect(200);
+      const date = inWindowDate(2);
+      await request(server())
+        .post("/api/v1/schedules")
+        .set("Authorization", `Bearer ${owner}`)
+        .send({ staffId, dayOfWeek: dayOfWeekOf(date), startMin: 540, endMin: 1020 })
+        .expect(201);
+      const availRes = await request(server())
+        .post("/api/v1/salons/elegance/availability")
+        .send({ serviceIds: [serviceId], date, staffId })
+        .expect(200);
+      return { staffId, serviceId, slotStart: availRes.body.slots[0].start as string };
+    }
+
+    it("S3: a forged tenantId in a public booking body is rejected, not silently ignored or trusted", async () => {
+      const owner = await login("owner@demo.salon", "demo1234");
+      const { staffId, serviceId, slotStart } = await bookableFixture(owner, "S3 Forged Tenant");
+
+      const res = await request(server())
+        .post("/api/v1/salons/elegance/bookings")
+        .set("Idempotency-Key", crypto.randomUUID())
+        .send({
+          serviceIds: [serviceId],
+          staffId,
+          start: slotStart,
+          customer: { firstName: "Forged", lastName: "Tenant", phone: uniquePhone() },
+          tenantId: "11111111-1111-4111-8111-111111111111",
+        })
+        .expect(400);
+      assert.equal(res.body.code, "VALIDATION_ERROR");
+    });
+
+    it("S4: a forged price field in a public booking body is rejected — price is always server-computed", async () => {
+      const owner = await login("owner@demo.salon", "demo1234");
+      const { staffId, serviceId, slotStart } = await bookableFixture(owner, "S4 Forged Price");
+
+      const res = await request(server())
+        .post("/api/v1/salons/elegance/bookings")
+        .set("Idempotency-Key", crypto.randomUUID())
+        .send({
+          serviceIds: [serviceId],
+          staffId,
+          start: slotStart,
+          customer: { firstName: "Forged", lastName: "Price", phone: uniquePhone() },
+          totalCents: 1,
+        })
+        .expect(400);
+      assert.equal(res.body.code, "VALIDATION_ERROR");
+    });
+
+    it("S12: an arbitrary unwhitelisted extra field on an otherwise-valid DTO is rejected", async () => {
+      const owner = await login("owner@demo.salon", "demo1234");
+      const { staffId, serviceId, slotStart } = await bookableFixture(owner, "S12 Extra Field");
+
+      const res = await request(server())
+        .post("/api/v1/salons/elegance/bookings")
+        .set("Idempotency-Key", crypto.randomUUID())
+        .send({
+          serviceIds: [serviceId],
+          staffId,
+          start: slotStart,
+          customer: { firstName: "Extra", lastName: "Field", phone: uniquePhone() },
+          isAdmin: true,
+        })
+        .expect(400);
+      assert.equal(res.body.code, "VALIDATION_ERROR");
+    });
+
+    it("S12: a string exceeding an @MaxLength constraint is rejected", async () => {
+      const owner = await login("owner@demo.salon", "demo1234");
+      const { staffId, serviceId, slotStart } = await bookableFixture(owner, "S12 Long String");
+      const appointment = await request(server())
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${owner}`)
+        .set("Idempotency-Key", crypto.randomUUID())
+        .send({
+          newCustomer: { firstName: "Long", lastName: "Reason", phone: uniquePhone() },
+          serviceIds: [serviceId],
+          staffId,
+          start: slotStart,
+          source: "WALK_IN",
+        })
+        .expect(201);
+
+      // CancelAppointmentDto.reason is @MaxLength(500).
+      const res = await request(server())
+        .post(`/api/v1/appointments/${appointment.body.id}/cancel`)
+        .set("Authorization", `Bearer ${owner}`)
+        .send({ reason: "x".repeat(501) })
+        .expect(400);
+      assert.equal(res.body.code, "VALIDATION_ERROR");
     });
   });
 });

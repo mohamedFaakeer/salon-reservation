@@ -61,4 +61,6 @@ export const AppDataSource = new DataSource({
   synchronize: false,
   logging: false,
   ssl: isProduction ? { rejectUnauthorized: false } : false,
+  // Kept aligned with app.module.ts's runtime pool size — see the comment there.
+  extra: { max: 20 },
 });

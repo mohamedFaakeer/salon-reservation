@@ -10,9 +10,11 @@ import {
   AppointmentStatus,
   NotificationEvent,
   UserRole,
+  type AddAppointmentServiceDto,
   type AppointmentQueryDto,
   type CancelAppointmentDto,
   type CreateAppointmentDto,
+  type RemoveAppointmentServiceDto,
   type RescheduleAppointmentDto,
 } from "@salon/shared";
 import { Appointment } from "../entities/appointment.entity";
@@ -210,6 +212,39 @@ export class AppointmentService {
     const appointment = await this.findOwned(tenantId, id);
     const tenant = await this.tenantService.findById(tenantId);
     return this.booking.markNoShow(tenant, appointment, { actorUserId });
+  }
+
+  /**
+   * OWNER/MANAGER/RECEPTIONIST/STAFF (own) — a STAFF member may add a
+   * service to their own appointment. Returns `lines` (not a default
+   * relation) so the caller knows the new line's id, needed to remove it later.
+   */
+  async addService(
+    tenantId: string,
+    id: string,
+    dto: AddAppointmentServiceDto,
+    actorUserId: string,
+    ctx: TenantContextData,
+  ): Promise<Appointment & { lines: AppointmentServiceLine[] }> {
+    const appointment = await this.findOwned(tenantId, id);
+    await this.assertOwnershipIfStaffOnly(tenantId, ctx, appointment);
+    const tenant = await this.tenantService.findById(tenantId);
+    const result = await this.booking.addService(tenant, appointment, { serviceIds: dto.serviceIds, actorUserId });
+    return this.attachLines(result);
+  }
+
+  /** OWNER/MANAGER/RECEPTIONIST only — gated at the controller, matching cancel/reschedule's ownership-free shape. */
+  async removeService(
+    tenantId: string,
+    id: string,
+    lineId: string,
+    dto: RemoveAppointmentServiceDto,
+    actorUserId: string,
+  ): Promise<Appointment & { lines: AppointmentServiceLine[] }> {
+    const appointment = await this.findOwned(tenantId, id);
+    const tenant = await this.tenantService.findById(tenantId);
+    const result = await this.booking.removeService(tenant, appointment, { lineId, reason: dto.reason, actorUserId });
+    return this.attachLines(result);
   }
 
   private async findOwned(tenantId: string, id: string): Promise<Appointment> {

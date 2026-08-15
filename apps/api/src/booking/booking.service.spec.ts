@@ -628,4 +628,165 @@ describe("BookingService", () => {
       });
     });
   });
+
+  describe("addService", () => {
+    it("rejects an already-terminal appointment", async () => {
+      const appointment = fakeAppointment({ status: AppointmentStatus.CANCELLED });
+      await expect(
+        service.addService(fakeTenant(), appointment, { serviceIds: ["svc-2"], actorUserId: "user-1" }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "APPOINTMENT_NOT_CANCELLABLE" });
+    });
+
+    it("throws SERVICE_NOT_FOUND when a requested service doesn't resolve", async () => {
+      vi.mocked(servicesRepo.find).mockResolvedValue([]);
+      const appointment = fakeAppointment({ discountCents: 0 });
+      await expect(
+        service.addService(fakeTenant(), appointment, { serviceIds: ["svc-2"], actorUserId: "user-1" }),
+      ).rejects.toMatchObject({ statusCode: 404, code: "SERVICE_NOT_FOUND" });
+    });
+
+    it("appends the new line and recomputes totals via the optimistic-lock update", async () => {
+      vi.mocked(servicesRepo.find).mockResolvedValue([
+        { id: "svc-2", name: "Add-on", durationMin: 15, priceCents: 3000 } as Service,
+      ]);
+      vi.mocked(lineRepo.find).mockResolvedValue([
+        { id: "line-1", priceCentsSnapshot: 5000, status: "ACTIVE" } as AppointmentServiceLine,
+        { id: "line-2", priceCentsSnapshot: 3000, status: "ACTIVE" } as AppointmentServiceLine,
+      ]);
+      const appointment = fakeAppointment({ discountCents: 0, advancePaidCents: 5000 });
+      vi.mocked(appointmentsRepo.findOneOrFail).mockResolvedValue({ ...appointment, totalCents: 8000 });
+
+      const result = await service.addService(fakeTenant(), appointment, {
+        serviceIds: ["svc-2"],
+        actorUserId: "user-1",
+      });
+
+      expect(lineRepo.save).toHaveBeenCalledWith([
+        expect.objectContaining({ serviceId: "svc-2", priceCentsSnapshot: 3000, status: "ACTIVE" }),
+      ]);
+      expect(queryBuilderExecute).toHaveBeenCalled();
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "APPOINTMENT_SERVICE_ADDED",
+          metadata: expect.objectContaining({ serviceIds: ["svc-2"], totalCents: 8000 }),
+        }),
+        expect.anything(),
+      );
+      expect(result.totalCents).toBe(8000);
+    });
+  });
+
+  describe("removeService", () => {
+    function twoActiveLines(): AppointmentServiceLine[] {
+      return [
+        { id: "line-1", priceCentsSnapshot: 5000, status: "ACTIVE" } as AppointmentServiceLine,
+        { id: "line-2", priceCentsSnapshot: 3000, status: "ACTIVE" } as AppointmentServiceLine,
+      ];
+    }
+
+    it("rejects an already-terminal appointment", async () => {
+      const appointment = fakeAppointment({ status: AppointmentStatus.CANCELLED });
+      await expect(
+        service.removeService(fakeTenant(), appointment, { lineId: "line-1", reason: "test", actorUserId: "user-1" }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "APPOINTMENT_NOT_CANCELLABLE" });
+    });
+
+    it("404s when the line doesn't belong to this appointment", async () => {
+      vi.mocked(lineRepo.findOne).mockResolvedValue(null);
+      const appointment = fakeAppointment({ discountCents: 0 });
+      await expect(
+        service.removeService(fakeTenant(), appointment, { lineId: "nope", reason: "test", actorUserId: "user-1" }),
+      ).rejects.toMatchObject({ statusCode: 404, code: "NOT_FOUND" });
+    });
+
+    it("rejects removing the last active service line", async () => {
+      const [onlyLine] = twoActiveLines();
+      vi.mocked(lineRepo.findOne).mockResolvedValue(onlyLine);
+      vi.mocked(lineRepo.find).mockResolvedValue([onlyLine]);
+      const appointment = fakeAppointment({ discountCents: 0 });
+      await expect(
+        service.removeService(fakeTenant(), appointment, {
+          lineId: "line-1",
+          reason: "test",
+          actorUserId: "user-1",
+        }),
+      ).rejects.toMatchObject({ statusCode: 400, code: "BAD_STATE" });
+    });
+
+    it("recomputes totals with no refund when the remaining total still covers what's paid", async () => {
+      const lines = twoActiveLines();
+      vi.mocked(lineRepo.findOne).mockResolvedValue(lines[1]);
+      vi.mocked(lineRepo.find).mockResolvedValue(lines);
+      const appointment = fakeAppointment({ discountCents: 0, advancePaidCents: 5000 });
+      vi.mocked(appointmentsRepo.findOneOrFail).mockResolvedValue({ ...appointment, advancePaidCents: 5000 });
+
+      await service.removeService(fakeTenant(), appointment, {
+        lineId: "line-2",
+        reason: "customer changed mind",
+        actorUserId: "user-1",
+      });
+
+      expect(payments.refundWithManager).not.toHaveBeenCalled();
+      expect(lineRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "line-2", status: "REMOVED", removedReason: "customer changed mind" }),
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "APPOINTMENT_SERVICE_REMOVED",
+          metadata: expect.objectContaining({ lineId: "line-2", refundCents: 0, totalCents: 5000 }),
+        }),
+        expect.anything(),
+      );
+    });
+
+    it("refunds the overpayment when removal drops the total below what's already paid", async () => {
+      const lines = twoActiveLines();
+      vi.mocked(lineRepo.findOne).mockResolvedValue(lines[1]);
+      vi.mocked(lineRepo.find).mockResolvedValue(lines);
+      const appointment = fakeAppointment({ discountCents: 0, advancePaidCents: 8000 });
+      vi.mocked(paymentsRepo.find).mockResolvedValue([
+        { id: "payment-1", amountCents: 8000, state: "SUCCESS", createdAt: new Date() } as Payment,
+      ]);
+      // Post-refund re-fetch: refundWithManager already moved advancePaidCents down by 3000.
+      vi.mocked(appointmentsRepo.findOneOrFail).mockResolvedValue({ ...appointment, advancePaidCents: 5000 });
+
+      await service.removeService(fakeTenant(), appointment, {
+        lineId: "line-2",
+        reason: "customer changed mind",
+        actorUserId: "user-1",
+      });
+
+      expect(payments.refundWithManager).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        "payment-1",
+        expect.objectContaining({ amountCents: 3000, reason: "Service removed" }),
+        "user-1",
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "APPOINTMENT_SERVICE_REMOVED",
+          metadata: expect.objectContaining({ refundCents: 3000, totalCents: 5000 }),
+        }),
+        expect.anything(),
+      );
+    });
+
+    it("throws VERSION_CONFLICT when the optimistic-lock update affects zero rows", async () => {
+      queryBuilderExecute.mockResolvedValue({ affected: 0 });
+      const lines = twoActiveLines();
+      vi.mocked(lineRepo.findOne).mockResolvedValue(lines[1]);
+      vi.mocked(lineRepo.find).mockResolvedValue(lines);
+      const appointment = fakeAppointment({ discountCents: 0, advancePaidCents: 0 });
+      vi.mocked(appointmentsRepo.findOneOrFail).mockResolvedValue({ ...appointment, advancePaidCents: 0 });
+
+      await expect(
+        service.removeService(fakeTenant(), appointment, {
+          lineId: "line-2",
+          reason: "test",
+          actorUserId: "user-1",
+        }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "VERSION_CONFLICT" });
+    });
+  });
 });

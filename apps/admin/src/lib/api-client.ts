@@ -65,6 +65,7 @@ export interface AppointmentServiceLineView {
   nameSnapshot: string;
   durationMinSnapshot: number;
   priceCentsSnapshot: number;
+  status: "ACTIVE" | "REMOVED";
 }
 
 export interface AppointmentRecord {
@@ -318,6 +319,20 @@ export function rescheduleAppointment(
 
 export function markNoShow(id: string): Promise<AppointmentRecord> {
   return request<AppointmentRecord>(`/appointments/${id}/no-show`, { method: "POST" });
+}
+
+export function addAppointmentService(appointmentId: string, serviceIds: string[]): Promise<unknown> {
+  return request<unknown>(`/appointments/${appointmentId}/services`, {
+    method: "POST",
+    body: JSON.stringify({ serviceIds }),
+  });
+}
+
+export function removeAppointmentService(appointmentId: string, lineId: string, reason: string): Promise<unknown> {
+  return request<unknown>(`/appointments/${appointmentId}/services/${lineId}`, {
+    method: "DELETE",
+    body: JSON.stringify({ reason }),
+  });
 }
 
 export function fetchPayments(appointmentId: string): Promise<{ data: PaymentRecord[] }> {

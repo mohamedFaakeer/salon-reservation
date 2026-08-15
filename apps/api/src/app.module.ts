@@ -49,6 +49,13 @@ import { DashboardModule } from "./dashboard/dashboard.module";
           config.get<string>("NODE_ENV") === "production"
             ? { rejectUnauthorized: false }
             : false,
+        // Default pg pool size (10) deadlocks under concurrent bookings:
+        // BookingService.reserveAndConfirm holds one connection for its
+        // transaction while awaiting AvailabilityService calls that need a
+        // second connection from the same pool — with enough simultaneous
+        // requests, every held connection ends up waiting on a pool that has
+        // nothing left to hand out (found via P17's concurrency soak test).
+        extra: { max: 20 },
       }),
     }),
     AuthModule,

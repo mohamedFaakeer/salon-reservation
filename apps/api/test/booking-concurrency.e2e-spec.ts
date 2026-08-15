@@ -264,4 +264,114 @@ describe("Booking Concurrency (e2e) — exclusion constraints, holds, idempotenc
       .expect(409);
     assert.equal(res.body.code, "SLOT_UNAVAILABLE");
   });
+
+  /**
+   * P17 gap closure — every prior concurrency test here races exactly 2
+   * requests; this is the phase's own literal "concurrency soak" deliverable
+   * (DEVELOPMENT_PLAN.md §2.2), a genuine N-way race against the DB
+   * exclusion constraint (CLAUDE.md non-negotiable #3).
+   */
+  it("concurrency soak: 15 simultaneous receptionist bookings for the same slot — exactly one wins", async () => {
+    const owner = await login("owner@demo.salon", "demo1234");
+    const { serviceId, staffId, slotStart, date } = await bookableFixture(owner, "Soak Receptionist");
+
+    const responses = await Promise.all(
+      Array.from({ length: 15 }, (_, i) =>
+        request(server())
+          .post("/api/v1/appointments")
+          .set("Authorization", `Bearer ${owner}`)
+          .set("Idempotency-Key", crypto.randomUUID())
+          .send({
+            newCustomer: { firstName: "Soak", lastName: `Customer${i}`, phone: uniquePhone() },
+            serviceIds: [serviceId],
+            staffId,
+            start: slotStart,
+            source: "WALK_IN",
+          }),
+      ),
+    );
+
+    const winners = responses.filter((r) => r.status === 201);
+    const losers = responses.filter((r) => r.status === 409);
+    assert.equal(winners.length, 1, "exactly one of 15 concurrent requests must win the slot");
+    assert.equal(losers.length, 14);
+    assert.ok(losers.every((r) => r.body.code === "SLOT_UNAVAILABLE"));
+
+    const listRes = await request(server())
+      .get(`/api/v1/appointments?date=${date}&staffId=${staffId}`)
+      .set("Authorization", `Bearer ${owner}`)
+      .expect(200);
+    const forThisStaff = (listRes.body.data as Array<{ id: string }>).filter((a) => a.id === winners[0].body.id);
+    assert.equal(forThisStaff.length, 1, "no duplicate row was created under the DB exclusion constraint");
+  });
+
+  /**
+   * §2.2 item 2 — the receptionist+customer race, proven as a genuine
+   * simultaneous request pair (the prior test-suite version proved both
+   * directions sequentially, not under real concurrency).
+   *
+   * `reserve` only creates a `SlotHold` — a separate table from `Appointment`
+   * with its own exclusion constraint — so under true simultaneity the
+   * receptionist's create and the customer's reserve can *both* succeed at
+   * their own step (a hold existing alongside a just-confirmed appointment
+   * isn't itself a double-booking). The real, DB-enforced invariant is that
+   * only one row can ever exist in `Appointment` for the slot — proven here
+   * by following through to the online side's `confirm` step and checking
+   * the final state, not by asserting exactly one of the two *first* calls
+   * succeeds.
+   */
+  it("a receptionist and an online customer racing the same slot: exactly one appointment is ever confirmed", async () => {
+    const owner = await login("owner@demo.salon", "demo1234");
+    const { serviceId, staffId, slotStart, date } = await bookableFixture(owner, "Receptionist Vs Customer");
+    const idempotencyKey = crypto.randomUUID();
+
+    const [receptionistRes, reserveRes] = await Promise.all([
+      request(server())
+        .post("/api/v1/appointments")
+        .set("Authorization", `Bearer ${owner}`)
+        .set("Idempotency-Key", crypto.randomUUID())
+        .send({
+          newCustomer: { firstName: "Reception", lastName: "Booked", phone: uniquePhone() },
+          serviceIds: [serviceId],
+          staffId,
+          start: slotStart,
+          source: "WALK_IN",
+        }),
+      request(server())
+        .post("/api/v1/salons/elegance/bookings")
+        .set("Idempotency-Key", idempotencyKey)
+        .send(onlineBookingBody(serviceId, staffId, slotStart, uniquePhone())),
+    ]);
+
+    assert.ok(
+      [201, 409].includes(receptionistRes.status) && [201, 409].includes(reserveRes.status),
+      "each side must resolve to either success or SLOT_UNAVAILABLE, never a server error",
+    );
+
+    if (reserveRes.status === 201) {
+      // The hold exists; whether the receptionist also won determines whether confirming it can still succeed.
+      const confirmRes = await request(server())
+        .post(`/api/v1/payments/${reserveRes.body.paymentIntent.id}/confirm`)
+        .set("Idempotency-Key", idempotencyKey)
+        .send({});
+      if (receptionistRes.status === 201) {
+        assert.equal(confirmRes.status, 409, "the slot is already taken — confirming the hold must fail");
+      } else {
+        assert.equal(confirmRes.status, 200);
+      }
+    } else {
+      assert.equal(reserveRes.body.code, "SLOT_UNAVAILABLE");
+      assert.equal(receptionistRes.status, 201, "if the reserve lost, the receptionist's booking must have won");
+    }
+
+    const listRes = await request(server())
+      .get(`/api/v1/appointments?date=${date}&staffId=${staffId}`)
+      .set("Authorization", `Bearer ${owner}`)
+      .expect(200);
+    assert.equal(
+      (listRes.body.data as unknown[]).length,
+      1,
+      "exactly one confirmed appointment must exist for this slot, regardless of which side won",
+    );
+  });
 });

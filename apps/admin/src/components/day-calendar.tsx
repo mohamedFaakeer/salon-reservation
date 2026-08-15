@@ -23,15 +23,21 @@ export function DayCalendar({
   staff: StaffMember[];
   onSelect: (id: string) => void;
 }) {
-  if (staff.length === 0) {
-    return <EmptyState title="No staff to show on the calendar yet." />;
-  }
-
   const byStaff = new Map<string, AppointmentRecord[]>();
   for (const appt of appointments) {
     const list = byStaff.get(appt.staffId) ?? [];
     list.push(appt);
     byStaff.set(appt.staffId, list);
+  }
+
+  // Only staff with something on today's board get a column — a tenant can
+  // accumulate far more staff rows over time than are actually working (or
+  // ever worked) any given day, and rendering one column per staff row
+  // regardless makes the grid unusably wide.
+  const workingStaff = staff.filter((s) => byStaff.has(s.id));
+
+  if (workingStaff.length === 0) {
+    return <EmptyState title="No staff scheduled on today's board yet." />;
   }
 
   const gridHeight = (DAY_END_MIN - DAY_START_MIN) * PX_PER_MIN;
@@ -53,7 +59,7 @@ export function DayCalendar({
         </div>
       </div>
 
-      {staff.map((s) => (
+      {workingStaff.map((s) => (
         <div
           key={s.id}
           data-testid={`calendar-staff-column-${s.id}`}

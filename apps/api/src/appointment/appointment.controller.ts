@@ -1,10 +1,17 @@
-import { Body, Controller, Get, Headers, HttpCode, Param, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Headers, HttpCode, Param, Post, Query, Req } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 // DTOs must stay VALUE imports: ValidationPipe resolves them via
 // design:paramtypes metadata at runtime; `import type` would erase them.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import { AppointmentQueryDto, CancelAppointmentDto, CreateAppointmentDto, RescheduleAppointmentDto } from "@salon/shared";
+import {
+  AddAppointmentServiceDto,
+  AppointmentQueryDto,
+  CancelAppointmentDto,
+  CreateAppointmentDto,
+  RemoveAppointmentServiceDto,
+  RescheduleAppointmentDto,
+} from "@salon/shared";
 import { ApiError } from "@salon/shared";
 import { getTenantContext } from "../tenant/tenant-context";
 import { Permissions } from "../common/authorization/permissions.decorator";
@@ -94,6 +101,26 @@ export class AppointmentController {
   reschedule(@Req() req: Request, @Param("id") id: string, @Body() dto: RescheduleAppointmentDto) {
     const ctx = getTenantContext(req);
     return this.appointments.reschedule(ctx.tenantId, id, dto, ctx.userId);
+  }
+
+  @Post(":id/services")
+  @Permissions(Permission.MANAGE_APPOINTMENTS, Permission.MANAGE_OWN_APPOINTMENT)
+  addService(@Req() req: Request, @Param("id") id: string, @Body() dto: AddAppointmentServiceDto) {
+    const ctx = getTenantContext(req);
+    return this.appointments.addService(ctx.tenantId, id, dto, ctx.userId, ctx);
+  }
+
+  @Delete(":id/services/:appointmentServiceId")
+  @HttpCode(200)
+  @Permissions(Permission.MANAGE_APPOINTMENTS)
+  removeService(
+    @Req() req: Request,
+    @Param("id") id: string,
+    @Param("appointmentServiceId") appointmentServiceId: string,
+    @Body() dto: RemoveAppointmentServiceDto,
+  ) {
+    const ctx = getTenantContext(req);
+    return this.appointments.removeService(ctx.tenantId, id, appointmentServiceId, dto, ctx.userId);
   }
 
   @Post(":id/no-show")

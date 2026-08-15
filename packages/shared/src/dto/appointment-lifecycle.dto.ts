@@ -1,4 +1,4 @@
-import { IsDateString, IsOptional, IsString, IsUUID, MaxLength } from "class-validator";
+import { ArrayNotEmpty, IsArray, IsDateString, IsOptional, IsString, IsUUID, MaxLength } from "class-validator";
 
 /** POST /appointments/:id/cancel (API.md §3) — OWNER, MANAGER, RECEPTIONIST. */
 export class CancelAppointmentDto {
@@ -38,4 +38,19 @@ export class SelfServiceRescheduleDto {
   @IsOptional()
   @IsUUID("4")
   newStaffId?: string;
+}
+
+/** POST /appointments/:id/services (API.md §3) — OWNER, MANAGER, RECEPTIONIST, STAFF (own). */
+export class AddAppointmentServiceDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsUUID("4", { each: true })
+  serviceIds!: string[];
+}
+
+/** DELETE /appointments/:id/services/:appointmentServiceId (API.md §3) — OWNER, MANAGER, RECEPTIONIST. */
+export class RemoveAppointmentServiceDto {
+  @IsString()
+  @MaxLength(500)
+  reason!: string;
 }
