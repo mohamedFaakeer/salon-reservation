@@ -5,6 +5,7 @@ import { AppointmentServiceLine } from "../entities/appointment-service.entity";
 import { Staff } from "../entities/staff.entity";
 import { TenantModule } from "../tenant/tenant.module";
 import { BookingModule } from "../booking/booking.module";
+import { NotificationModule } from "../notification/notification.module";
 import { AppointmentController } from "./appointment.controller";
 import { AppointmentService } from "./appointment.service";
 
@@ -13,6 +14,7 @@ import { AppointmentService } from "./appointment.service";
     TypeOrmModule.forFeature([Appointment, Staff, AppointmentServiceLine]),
     TenantModule,
     BookingModule,
+    NotificationModule,
   ],
   controllers: [AppointmentController],
   providers: [AppointmentService],

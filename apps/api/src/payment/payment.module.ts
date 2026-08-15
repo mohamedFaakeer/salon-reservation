@@ -6,6 +6,7 @@ import { Refund } from "../entities/refund.entity";
 import { Appointment } from "../entities/appointment.entity";
 import { AuditModule } from "../audit/audit.module";
 import { TenantModule } from "../tenant/tenant.module";
+import { NotificationModule } from "../notification/notification.module";
 import { PaymentController } from "./payment.controller";
 import { PaymentService } from "./payment.service";
 import { ManualProvider } from "./providers/manual.provider";
@@ -13,7 +14,12 @@ import { PayHereProvider } from "./providers/payhere.provider";
 import { PaymentProviderResolver } from "./providers/resolve-payment-provider";
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Payment, PaymentAttempt, Refund, Appointment]), AuditModule, TenantModule],
+  imports: [
+    TypeOrmModule.forFeature([Payment, PaymentAttempt, Refund, Appointment]),
+    AuditModule,
+    TenantModule,
+    NotificationModule,
+  ],
   controllers: [PaymentController],
   providers: [PaymentService, ManualProvider, PayHereProvider, PaymentProviderResolver],
   exports: [PaymentService],

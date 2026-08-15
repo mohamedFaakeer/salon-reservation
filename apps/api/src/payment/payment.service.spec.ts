@@ -7,6 +7,7 @@ import { Appointment } from "../entities/appointment.entity";
 import type { Tenant } from "../entities/tenant.entity";
 import type { AuditService } from "../audit/audit.service";
 import type { PaymentProviderResolver } from "./providers/resolve-payment-provider";
+import type { NotificationService } from "../notification/notification.service";
 
 function mockRepo<T extends ObjectLiteral>() {
   return {
@@ -28,6 +29,7 @@ describe("PaymentService", () => {
   let dataSource: DataSource;
   let providers: PaymentProviderResolver;
   let audit: AuditService;
+  let notifications: NotificationService;
   let service: PaymentService;
 
   beforeEach(() => {
@@ -56,8 +58,9 @@ describe("PaymentService", () => {
     } as unknown as PaymentProviderResolver;
 
     audit = { record: vi.fn() } as unknown as AuditService;
+    notifications = { fire: vi.fn(async () => undefined) } as unknown as NotificationService;
 
-    service = new PaymentService(dataSource, paymentsRepo, providers, audit);
+    service = new PaymentService(dataSource, paymentsRepo, providers, audit, notifications);
   });
 
   function fakeAppointment(overrides: Partial<Appointment> = {}): Appointment {

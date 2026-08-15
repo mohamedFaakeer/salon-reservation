@@ -11,6 +11,7 @@ import {
   BookingSource,
   SlotHoldStatus,
   AppointmentStatus,
+  NotificationEvent,
   PaymentMethod,
   PaymentProviderName,
   PaymentStatus,
@@ -46,6 +47,8 @@ import { PricingService } from "../pricing/pricing.service";
 import { RefundCalculator } from "../pricing/refund-calculator";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { PaymentService } from "../payment/payment.service";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { NotificationService } from "../notification/notification.service";
 
 /** Maps `canBook`'s rejection codes to HTTP statuses (API.md §7's list is illustrative, not exhaustive). */
 const CAN_BOOK_ERROR_STATUS: Record<string, number> = {
@@ -133,6 +136,7 @@ export class BookingService {
     private readonly pricing: PricingService,
     private readonly payments: PaymentService,
     private readonly refundCalculator: RefundCalculator,
+    private readonly notifications: NotificationService,
   ) {}
 
   /** GET /bookings/:reference?phone= — no :slug in this route; bookingReference is globally unique. */
@@ -263,7 +267,7 @@ export class BookingService {
     holdId: string,
     sessionKey: string,
   ): Promise<{ appointment: Appointment & { staff: Staff; lines: AppointmentServiceLine[] }; bookingReference: string }> {
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const slotHoldRepo = manager.getRepository(SlotHold);
       const hold = await slotHoldRepo.findOne({ where: { id: holdId, tenantId: tenant.id } });
       if (!hold) {
@@ -289,7 +293,8 @@ export class BookingService {
           });
         }
         const enriched = await this.attachStaffAndLines(manager, appointment);
-        return { appointment: enriched, bookingReference: appointment.bookingReference };
+        // Idempotent replay — notifications already fired on the original confirm.
+        return { appointment: enriched, bookingReference: appointment.bookingReference, fresh: false };
       }
 
       if (hold.status !== SlotHoldStatus.HELD || hold.expiresAt <= new Date() || !hold.bookingSnapshot) {
@@ -343,8 +348,31 @@ export class BookingService {
       );
 
       const enriched = await this.attachStaffAndLines(manager, appointment);
-      return { appointment: enriched, bookingReference: appointment.bookingReference };
+      return { appointment: enriched, bookingReference: appointment.bookingReference, fresh: true };
     });
+
+    if (result.fresh) {
+      await this.fireBestEffort(async () => {
+        const customer = await this.customers.findById(tenant.id, result.appointment.customerId);
+        await this.notifications.fire(tenant, NotificationEvent.BOOKING_CONFIRMATION, result.appointment, customer);
+        if (result.appointment.advanceRequiredCents > 0) {
+          await this.notifications.fire(tenant, NotificationEvent.PAYMENT_CONFIRMATION, result.appointment, customer);
+        }
+      });
+    }
+
+    return { appointment: result.appointment, bookingReference: result.bookingReference };
+  }
+
+  /** Notification failure must never surface as an error to the caller (PRD §3.10). */
+  private async fireBestEffort(action: () => Promise<void>): Promise<void> {
+    try {
+      await action();
+    } catch {
+      // Swallowed deliberately — NotificationService itself already never
+      // throws for delivery failures; this only guards against something
+      // upstream (e.g. the customer lookup) going wrong.
+    }
   }
 
   /** The success response needs the staff name + service lines to display — neither is a loaded relation by default. */
@@ -387,7 +415,7 @@ export class BookingService {
     const now = new Date();
     this.assertMutable(appointment, tenant, input.isSelfService, now);
 
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const refund = this.refundCalculator.computeRefund({
         startTime: appointment.startTime,
         now,
@@ -421,6 +449,12 @@ export class BookingService {
 
       return manager.getRepository(Appointment).findOneOrFail({ where: { id: appointment.id } });
     });
+
+    await this.fireBestEffort(() =>
+      this.notifications.fire(tenant, NotificationEvent.CANCELLATION_CONFIRMATION, result, appointment.customer),
+    );
+
+    return result;
   }
 
   /**
@@ -469,7 +503,7 @@ export class BookingService {
     };
     this.assertCanBook(start, end, qualified, contextForCheck, salonClosed, tenant);
 
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       // Frees the original's slot (the exclusion constraint's WHERE clause
       // only covers active statuses) before the new slot is inserted, both
       // in this one transaction.
@@ -531,6 +565,12 @@ export class BookingService {
 
       return appointmentRepo.findOneOrFail({ where: { id: newAppointment.id } });
     });
+
+    await this.fireBestEffort(() =>
+      this.notifications.fire(tenant, NotificationEvent.RESCHEDULE_CONFIRMATION, result, appointment.customer),
+    );
+
+    return result;
   }
 
   /**
@@ -556,7 +596,7 @@ export class BookingService {
       });
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const refund = this.refundCalculator.computeRefund({
         startTime: appointment.startTime,
         now,
@@ -586,6 +626,12 @@ export class BookingService {
 
       return manager.getRepository(Appointment).findOneOrFail({ where: { id: appointment.id } });
     });
+
+    await this.fireBestEffort(() =>
+      this.notifications.fire(tenant, NotificationEvent.NO_SHOW, result, appointment.customer),
+    );
+
+    return result;
   }
 
   /** Shared by cancel/reschedule: not already terminal, and (if self-service) still outside the cutoff window. */
@@ -695,7 +741,7 @@ export class BookingService {
     const end = new Date(start.getTime() + durationMin * 60_000);
     const localDate = colomboNow(start).date;
 
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const slotHoldRepo = manager.getRepository(SlotHold);
 
       const existingHold = await slotHoldRepo.findOne({ where: { tenantId: tenant.id, sessionKey } });
@@ -704,7 +750,8 @@ export class BookingService {
           where: { tenantId: tenant.id, staffId: existingHold.staffId, startTime: existingHold.startTime },
         });
         if (appointment) {
-          return appointment;
+          // Idempotent replay — notification already fired on the original request.
+          return { appointment, customer: null, fresh: false };
         }
       }
 
@@ -762,8 +809,16 @@ export class BookingService {
         manager,
       );
 
-      return appointment;
+      return { appointment, customer, fresh: true };
     });
+
+    if (result.fresh && result.customer) {
+      await this.fireBestEffort(() =>
+        this.notifications.fire(tenant, NotificationEvent.BOOKING_CONFIRMATION, result.appointment, result.customer!),
+      );
+    }
+
+    return result.appointment;
   }
 
   private assertCanBook(

@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/auth-context";
 import { fetchTenantMe, ApiRequestError } from "../../lib/api-client";
+import { canManageNotifications } from "../../lib/permissions";
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -44,6 +45,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <a href="/today" className="text-sm font-medium text-teal-700 hover:text-teal-800">
             Today
           </a>
+          {canManageNotifications(user.roles) ? (
+            <a href="/notifications" className="text-sm font-medium text-teal-700 hover:text-teal-800">
+              Notifications
+            </a>
+          ) : null}
         </div>
         <div className="flex items-center gap-3 text-sm text-slate-600">
           <span data-testid="current-user">

@@ -19,6 +19,7 @@ const OWNER_MANAGER_PERMISSIONS: Permission[] = [
   Permission.MANAGE_CUSTOMERS,
   Permission.VIEW_DASHBOARD,
   Permission.VIEW_AUDIT_LOG,
+  Permission.VIEW_NOTIFICATIONS,
 ];
 
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
@@ -30,6 +31,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.RECORD_PAYMENT,
     Permission.MANAGE_CUSTOMERS,
     Permission.VIEW_DASHBOARD,
+    Permission.VIEW_NOTIFICATIONS,
   ],
   [UserRole.STAFF]: [
     Permission.MANAGE_OWN_APPOINTMENT,

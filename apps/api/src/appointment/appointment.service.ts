@@ -8,6 +8,7 @@ import { Repository } from "typeorm";
 import {
   ApiError,
   AppointmentStatus,
+  NotificationEvent,
   UserRole,
   type AppointmentQueryDto,
   type CancelAppointmentDto,
@@ -25,6 +26,8 @@ import type { TenantContextData } from "../tenant/tenant-context";
 import { TenantService } from "../tenant/tenant.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { BookingService } from "../booking/booking.service";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { NotificationService } from "../notification/notification.service";
 
 const ELEVATED_ROLES: string[] = [UserRole.OWNER, UserRole.MANAGER, UserRole.RECEPTIONIST];
 /** Never matches a real Staff row — forces an empty result set. */
@@ -43,6 +46,7 @@ export class AppointmentService {
     @InjectRepository(AppointmentServiceLine) private readonly lines: Repository<AppointmentServiceLine>,
     private readonly tenantService: TenantService,
     private readonly booking: BookingService,
+    private readonly notifications: NotificationService,
   ) {}
 
   /** POST /appointments — receptionist/walk-in/phone/WhatsApp, reserve+confirm in one request. */
@@ -128,7 +132,18 @@ export class AppointmentService {
       0,
       Math.round((now.getTime() - appointment.startTime.getTime()) / 60_000),
     );
-    return this.appointments.save(appointment);
+    const saved = await this.appointments.save(appointment);
+
+    const tenant = await this.tenantService.findById(tenantId);
+    if (saved.lateMinutes > tenant.settings.noShowGraceMinutes) {
+      try {
+        await this.notifications.fire(tenant, NotificationEvent.LATE_ARRIVAL, saved, appointment.customer);
+      } catch {
+        // Notification failure must never surface as an error to the caller (PRD §3.10).
+      }
+    }
+
+    return saved;
   }
 
   async inService(tenantId: string, id: string, ctx: TenantContextData): Promise<Appointment> {

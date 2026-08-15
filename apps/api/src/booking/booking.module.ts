@@ -10,6 +10,7 @@ import { AuditModule } from "../audit/audit.module";
 import { TenantModule } from "../tenant/tenant.module";
 import { PricingModule } from "../pricing/pricing.module";
 import { PaymentModule } from "../payment/payment.module";
+import { NotificationModule } from "../notification/notification.module";
 import { BookingController } from "./booking.controller";
 import { BookingService } from "./booking.service";
 
@@ -22,6 +23,7 @@ import { BookingService } from "./booking.service";
     TenantModule,
     PricingModule,
     PaymentModule,
+    NotificationModule,
   ],
   controllers: [BookingController],
   providers: [BookingService],

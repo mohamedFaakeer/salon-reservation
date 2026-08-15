@@ -6,6 +6,7 @@ import type { AppointmentServiceLine } from "../entities/appointment-service.ent
 import type { Staff } from "../entities/staff.entity";
 import type { TenantService } from "../tenant/tenant.service";
 import type { BookingService } from "../booking/booking.service";
+import type { NotificationService } from "../notification/notification.service";
 import type { TenantContextData } from "../tenant/tenant-context";
 
 function mockRepo<T extends ObjectLiteral>() {
@@ -31,15 +32,19 @@ describe("AppointmentService", () => {
   let lines: Repository<AppointmentServiceLine>;
   let tenantService: TenantService;
   let booking: BookingService;
+  let notifications: NotificationService;
   let service: AppointmentService;
 
   beforeEach(() => {
     appointments = mockRepo<Appointment>();
     staff = mockRepo<Staff>();
     lines = mockRepo<AppointmentServiceLine>();
-    tenantService = { findById: vi.fn(async () => ({ id: "tenant-1" })) } as unknown as TenantService;
+    tenantService = {
+      findById: vi.fn(async () => ({ id: "tenant-1", settings: { noShowGraceMinutes: 15 } })),
+    } as unknown as TenantService;
     booking = { reserveAndConfirm: vi.fn(async () => ({ id: "appt-1" }) as Appointment) } as unknown as BookingService;
-    service = new AppointmentService(appointments, staff, lines, tenantService, booking);
+    notifications = { fire: vi.fn(async () => undefined) } as unknown as NotificationService;
+    service = new AppointmentService(appointments, staff, lines, tenantService, booking, notifications);
   });
 
   describe("create", () => {
@@ -58,7 +63,7 @@ describe("AppointmentService", () => {
       );
 
       expect(booking.reserveAndConfirm).toHaveBeenCalledWith(
-        { id: "tenant-1" },
+        { id: "tenant-1", settings: { noShowGraceMinutes: 15 } },
         expect.objectContaining({ customerId: "cust-1", staffId: "staff-1" }),
         "session-1",
         "user-1",

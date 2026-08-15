@@ -1,6 +1,10 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
+// Aliased: this repo's own `./schedule/schedule.module` (staff working
+// hours, P8) already exports a class named `ScheduleModule` — unrelated to
+// this cron-scheduling module.
+import { ScheduleModule as CronScheduleModule } from "@nestjs/schedule";
 import { AppController } from "./app.controller";
 import { AuthModule } from "./auth/auth.module";
 import { TenantModule } from "./tenant/tenant.module";
@@ -18,6 +22,7 @@ import { BookingModule } from "./booking/booking.module";
 import { AppointmentModule } from "./appointment/appointment.module";
 import { SalonModule } from "./salon/salon.module";
 import { PaymentModule } from "./payment/payment.module";
+import { NotificationModule } from "./notification/notification.module";
 
 @Module({
   imports: [
@@ -28,6 +33,7 @@ import { PaymentModule } from "./payment/payment.module";
       // root; resolve the root .env from either location.
       envFilePath: [".env", "../../.env"],
     }),
+    CronScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
@@ -62,6 +68,7 @@ import { PaymentModule } from "./payment/payment.module";
     AppointmentModule,
     SalonModule,
     PaymentModule,
+    NotificationModule,
   ],
   controllers: [AppController],
 })

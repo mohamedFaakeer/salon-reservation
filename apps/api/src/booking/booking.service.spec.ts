@@ -22,6 +22,7 @@ import type { AuditService } from "../audit/audit.service";
 import { PricingService } from "../pricing/pricing.service";
 import { RefundCalculator } from "../pricing/refund-calculator";
 import type { PaymentService } from "../payment/payment.service";
+import type { NotificationService } from "../notification/notification.service";
 
 function mockRepo<T extends ObjectLiteral>() {
   return {
@@ -86,6 +87,7 @@ describe("BookingService", () => {
   let customers: CustomerService;
   let audit: AuditService;
   let payments: PaymentService;
+  let notifications: NotificationService;
   let service: BookingService;
 
   beforeEach(() => {
@@ -143,6 +145,7 @@ describe("BookingService", () => {
       recordPayment: vi.fn(),
       refundWithManager: vi.fn(async () => ({ id: "refund-1" })),
     } as unknown as PaymentService;
+    notifications = { fire: vi.fn(async () => undefined) } as unknown as NotificationService;
 
     service = new BookingService(
       dataSource,
@@ -156,6 +159,7 @@ describe("BookingService", () => {
       new PricingService(),
       payments,
       new RefundCalculator(),
+      notifications,
     );
   });
 

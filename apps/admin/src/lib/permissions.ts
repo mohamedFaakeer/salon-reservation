@@ -22,3 +22,8 @@ export function canRecordPayment(roles: string[]): boolean {
 export function canIssueRefund(roles: string[]): boolean {
   return roles.some((r) => r === "OWNER" || r === "MANAGER");
 }
+
+/** Mirrors VIEW_NOTIFICATIONS (OWNER, MANAGER, RECEPTIONIST). */
+export function canManageNotifications(roles: string[]): boolean {
+  return roles.some((r) => r === "OWNER" || r === "MANAGER" || r === "RECEPTIONIST");
+}

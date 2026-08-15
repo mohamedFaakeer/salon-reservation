@@ -8,6 +8,7 @@ import type { DataSource, EntityManager } from "typeorm";
 import { Repository } from "typeorm";
 import {
   ApiError,
+  NotificationEvent,
   PaymentProviderName,
   PaymentStatus,
   RefundStatus,
@@ -22,13 +23,15 @@ import { Refund } from "../entities/refund.entity";
 import { Appointment } from "../entities/appointment.entity";
 import type { Tenant } from "../entities/tenant.entity";
 import { isUniqueViolation } from "../common/postgres-errors.util";
-// AuditService/PaymentProviderResolver must stay VALUE imports: NestJS
-// resolves constructor injection via design:paramtypes metadata at runtime;
-// `import type` would erase them and break DI.
+// AuditService/PaymentProviderResolver/NotificationService must stay VALUE
+// imports: NestJS resolves constructor injection via design:paramtypes
+// metadata at runtime; `import type` would erase them and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { AuditService } from "../audit/audit.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { PaymentProviderResolver } from "./providers/resolve-payment-provider";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { NotificationService } from "../notification/notification.service";
 
 export interface RecordPaymentInput {
   amountCents: number;
@@ -52,6 +55,7 @@ export class PaymentService {
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
     private readonly providers: PaymentProviderResolver,
     private readonly audit: AuditService,
+    private readonly notifications: NotificationService,
   ) {}
 
   /** POST /appointments/:id/payments — staff-recorded payment against an existing appointment. */
@@ -62,14 +66,14 @@ export class PaymentService {
     actorUserId: string,
     idempotencyKey: string,
   ): Promise<Payment> {
-    return this.dataSource.transaction(async (manager) => {
-      const appointment = await manager
+    const { payment, appointment, isNew } = await this.dataSource.transaction(async (manager) => {
+      const foundAppointment = await manager
         .getRepository(Appointment)
-        .findOne({ where: { id: appointmentId, tenantId: tenant.id } });
-      if (!appointment) {
+        .findOne({ where: { id: appointmentId, tenantId: tenant.id }, relations: { customer: true } });
+      if (!foundAppointment) {
         throw new ApiError({ statusCode: 404, code: "NOT_FOUND", message: "Appointment not found." });
       }
-      return this.recordPayment(manager, tenant, appointment, {
+      const recorded = await this.recordPaymentInternal(manager, tenant, foundAppointment, {
         amountCents: dto.amountCents,
         method: dto.method,
         type: dto.type,
@@ -77,7 +81,19 @@ export class PaymentService {
         recordedById: actorUserId,
         idempotencyKey,
       });
+      return { ...recorded, appointment: foundAppointment };
     });
+
+    // Idempotent retries must not re-fire a notification.
+    if (isNew) {
+      try {
+        await this.notifications.fire(tenant, NotificationEvent.PAYMENT_CONFIRMATION, appointment, appointment.customer);
+      } catch {
+        // Notification failure must never surface as an error to the caller (PRD §3.10).
+      }
+    }
+
+    return payment;
   }
 
   /**
@@ -87,7 +103,9 @@ export class PaymentService {
    * Mutates `appointment.advancePaidCents`/`balanceCents` in place and
    * persists them, so a caller already holding the `appointment` reference
    * (e.g. `confirmHold`'s response) sees the updated balance without a
-   * second read.
+   * second read. Thin wrapper around `recordPaymentInternal` for callers
+   * (like `confirmHold`) that don't need to distinguish a fresh record from
+   * an idempotent replay.
    */
   async recordPayment(
     manager: EntityManager,
@@ -95,6 +113,16 @@ export class PaymentService {
     appointment: Appointment,
     input: RecordPaymentInput,
   ): Promise<Payment> {
+    const { payment } = await this.recordPaymentInternal(manager, tenant, appointment, input);
+    return payment;
+  }
+
+  private async recordPaymentInternal(
+    manager: EntityManager,
+    tenant: Tenant,
+    appointment: Appointment,
+    input: RecordPaymentInput,
+  ): Promise<{ payment: Payment; isNew: boolean }> {
     const paymentRepo = manager.getRepository(Payment);
 
     // Idempotent replay check FIRST — a retry of an already-successful
@@ -102,7 +130,7 @@ export class PaymentService {
     // below (the balance has already moved from the first attempt).
     const existingByKey = await paymentRepo.findOne({ where: { idempotencyKey: input.idempotencyKey } });
     if (existingByKey) {
-      return existingByKey;
+      return { payment: existingByKey, isNew: false };
     }
 
     if (input.amountCents > appointment.balanceCents) {
@@ -141,7 +169,7 @@ export class PaymentService {
       if (isUniqueViolation(err)) {
         const existing = await paymentRepo.findOne({ where: { idempotencyKey: input.idempotencyKey } });
         if (existing) {
-          return existing;
+          return { payment: existing, isNew: false };
         }
       }
       throw err;
@@ -168,7 +196,7 @@ export class PaymentService {
       manager,
     );
 
-    return payment;
+    return { payment, isNew: true };
   }
 
   /** POST /payments/:id/refund — manual entry point; opens its own transaction. */

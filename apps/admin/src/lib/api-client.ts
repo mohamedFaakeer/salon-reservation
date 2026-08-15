@@ -108,6 +108,18 @@ export interface PaymentRecord {
   createdAt: string;
 }
 
+export interface NotificationRecord {
+  id: string;
+  appointmentId: string | null;
+  type: string;
+  channel: string;
+  recipient: string;
+  status: string;
+  retryCount: number;
+  lastError: string | null;
+  createdAt: string;
+}
+
 export class ApiRequestError extends Error {
   readonly statusCode: number;
   readonly code: string;
@@ -315,4 +327,12 @@ export function refundPayment(paymentId: string, input: { amountCents: number; r
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export function fetchNotifications(status?: string): Promise<{ data: NotificationRecord[] }> {
+  return request<{ data: NotificationRecord[] }>(`/notifications${status ? `?status=${status}` : ""}`);
+}
+
+export function retryNotification(id: string): Promise<NotificationRecord> {
+  return request<NotificationRecord>(`/notifications/${id}/retry`, { method: "POST" });
 }
