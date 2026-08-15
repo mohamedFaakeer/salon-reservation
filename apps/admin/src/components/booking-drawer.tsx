@@ -27,7 +27,16 @@ function generateIdempotencyKey(): string {
   return `key-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export function BookingDrawer({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+export function BookingDrawer({
+  onClose,
+  onCreated,
+  defaultCheckInNow = false,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+  /** The "Walk-in" quick action pre-checks this — the customer is already standing there. */
+  defaultCheckInNow?: boolean;
+}) {
   const [slug, setSlug] = useState<string | null>(null);
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
@@ -40,7 +49,7 @@ export function BookingDrawer({ onClose, onCreated }: { onClose: () => void; onC
   const [slotTakenNotice, setSlotTakenNotice] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(null);
   const [source, setSource] = useState<Source>("WALK_IN");
-  const [checkInNow, setCheckInNow] = useState(false);
+  const [checkInNow, setCheckInNow] = useState(defaultCheckInNow);
   const [notes, setNotes] = useState("");
   const [idempotencyKey] = useState(generateIdempotencyKey);
   const [submitting, setSubmitting] = useState(false);

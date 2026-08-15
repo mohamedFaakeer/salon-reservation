@@ -32,6 +32,7 @@ export interface StaffMember {
   id: string;
   name: string;
   active: boolean;
+  color: string | null;
 }
 
 export interface ServiceItem {
@@ -74,6 +75,8 @@ export interface AppointmentRecord {
   endTime: string;
   staffId: string;
   customerId: string;
+  /** Present on list responses (joined server-side for search) — absent elsewhere. */
+  customer?: { firstName: string; lastName: string };
   subtotalCents: number;
   totalCents: number;
   advanceRequiredCents: number;
@@ -106,6 +109,17 @@ export interface PaymentRecord {
   type: PaymentType;
   recordedAt: string | null;
   createdAt: string;
+}
+
+export interface DashboardToday {
+  countsByStatus: Record<string, number>;
+  expectedRevenueCents: number;
+  outstandingCents: number;
+  checkedInNow: number;
+  inServiceNow: number;
+  waitingLate: number;
+  cancellations: number;
+  noShows: number;
 }
 
 export interface NotificationRecord {
@@ -327,6 +341,10 @@ export function refundPayment(paymentId: string, input: { amountCents: number; r
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export function fetchDashboardToday(): Promise<DashboardToday> {
+  return request<DashboardToday>("/dashboard/today");
 }
 
 export function fetchNotifications(status?: string): Promise<{ data: NotificationRecord[] }> {

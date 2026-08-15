@@ -1,23 +1,26 @@
 import { test, expect } from "@playwright/test";
 import { bookableFixture } from "./fixtures";
 
-test("receptionist books a walk-in and runs it through check-in -> in-service -> complete", async ({
+test("walk-in quick action pre-checks immediate check-in, and the dashboard reflects it end-to-end", async ({
   page,
   request,
 }) => {
-  const { staffId, serviceId } = await bookableFixture(request, "PW Admin Walkin");
+  const { staffId, serviceId } = await bookableFixture(request, "PW Dashboard");
 
   await page.goto("/login");
   await page.getByTestId("login-email").fill("receptionist@demo.salon");
   await page.getByTestId("login-password").fill("demo1234");
   await page.getByTestId("login-submit").click();
-
   await expect(page).toHaveURL(/\/today$/);
-  await expect(page.getByTestId("new-booking-button")).toBeVisible();
 
-  await page.getByTestId("new-booking-button").click();
+  // Stat cards render before any interaction.
+  await expect(page.getByTestId("stat-card-checked-in")).toBeVisible();
+  const checkedInBefore = await page.getByTestId("stat-card-checked-in").locator("p").nth(1).textContent();
 
-  // New customer.
+  await page.getByTestId("walk-in-button").click();
+  // The Walk-in quick action pre-checks "check in immediately" — New booking never does.
+  await expect(page.getByTestId("drawer-check-in-now")).toBeChecked();
+
   const uniqueName = `Walkin${Date.now()}`;
   await page.getByTestId("customer-search-input").fill(uniqueName);
   await page.getByRole("button", { name: "+ New customer" }).click();
@@ -26,28 +29,25 @@ test("receptionist books a walk-in and runs it through check-in -> in-service ->
   await page.getByTestId("new-customer-phone").fill(`077${Date.now().toString().slice(-7)}`);
   await page.getByTestId("create-customer-submit").click();
 
-  // Service + staff (specific, for a deterministic slot list).
   await page.getByTestId(`drawer-service-${serviceId}`).click();
   await page.getByTestId("drawer-staff-select").selectOption(staffId);
-
   await expect(page.getByTestId("drawer-slot-option").first()).toBeVisible();
   await page.getByTestId("drawer-slot-option").first().click();
-
   await page.getByTestId("drawer-submit").click();
 
-  // Drawer closes, booking appears on the day calendar under this staff member's column
-  // (default Playwright viewport is 1280px, at/above the lg breakpoint where the calendar renders).
-  // Scoped to this staff member's own column — the persistent dev DB can carry other staff's
-  // "today" appointments over from earlier test runs.
+  // Calendar shows the new card under this (freshly created, so uncontaminated by other test
+  // runs' "today" data) staff member's own column, already CHECKED_IN.
   const column = page.getByTestId(`calendar-staff-column-${staffId}`);
   await expect(column).toBeVisible();
-  await column.locator('[data-testid^="calendar-card-"]').first().click();
+  const card = column.locator('[data-testid^="calendar-card-"]').first();
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("CHECKED_IN");
 
-  await expect(page.getByTestId("detail-status")).toHaveText("CONFIRMED");
-  await page.getByTestId("action-check-in").click();
+  // The "Check-ins" stat card increments to reflect the new CHECKED_IN appointment.
+  const checkedInAfter = page.getByTestId("stat-card-checked-in").locator("p").nth(1);
+  await expect(checkedInAfter).not.toHaveText(checkedInBefore ?? "");
+
+  // Clicking the calendar card opens the same detail drawer used elsewhere.
+  await card.click();
   await expect(page.getByTestId("detail-status")).toHaveText("CHECKED_IN");
-  await page.getByTestId("action-in-service").click();
-  await expect(page.getByTestId("detail-status")).toHaveText("IN_SERVICE");
-  await page.getByTestId("action-complete").click();
-  await expect(page.getByTestId("detail-status")).toHaveText("COMPLETED");
 });

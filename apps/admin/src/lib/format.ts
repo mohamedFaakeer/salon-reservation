@@ -26,3 +26,20 @@ export function todayLocalDate(): string {
   const COLOMBO_OFFSET_MINUTES = 330;
   return new Date(Date.now() + COLOMBO_OFFSET_MINUTES * 60_000).toISOString().slice(0, 10);
 }
+
+/** UX.md §1 "Semantic status colors" — exact hex values, single source of truth for calendar cards + status badges. */
+const STATUS_COLORS: Record<string, string> = {
+  PENDING_PAYMENT: "#F59E0B",
+  CONFIRMED: "#3B82F6",
+  CHECKED_IN: "#10B981",
+  IN_SERVICE: "#8B5CF6",
+  COMPLETED: "#64748B",
+  CANCELLED: "#EF4444",
+  NO_SHOW: "#9CA3AF",
+  EXPIRED: "#F97316",
+  RESCHEDULED: "#0EA5E9",
+};
+
+export function statusColor(status: string): string {
+  return STATUS_COLORS[status] ?? "#64748B";
+}

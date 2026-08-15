@@ -23,6 +23,7 @@ import { AppointmentModule } from "./appointment/appointment.module";
 import { SalonModule } from "./salon/salon.module";
 import { PaymentModule } from "./payment/payment.module";
 import { NotificationModule } from "./notification/notification.module";
+import { DashboardModule } from "./dashboard/dashboard.module";
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { NotificationModule } from "./notification/notification.module";
     SalonModule,
     PaymentModule,
     NotificationModule,
+    DashboardModule,
   ],
   controllers: [AppController],
 })

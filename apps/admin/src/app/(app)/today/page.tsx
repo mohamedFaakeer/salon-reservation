@@ -4,26 +4,32 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ApiRequestError,
   fetchAppointments,
+  fetchDashboardToday,
   fetchStaff,
   type AppointmentRecord,
+  type DashboardToday,
   type StaffMember,
 } from "../../../lib/api-client";
-import { formatPriceCents, formatTime, todayLocalDate } from "../../../lib/format";
+import { formatPriceCents, formatTime, statusColor, todayLocalDate } from "../../../lib/format";
 import { canManageAppointments } from "../../../lib/permissions";
 import { useAuth } from "../../../context/auth-context";
 import { EmptyState } from "../../../components/empty-state";
 import { LoadingSkeleton } from "../../../components/loading-skeleton";
 import { BookingDrawer } from "../../../components/booking-drawer";
 import { AppointmentDetailDrawer } from "../../../components/appointment-detail-drawer";
+import { DashboardStats } from "../../../components/dashboard-stats";
+import { DayCalendar } from "../../../components/day-calendar";
 
 export default function TodayPage() {
   const { user } = useAuth();
   const canBook = canManageAppointments(user?.roles ?? []);
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [stats, setStats] = useState<DashboardToday | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showBookingDrawer, setShowBookingDrawer] = useState(false);
+  const [walkInDefault, setWalkInDefault] = useState(false);
   const [openAppointmentId, setOpenAppointmentId] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -35,12 +41,25 @@ export default function TodayPage() {
         setError(err instanceof ApiRequestError ? err.message : "Could not load today's appointments.");
       })
       .finally(() => setLoading(false));
+    void fetchDashboardToday()
+      .then(setStats)
+      .catch(() => setStats(null));
   }, []);
 
   useEffect(() => {
     load();
     void fetchStaff().then(setStaff);
   }, [load]);
+
+  function openNewBooking(): void {
+    setWalkInDefault(false);
+    setShowBookingDrawer(true);
+  }
+
+  function openWalkIn(): void {
+    setWalkInDefault(true);
+    setShowBookingDrawer(true);
+  }
 
   const staffNameById = new Map(staff.map((s) => [s.id, s.name]));
 
@@ -56,16 +75,28 @@ export default function TodayPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-slate-900">Today — {todayLocalDate()}</h1>
         {canBook ? (
-          <button
-            type="button"
-            data-testid="new-booking-button"
-            onClick={() => setShowBookingDrawer(true)}
-            className="rounded bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
-          >
-            New booking
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              data-testid="walk-in-button"
+              onClick={openWalkIn}
+              className="rounded border border-teal-600 px-4 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50"
+            >
+              Walk-in
+            </button>
+            <button
+              type="button"
+              data-testid="new-booking-button"
+              onClick={openNewBooking}
+              className="rounded bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
+            >
+              New booking
+            </button>
+          </div>
         ) : null}
       </div>
+
+      {stats ? <DashboardStats stats={stats} /> : null}
 
       {loading ? (
         <LoadingSkeleton rows={4} />
@@ -74,45 +105,54 @@ export default function TodayPage() {
       ) : appointments.length === 0 ? (
         <EmptyState
           title="No appointments today — here's what's next"
-          action={canBook ? { label: "New booking", onClick: () => setShowBookingDrawer(true) } : undefined}
+          action={canBook ? { label: "New booking", onClick: openNewBooking } : undefined}
         />
       ) : (
-        <div className="flex flex-col gap-4">
-          {Array.from(byStaff.entries()).map(([staffId, list]) => (
-            <div key={staffId} data-testid={`staff-group-${staffId}`} className="rounded-lg border border-slate-200 bg-white p-4">
-              <p className="mb-2 text-sm font-medium text-slate-500">{staffNameById.get(staffId) ?? "Staff"}</p>
-              <ul className="flex flex-col gap-2">
-                {list
-                  .sort((a, b) => a.startTime.localeCompare(b.startTime))
-                  .map((appt) => (
-                    <li key={appt.id}>
-                      <button
-                        type="button"
-                        data-testid={`appointment-card-${appt.id}`}
-                        onClick={() => setOpenAppointmentId(appt.id)}
-                        className="flex w-full items-center justify-between rounded border border-slate-200 p-3 text-left text-sm hover:border-teal-400"
-                      >
-                        <span>
-                          <span className="font-medium text-slate-900">{formatTime(appt.startTime)}</span>{" "}
-                          <span className="text-slate-500">· {appt.bookingReference}</span>
-                        </span>
-                        <span className="flex items-center gap-2">
-                          <span className="text-slate-500">{formatPriceCents(appt.totalCents)}</span>
-                          <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
-                            {appt.status}
+        <>
+          <div className="hidden lg:block">
+            <DayCalendar appointments={appointments} staff={staff} onSelect={setOpenAppointmentId} />
+          </div>
+          <div className="flex flex-col gap-4 lg:hidden">
+            {Array.from(byStaff.entries()).map(([staffId, list]) => (
+              <div key={staffId} data-testid={`staff-group-${staffId}`} className="rounded-lg border border-slate-200 bg-white p-4">
+                <p className="mb-2 text-sm font-medium text-slate-500">{staffNameById.get(staffId) ?? "Staff"}</p>
+                <ul className="flex flex-col gap-2">
+                  {list
+                    .sort((a, b) => a.startTime.localeCompare(b.startTime))
+                    .map((appt) => (
+                      <li key={appt.id}>
+                        <button
+                          type="button"
+                          data-testid={`appointment-card-${appt.id}`}
+                          onClick={() => setOpenAppointmentId(appt.id)}
+                          className="flex w-full items-center justify-between rounded border border-slate-200 p-3 text-left text-sm hover:border-teal-400"
+                        >
+                          <span>
+                            <span className="font-medium text-slate-900">{formatTime(appt.startTime)}</span>{" "}
+                            <span className="text-slate-500">· {appt.bookingReference}</span>
                           </span>
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-              </ul>
-            </div>
-          ))}
-        </div>
+                          <span className="flex items-center gap-2">
+                            <span className="text-slate-500">{formatPriceCents(appt.totalCents)}</span>
+                            <span
+                              className="rounded px-2 py-0.5 text-xs font-medium text-white"
+                              style={{ backgroundColor: statusColor(appt.status) }}
+                            >
+                              {appt.status}
+                            </span>
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {showBookingDrawer ? (
         <BookingDrawer
+          defaultCheckInNow={walkInDefault}
           onClose={() => setShowBookingDrawer(false)}
           onCreated={() => {
             setShowBookingDrawer(false);
