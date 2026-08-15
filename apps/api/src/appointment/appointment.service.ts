@@ -10,7 +10,9 @@ import {
   AppointmentStatus,
   UserRole,
   type AppointmentQueryDto,
+  type CancelAppointmentDto,
   type CreateAppointmentDto,
+  type RescheduleAppointmentDto,
 } from "@salon/shared";
 import { Appointment } from "../entities/appointment.entity";
 import { AppointmentServiceLine } from "../entities/appointment-service.entity";
@@ -160,6 +162,39 @@ export class AppointmentService {
     appointment.status = AppointmentStatus.COMPLETED;
     appointment.completedAt = new Date();
     return this.appointments.save(appointment);
+  }
+
+  /** OWNER/MANAGER/RECEPTIONIST only — gated at the controller, matching checkIn's ownership-free shape. */
+  async cancel(tenantId: string, id: string, dto: CancelAppointmentDto, actorUserId: string): Promise<Appointment> {
+    const appointment = await this.findOwned(tenantId, id);
+    const tenant = await this.tenantService.findById(tenantId);
+    return this.booking.cancelAppointment(tenant, appointment, {
+      reason: dto.reason,
+      actorUserId,
+      isSelfService: false,
+    });
+  }
+
+  async reschedule(
+    tenantId: string,
+    id: string,
+    dto: RescheduleAppointmentDto,
+    actorUserId: string,
+  ): Promise<Appointment> {
+    const appointment = await this.findOwned(tenantId, id);
+    const tenant = await this.tenantService.findById(tenantId);
+    return this.booking.rescheduleAppointment(tenant, appointment, {
+      newStart: dto.newStart,
+      newStaffId: dto.newStaffId,
+      actorUserId,
+      isSelfService: false,
+    });
+  }
+
+  async noShow(tenantId: string, id: string, actorUserId: string): Promise<Appointment> {
+    const appointment = await this.findOwned(tenantId, id);
+    const tenant = await this.tenantService.findById(tenantId);
+    return this.booking.markNoShow(tenant, appointment, { actorUserId });
   }
 
   private async findOwned(tenantId: string, id: string): Promise<Appointment> {

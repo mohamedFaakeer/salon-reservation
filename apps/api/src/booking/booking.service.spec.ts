@@ -10,6 +10,8 @@ import { BookingService } from "./booking.service";
 import { SlotHold, type BookingSnapshot } from "../entities/slot-hold.entity";
 import { Appointment } from "../entities/appointment.entity";
 import { AppointmentServiceLine } from "../entities/appointment-service.entity";
+import { Payment } from "../entities/payment.entity";
+import { Refund } from "../entities/refund.entity";
 import { Staff } from "../entities/staff.entity";
 import type { Service } from "../entities/service.entity";
 import type { Tenant } from "../entities/tenant.entity";
@@ -18,6 +20,7 @@ import type { AvailabilityService } from "../availability/availability.service";
 import type { CustomerService } from "../customer/customer.service";
 import type { AuditService } from "../audit/audit.service";
 import { PricingService } from "../pricing/pricing.service";
+import { RefundCalculator } from "../pricing/refund-calculator";
 import type { PaymentService } from "../payment/payment.service";
 
 function mockRepo<T extends ObjectLiteral>() {
@@ -26,6 +29,8 @@ function mockRepo<T extends ObjectLiteral>() {
     save: vi.fn(async (e: T) => ({ id: "generated-id", ...e }) as T),
     find: vi.fn(async () => [] as T[]),
     findOne: vi.fn(async () => null as T | null),
+    findOneOrFail: vi.fn(async () => ({}) as T),
+    update: vi.fn(async () => ({ affected: 1 })),
   } as unknown as Repository<T>;
 }
 
@@ -73,6 +78,9 @@ describe("BookingService", () => {
   let appointmentsRepo: Repository<Appointment>;
   let lineRepo: Repository<AppointmentServiceLine>;
   let staffRepo: Repository<Staff>;
+  let paymentsRepo: Repository<Payment>;
+  let refundsRepo: Repository<Refund>;
+  let queryBuilderExecute: ReturnType<typeof vi.fn>;
   let dataSource: DataSource;
   let availability: AvailabilityService;
   let customers: CustomerService;
@@ -85,10 +93,20 @@ describe("BookingService", () => {
     slotHoldsRepo = mockRepo<SlotHold>();
     appointmentsRepo = mockRepo<Appointment>();
     lineRepo = mockRepo<AppointmentServiceLine>();
+    paymentsRepo = mockRepo<Payment>();
+    refundsRepo = mockRepo<Refund>();
     staffRepo = {
       ...mockRepo<Staff>(),
       findOneOrFail: vi.fn(async () => ({ id: "staff-1", name: "Staff One" }) as Staff),
     } as unknown as Repository<Staff>;
+
+    queryBuilderExecute = vi.fn(async () => ({ affected: 1 }));
+    const queryBuilder = {
+      update: vi.fn().mockReturnThis(),
+      set: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      execute: queryBuilderExecute,
+    };
 
     const manager = {
       getRepository: (entity: unknown) => {
@@ -96,8 +114,11 @@ describe("BookingService", () => {
         if (entity === Appointment) return appointmentsRepo;
         if (entity === AppointmentServiceLine) return lineRepo;
         if (entity === Staff) return staffRepo;
+        if (entity === Payment) return paymentsRepo;
+        if (entity === Refund) return refundsRepo;
         throw new Error("unexpected entity in test manager");
       },
+      createQueryBuilder: vi.fn(() => queryBuilder),
       query: vi.fn(async () => undefined),
     } as unknown as EntityManager;
 
@@ -118,7 +139,10 @@ describe("BookingService", () => {
     } as unknown as CustomerService;
 
     audit = { record: vi.fn() } as unknown as AuditService;
-    payments = { recordPayment: vi.fn() } as unknown as PaymentService;
+    payments = {
+      recordPayment: vi.fn(),
+      refundWithManager: vi.fn(async () => ({ id: "refund-1" })),
+    } as unknown as PaymentService;
 
     service = new BookingService(
       dataSource,
@@ -131,6 +155,7 @@ describe("BookingService", () => {
       audit,
       new PricingService(),
       payments,
+      new RefundCalculator(),
     );
   });
 
@@ -380,6 +405,223 @@ describe("BookingService", () => {
 
       expect(appointment.status).toBe(AppointmentStatus.CHECKED_IN);
       expect(appointment.checkedInAt).toBeInstanceOf(Date);
+    });
+  });
+
+  function fakeAppointment(overrides: Partial<Appointment> = {}): Appointment {
+    return {
+      id: "appt-1",
+      staffId: "staff-1",
+      customerId: "customer-1",
+      status: AppointmentStatus.CONFIRMED,
+      startTime: new Date(Date.now() + 10 * 60 * 60_000), // 10h from now
+      endTime: new Date(Date.now() + 10 * 60 * 60_000 + 30 * 60_000),
+      source: BookingSource.WALK_IN,
+      notes: null,
+      advancePaidCents: 5000,
+      totalCents: 10000,
+      version: 3,
+      ...overrides,
+    } as Appointment;
+  }
+
+  describe("cancelAppointment", () => {
+    it("rejects an already-terminal appointment", async () => {
+      const appointment = fakeAppointment({ status: AppointmentStatus.CANCELLED });
+      await expect(
+        service.cancelAppointment(fakeTenant(), appointment, {
+          reason: "test",
+          actorUserId: "user-1",
+          isSelfService: false,
+        }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "APPOINTMENT_NOT_CANCELLABLE" });
+    });
+
+    it("rejects self-service cancellation inside the cutoff window", async () => {
+      const appointment = fakeAppointment({ startTime: new Date(Date.now() + 30 * 60_000) }); // 30 min out, cutoff is 2h
+      await expect(
+        service.cancelAppointment(fakeTenant(), appointment, {
+          reason: "test",
+          actorUserId: null,
+          isSelfService: true,
+        }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "APPOINTMENT_NOT_CANCELLABLE" });
+    });
+
+    it("allows staff-initiated cancel inside what would be the self-service cutoff", async () => {
+      const appointment = fakeAppointment({ startTime: new Date(Date.now() + 30 * 60_000) });
+      vi.mocked(appointmentsRepo.findOneOrFail).mockResolvedValue({
+        ...appointment,
+        status: AppointmentStatus.CANCELLED,
+      });
+
+      const result = await service.cancelAppointment(fakeTenant(), appointment, {
+        reason: "staff cancelled",
+        actorUserId: "user-1",
+        isSelfService: false,
+      });
+
+      expect(result.status).toBe(AppointmentStatus.CANCELLED);
+    });
+
+    it("computes and applies a refund before the cutoff, then marks CANCELLED via optimistic lock", async () => {
+      const appointment = fakeAppointment({ advancePaidCents: 5000 });
+      vi.mocked(paymentsRepo.find).mockResolvedValue([
+        { id: "payment-1", amountCents: 5000, state: "SUCCESS", createdAt: new Date() } as Payment,
+      ]);
+      vi.mocked(appointmentsRepo.findOneOrFail).mockResolvedValue({
+        ...appointment,
+        status: AppointmentStatus.CANCELLED,
+      });
+
+      const result = await service.cancelAppointment(fakeTenant(), appointment, {
+        reason: "customer request",
+        actorUserId: "user-1",
+        isSelfService: false,
+      });
+
+      expect(payments.refundWithManager).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        "payment-1",
+        expect.objectContaining({ amountCents: 5000 }),
+        "user-1",
+      );
+      expect(result.status).toBe(AppointmentStatus.CANCELLED);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "APPOINTMENT_CANCELLED",
+          metadata: expect.objectContaining({ refundCents: 5000 }),
+        }),
+        expect.anything(),
+      );
+    });
+
+    it("applies no refund when cancelling after the cutoff (0% tier), never calling refundWithManager", async () => {
+      const appointment = fakeAppointment({ startTime: new Date(Date.now() + 30 * 60_000), advancePaidCents: 5000 });
+      vi.mocked(paymentsRepo.find).mockResolvedValue([
+        { id: "payment-1", amountCents: 5000, state: "SUCCESS", createdAt: new Date() } as Payment,
+      ]);
+      vi.mocked(appointmentsRepo.findOneOrFail).mockResolvedValue({
+        ...appointment,
+        status: AppointmentStatus.CANCELLED,
+      });
+
+      await service.cancelAppointment(fakeTenant(), appointment, {
+        reason: "staff cancelled late",
+        actorUserId: "user-1",
+        isSelfService: false,
+      });
+
+      expect(payments.refundWithManager).not.toHaveBeenCalled();
+    });
+
+    it("throws VERSION_CONFLICT when the optimistic-lock update affects zero rows", async () => {
+      queryBuilderExecute.mockResolvedValue({ affected: 0 });
+      const appointment = fakeAppointment();
+
+      await expect(
+        service.cancelAppointment(fakeTenant(), appointment, {
+          reason: "test",
+          actorUserId: "user-1",
+          isSelfService: false,
+        }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "VERSION_CONFLICT" });
+    });
+  });
+
+  describe("rescheduleAppointment", () => {
+    it("creates a new appointment, marks the original RESCHEDULED, and re-points payments", async () => {
+      const appointment = fakeAppointment({ advancePaidCents: 3000, totalCents: 10000 });
+      vi.mocked(lineRepo.find).mockResolvedValue([
+        {
+          serviceId: "svc-1",
+          nameSnapshot: "Cut",
+          durationMinSnapshot: 30,
+          priceCentsSnapshot: 5000,
+          status: "ACTIVE",
+        } as AppointmentServiceLine,
+      ]);
+
+      const newStart = new Date(Date.now() + 20 * 60 * 60_000).toISOString();
+      const result = await service.rescheduleAppointment(fakeTenant(), appointment, {
+        newStart,
+        actorUserId: "user-1",
+        isSelfService: false,
+      });
+
+      // The original was marked RESCHEDULED via the optimistic-lock query builder.
+      expect(appointmentsRepo.save).toHaveBeenCalled(); // createAppointmentAtomic's insert
+      expect(appointmentsRepo.update).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ rescheduledFromId: appointment.id, advancePaidCents: 3000, balanceCents: 7000 }),
+      );
+      expect(paymentsRepo.update).toHaveBeenCalledWith(
+        { appointmentId: appointment.id },
+        expect.objectContaining({ appointmentId: expect.any(String) }),
+      );
+      expect(result).toBeDefined();
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "APPOINTMENT_RESCHEDULED" }),
+        expect.anything(),
+      );
+    });
+
+    it("rejects rescheduling an already-terminal appointment", async () => {
+      const appointment = fakeAppointment({ status: AppointmentStatus.COMPLETED });
+      await expect(
+        service.rescheduleAppointment(fakeTenant(), appointment, {
+          newStart: new Date(Date.now() + 20 * 60 * 60_000).toISOString(),
+          actorUserId: "user-1",
+          isSelfService: false,
+        }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "APPOINTMENT_NOT_CANCELLABLE" });
+    });
+  });
+
+  describe("markNoShow", () => {
+    it("rejects marking no-show before the grace period has elapsed", async () => {
+      const appointment = fakeAppointment({
+        status: AppointmentStatus.CONFIRMED,
+        startTime: new Date(Date.now() - 5 * 60_000), // started 5 min ago, grace is 15 min
+      });
+      await expect(service.markNoShow(fakeTenant(), appointment, { actorUserId: "user-1" })).rejects.toMatchObject({
+        statusCode: 400,
+        code: "BAD_STATE",
+      });
+    });
+
+    it("marks NO_SHOW and applies the no-show refund percent once the grace period has elapsed", async () => {
+      const appointment = fakeAppointment({
+        status: AppointmentStatus.CONFIRMED,
+        startTime: new Date(Date.now() - 30 * 60_000), // started 30 min ago, grace is 15 min
+        advancePaidCents: 5000,
+      });
+      vi.mocked(paymentsRepo.find).mockResolvedValue([
+        { id: "payment-1", amountCents: 5000, state: "SUCCESS", createdAt: new Date() } as Payment,
+      ]);
+      vi.mocked(appointmentsRepo.findOneOrFail).mockResolvedValue({
+        ...appointment,
+        status: AppointmentStatus.NO_SHOW,
+      });
+
+      const result = await service.markNoShow(fakeTenant(), appointment, { actorUserId: "user-1" });
+
+      expect(result.status).toBe(AppointmentStatus.NO_SHOW);
+      // fakeTenant()'s default noShowRefundPercent is 0 — no refund issued.
+      expect(payments.refundWithManager).not.toHaveBeenCalled();
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "APPOINTMENT_NO_SHOW" }),
+        expect.anything(),
+      );
+    });
+
+    it("rejects marking no-show for a status other than CONFIRMED/CHECKED_IN", async () => {
+      const appointment = fakeAppointment({ status: AppointmentStatus.COMPLETED });
+      await expect(service.markNoShow(fakeTenant(), appointment, { actorUserId: "user-1" })).rejects.toMatchObject({
+        statusCode: 400,
+        code: "BAD_STATE",
+      });
     });
   });
 });

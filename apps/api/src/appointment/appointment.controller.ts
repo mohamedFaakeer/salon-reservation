@@ -4,7 +4,7 @@ import type { Request } from "express";
 // DTOs must stay VALUE imports: ValidationPipe resolves them via
 // design:paramtypes metadata at runtime; `import type` would erase them.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import { AppointmentQueryDto, CreateAppointmentDto } from "@salon/shared";
+import { AppointmentQueryDto, CancelAppointmentDto, CreateAppointmentDto, RescheduleAppointmentDto } from "@salon/shared";
 import { ApiError } from "@salon/shared";
 import { getTenantContext } from "../tenant/tenant-context";
 import { Permissions } from "../common/authorization/permissions.decorator";
@@ -78,5 +78,29 @@ export class AppointmentController {
   complete(@Req() req: Request, @Param("id") id: string) {
     const ctx = getTenantContext(req);
     return this.appointments.complete(ctx.tenantId, id, ctx);
+  }
+
+  @Post(":id/cancel")
+  @HttpCode(200)
+  @Permissions(Permission.MANAGE_APPOINTMENTS)
+  cancel(@Req() req: Request, @Param("id") id: string, @Body() dto: CancelAppointmentDto) {
+    const ctx = getTenantContext(req);
+    return this.appointments.cancel(ctx.tenantId, id, dto, ctx.userId);
+  }
+
+  @Post(":id/reschedule")
+  @HttpCode(200)
+  @Permissions(Permission.MANAGE_APPOINTMENTS)
+  reschedule(@Req() req: Request, @Param("id") id: string, @Body() dto: RescheduleAppointmentDto) {
+    const ctx = getTenantContext(req);
+    return this.appointments.reschedule(ctx.tenantId, id, dto, ctx.userId);
+  }
+
+  @Post(":id/no-show")
+  @HttpCode(200)
+  @Permissions(Permission.MANAGE_APPOINTMENTS)
+  noShow(@Req() req: Request, @Param("id") id: string) {
+    const ctx = getTenantContext(req);
+    return this.appointments.noShow(ctx.tenantId, id, ctx.userId);
   }
 }

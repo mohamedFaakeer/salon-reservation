@@ -2,7 +2,7 @@ import { Body, Controller, Get, Headers, HttpCode, Param, Post, Query } from "@n
 // DTOs must stay VALUE imports: ValidationPipe resolves them via
 // design:paramtypes metadata at runtime; `import type` would erase them.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import { ConfirmPaymentDto, CreateBookingDto } from "@salon/shared";
+import { ConfirmPaymentDto, CreateBookingDto, SelfServiceCancelDto, SelfServiceRescheduleDto } from "@salon/shared";
 import { ApiError } from "@salon/shared";
 import { Public } from "../common/decorators/public.decorator";
 // TenantService/BookingService must stay VALUE imports: NestJS resolves
@@ -76,6 +76,31 @@ export class BookingController {
     // unique, so no tenant scoping is needed to find it; `phone` proves
     // ownership instead.
     return this.bookings.findByReferenceAndPhone(reference, phone);
+  }
+
+  @Post("bookings/:reference/cancel")
+  @HttpCode(200)
+  async selfServiceCancel(@Param("reference") reference: string, @Body() dto: SelfServiceCancelDto) {
+    const appointment = await this.bookings.findByReferenceAndPhone(reference, dto.phone);
+    const tenant = await this.tenantService.findById(appointment.tenantId);
+    return this.bookings.cancelAppointment(tenant, appointment, {
+      reason: dto.reason,
+      actorUserId: null,
+      isSelfService: true,
+    });
+  }
+
+  @Post("bookings/:reference/reschedule")
+  @HttpCode(200)
+  async selfServiceReschedule(@Param("reference") reference: string, @Body() dto: SelfServiceRescheduleDto) {
+    const appointment = await this.bookings.findByReferenceAndPhone(reference, dto.phone);
+    const tenant = await this.tenantService.findById(appointment.tenantId);
+    return this.bookings.rescheduleAppointment(tenant, appointment, {
+      newStart: dto.newStart,
+      newStaffId: dto.newStaffId,
+      actorUserId: null,
+      isSelfService: true,
+    });
   }
 
   /**

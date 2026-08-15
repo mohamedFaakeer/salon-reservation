@@ -85,6 +85,8 @@ export interface AppointmentRecord {
   completedAt: string | null;
   lateMinutes: number;
   notes: string | null;
+  cancellationReason: string | null;
+  cancelledAt: string | null;
 }
 
 export interface AppointmentDetail extends AppointmentRecord {
@@ -269,6 +271,27 @@ export function inService(id: string): Promise<AppointmentRecord> {
 
 export function complete(id: string): Promise<AppointmentRecord> {
   return request<AppointmentRecord>(`/appointments/${id}/complete`, { method: "POST" });
+}
+
+export function cancelAppointment(id: string, reason: string): Promise<AppointmentRecord> {
+  return request<AppointmentRecord>(`/appointments/${id}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function rescheduleAppointment(
+  id: string,
+  input: { newStart: string; newStaffId?: string },
+): Promise<AppointmentRecord> {
+  return request<AppointmentRecord>(`/appointments/${id}/reschedule`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function markNoShow(id: string): Promise<AppointmentRecord> {
+  return request<AppointmentRecord>(`/appointments/${id}/no-show`, { method: "POST" });
 }
 
 export function fetchPayments(appointmentId: string): Promise<{ data: PaymentRecord[] }> {

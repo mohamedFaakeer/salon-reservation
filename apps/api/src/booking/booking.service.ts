@@ -13,6 +13,7 @@ import {
   AppointmentStatus,
   PaymentMethod,
   PaymentProviderName,
+  PaymentStatus,
   PaymentType,
   type CreateBookingDto,
   type CreateCustomerDto,
@@ -21,6 +22,8 @@ import { Service } from "../entities/service.entity";
 import { SlotHold, type BookingSnapshot, type BookingSnapshotLine } from "../entities/slot-hold.entity";
 import { Appointment } from "../entities/appointment.entity";
 import { AppointmentServiceLine } from "../entities/appointment-service.entity";
+import { Payment } from "../entities/payment.entity";
+import { Refund } from "../entities/refund.entity";
 import { Staff } from "../entities/staff.entity";
 import type { Tenant } from "../entities/tenant.entity";
 import { canBook } from "../availability/availability.engine";
@@ -39,6 +42,8 @@ import { CustomerService } from "../customer/customer.service";
 import { AuditService } from "../audit/audit.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { PricingService } from "../pricing/pricing.service";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { RefundCalculator } from "../pricing/refund-calculator";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { PaymentService } from "../payment/payment.service";
 
@@ -61,6 +66,31 @@ export interface ReserveResult {
   balanceCents: number;
   expiresAt: Date;
   bookingReference: string;
+}
+
+const TERMINAL_STATUSES = new Set<AppointmentStatus>([
+  AppointmentStatus.CANCELLED,
+  AppointmentStatus.NO_SHOW,
+  AppointmentStatus.RESCHEDULED,
+  AppointmentStatus.EXPIRED,
+  AppointmentStatus.COMPLETED,
+]);
+
+export interface CancelAppointmentInput {
+  reason: string;
+  actorUserId: string | null;
+  isSelfService: boolean;
+}
+
+export interface RescheduleAppointmentInput {
+  newStart: string;
+  newStaffId?: string;
+  actorUserId: string | null;
+  isSelfService: boolean;
+}
+
+export interface MarkNoShowInput {
+  actorUserId: string | null;
 }
 
 export interface ReserveAndConfirmInput {
@@ -102,22 +132,23 @@ export class BookingService {
     private readonly audit: AuditService,
     private readonly pricing: PricingService,
     private readonly payments: PaymentService,
+    private readonly refundCalculator: RefundCalculator,
   ) {}
 
   /** GET /bookings/:reference?phone= — no :slug in this route; bookingReference is globally unique. */
   async findByReferenceAndPhone(
     reference: string,
     phone: string,
-  ): Promise<Appointment & { lines: AppointmentServiceLine[] }> {
+  ): Promise<Appointment & { lines: AppointmentServiceLine[]; salonSlug: string }> {
     const appointment = await this.appointments.findOne({
       where: { bookingReference: reference },
-      relations: { customer: true, staff: true },
+      relations: { customer: true, staff: true, tenant: true },
     });
     if (!appointment || appointment.customer.phone !== normalizePhone(phone)) {
       throw new ApiError({ statusCode: 404, code: "NOT_FOUND", message: "Booking not found." });
     }
     const lines = await this.appointmentServiceLines.find({ where: { appointmentId: appointment.id } });
-    return { ...appointment, lines };
+    return { ...appointment, lines, salonSlug: appointment.tenant.slug };
   }
 
   /** `/payments/:intentId/...` routes carry no slug — derive the tenant from the hold row itself. */
@@ -341,6 +372,301 @@ export class BookingService {
         await slotHoldRepo.save(hold);
       }
     });
+  }
+
+  /**
+   * POST /appointments/:id/cancel and POST /bookings/:reference/cancel —
+   * same policy engine either way (CLAUDE.md: single source of truth).
+   * Self-service is additionally gated by `selfServiceCutoffHours`.
+   */
+  async cancelAppointment(
+    tenant: Tenant,
+    appointment: Appointment,
+    input: CancelAppointmentInput,
+  ): Promise<Appointment> {
+    const now = new Date();
+    this.assertMutable(appointment, tenant, input.isSelfService, now);
+
+    return this.dataSource.transaction(async (manager) => {
+      const refund = this.refundCalculator.computeRefund({
+        startTime: appointment.startTime,
+        now,
+        isSelfService: input.isSelfService,
+        policy: tenant.settings.cancellationPolicy,
+        alreadyPaidCents: appointment.advancePaidCents,
+        isNoShow: false,
+      });
+
+      if (refund.refundCents > 0) {
+        await this.applyRefund(manager, tenant, appointment.id, refund.refundCents, input.actorUserId);
+      }
+
+      await this.applyOptimisticUpdate(manager, appointment, {
+        status: AppointmentStatus.CANCELLED,
+        cancellationReason: input.reason,
+        cancelledAt: now,
+      });
+
+      await this.audit.record(
+        {
+          tenantId: tenant.id,
+          actorUserId: input.actorUserId,
+          action: "APPOINTMENT_CANCELLED",
+          entityType: "Appointment",
+          entityId: appointment.id,
+          metadata: { reason: input.reason, refundCents: refund.refundCents },
+        },
+        manager,
+      );
+
+      return manager.getRepository(Appointment).findOneOrFail({ where: { id: appointment.id } });
+    });
+  }
+
+  /**
+   * POST /appointments/:id/reschedule and POST /bookings/:reference/reschedule.
+   * Creates a new Appointment for the new slot and marks the original
+   * RESCHEDULED — never mutated in place (PRD.md §3.4). Both status changes
+   * happen in one transaction, so a slot that becomes unavailable mid-flight
+   * rolls the whole thing back and leaves the original genuinely untouched
+   * (concurrency matrix §2.2.4).
+   */
+  async rescheduleAppointment(
+    tenant: Tenant,
+    appointment: Appointment,
+    input: RescheduleAppointmentInput,
+  ): Promise<Appointment> {
+    const now = new Date();
+    this.assertMutable(appointment, tenant, input.isSelfService, now);
+
+    const staffId = input.newStaffId ?? appointment.staffId;
+    const start = new Date(input.newStart);
+    const activeLines = await this.appointmentServiceLines.find({
+      where: { appointmentId: appointment.id, status: "ACTIVE" },
+    });
+    const durationMin = activeLines.reduce((sum, l) => sum + l.durationMinSnapshot, 0);
+    const end = new Date(start.getTime() + durationMin * 60_000);
+    const localDate = colomboNow(start).date;
+    const serviceIds = activeLines.map((l) => l.serviceId).filter((id): id is string => Boolean(id));
+
+    const [staffContext, salonClosed, qualified] = await Promise.all([
+      this.availability.loadStaffContext(tenant.id, staffId, localDate),
+      this.availability.isSalonClosed(tenant.id, localDate),
+      this.availability.isQualified(tenant.id, staffId, serviceIds),
+    ]);
+    // The appointment being rescheduled is still active (hence still in its
+    // own busyIntervals) at this point — exclude its own current window so a
+    // target slot that only overlaps the booking it's replacing isn't
+    // rejected as a false self-conflict. The DB-level exclusion constraint
+    // guards the real insert below regardless.
+    const ownStartMin = colomboNow(appointment.startTime).minutes;
+    const ownEndMin = colomboNow(appointment.endTime).minutes;
+    const contextForCheck = {
+      ...staffContext,
+      busyIntervals: staffContext.busyIntervals.filter(
+        (b) => !(b.startMin === ownStartMin && b.endMin === ownEndMin),
+      ),
+    };
+    this.assertCanBook(start, end, qualified, contextForCheck, salonClosed, tenant);
+
+    return this.dataSource.transaction(async (manager) => {
+      // Frees the original's slot (the exclusion constraint's WHERE clause
+      // only covers active statuses) before the new slot is inserted, both
+      // in this one transaction.
+      await this.applyOptimisticUpdate(manager, appointment, { status: AppointmentStatus.RESCHEDULED });
+
+      const snapshotLines: BookingSnapshotLine[] = activeLines.map((l) => ({
+        serviceId: l.serviceId ?? "",
+        nameSnapshot: l.nameSnapshot,
+        durationMinSnapshot: l.durationMinSnapshot,
+        priceCentsSnapshot: l.priceCentsSnapshot,
+      }));
+
+      const newAppointment = await this.createAppointmentAtomic(manager, tenant, {
+        customerId: appointment.customerId,
+        staffId,
+        startTime: start,
+        endTime: end,
+        source: appointment.source,
+        lines: snapshotLines,
+        notes: appointment.notes,
+        holdExpiresAt: null,
+      });
+
+      // No re-pricing on reschedule (same services, same prices) — inherit
+      // the original's actual paid/owed state instead of PricingService's
+      // fresh "nothing paid yet" defaults.
+      const appointmentRepo = manager.getRepository(Appointment);
+      await appointmentRepo.update(newAppointment.id, {
+        rescheduledFromId: appointment.id,
+        advancePaidCents: appointment.advancePaidCents,
+        balanceCents: appointment.totalCents - appointment.advancePaidCents,
+      });
+      await manager
+        .getRepository(Payment)
+        .update({ appointmentId: appointment.id }, { appointmentId: newAppointment.id });
+
+      await this.audit.record(
+        {
+          tenantId: tenant.id,
+          actorUserId: input.actorUserId,
+          action: "APPOINTMENT_RESCHEDULED",
+          entityType: "Appointment",
+          entityId: appointment.id,
+          metadata: { newAppointmentId: newAppointment.id },
+        },
+        manager,
+      );
+      await this.audit.record(
+        {
+          tenantId: tenant.id,
+          actorUserId: input.actorUserId,
+          action: "APPOINTMENT_RESCHEDULED",
+          entityType: "Appointment",
+          entityId: newAppointment.id,
+          metadata: { rescheduledFromId: appointment.id },
+        },
+        manager,
+      );
+
+      return appointmentRepo.findOneOrFail({ where: { id: newAppointment.id } });
+    });
+  }
+
+  /**
+   * POST /appointments/:id/no-show — "no-show converter ≤ grace" (P14):
+   * a validation gate on this manual action, not a scheduled job (no cron
+   * infrastructure exists in this codebase yet).
+   */
+  async markNoShow(tenant: Tenant, appointment: Appointment, input: MarkNoShowInput): Promise<Appointment> {
+    if (appointment.status !== AppointmentStatus.CONFIRMED && appointment.status !== AppointmentStatus.CHECKED_IN) {
+      throw new ApiError({
+        statusCode: 400,
+        code: "BAD_STATE",
+        message: `Cannot mark no-show for an appointment with status ${appointment.status}.`,
+      });
+    }
+    const now = new Date();
+    const graceMs = tenant.settings.noShowGraceMinutes * 60_000;
+    if (now.getTime() < appointment.startTime.getTime() + graceMs) {
+      throw new ApiError({
+        statusCode: 400,
+        code: "BAD_STATE",
+        message: "The no-show grace period hasn't elapsed yet.",
+      });
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const refund = this.refundCalculator.computeRefund({
+        startTime: appointment.startTime,
+        now,
+        isSelfService: false,
+        policy: tenant.settings.cancellationPolicy,
+        alreadyPaidCents: appointment.advancePaidCents,
+        isNoShow: true,
+      });
+
+      if (refund.refundCents > 0) {
+        await this.applyRefund(manager, tenant, appointment.id, refund.refundCents, input.actorUserId);
+      }
+
+      await this.applyOptimisticUpdate(manager, appointment, { status: AppointmentStatus.NO_SHOW });
+
+      await this.audit.record(
+        {
+          tenantId: tenant.id,
+          actorUserId: input.actorUserId,
+          action: "APPOINTMENT_NO_SHOW",
+          entityType: "Appointment",
+          entityId: appointment.id,
+          metadata: { refundCents: refund.refundCents },
+        },
+        manager,
+      );
+
+      return manager.getRepository(Appointment).findOneOrFail({ where: { id: appointment.id } });
+    });
+  }
+
+  /** Shared by cancel/reschedule: not already terminal, and (if self-service) still outside the cutoff window. */
+  private assertMutable(appointment: Appointment, tenant: Tenant, isSelfService: boolean, now: Date): void {
+    if (TERMINAL_STATUSES.has(appointment.status)) {
+      throw new ApiError({
+        statusCode: 409,
+        code: "APPOINTMENT_NOT_CANCELLABLE",
+        message: `This appointment is already ${appointment.status.toLowerCase()} and cannot be changed.`,
+      });
+    }
+    if (isSelfService) {
+      const cutoffHours = tenant.settings.cancellationPolicy.selfServiceCutoffHours;
+      const cutoff = new Date(appointment.startTime.getTime() - cutoffHours * 60 * 60_000);
+      if (now >= cutoff) {
+        throw new ApiError({
+          statusCode: 409,
+          code: "APPOINTMENT_NOT_CANCELLABLE",
+          message: "This booking can no longer be changed online. Please call the salon.",
+        });
+      }
+    }
+  }
+
+  /** FIFO allocation across the appointment's refundable payments (oldest first) until `refundCents` is exhausted. */
+  private async applyRefund(
+    manager: EntityManager,
+    tenant: Tenant,
+    appointmentId: string,
+    refundCents: number,
+    actorUserId: string | null,
+  ): Promise<void> {
+    const paymentRepo = manager.getRepository(Payment);
+    const refundRepo = manager.getRepository(Refund);
+    const candidates = await paymentRepo.find({
+      where: { appointmentId, state: In([PaymentStatus.SUCCESS, PaymentStatus.PARTIALLY_REFUNDED]) },
+      order: { createdAt: "ASC" },
+    });
+
+    let remaining = refundCents;
+    for (const payment of candidates) {
+      if (remaining <= 0) {
+        break;
+      }
+      const priorRefunds = await refundRepo.find({ where: { paymentId: payment.id } });
+      const alreadyRefunded = priorRefunds.reduce((sum, r) => sum + r.amountCents, 0);
+      const refundableFromThis = payment.amountCents - alreadyRefunded;
+      if (refundableFromThis <= 0) {
+        continue;
+      }
+      const amount = Math.min(remaining, refundableFromThis);
+      await this.payments.refundWithManager(
+        manager,
+        tenant,
+        payment.id,
+        { amountCents: amount, reason: "Cancellation refund" },
+        actorUserId,
+      );
+      remaining -= amount;
+    }
+  }
+
+  /** DATABASE.md §3.3: `UPDATE ... WHERE id=$1 AND version=$2`; 0 rows affected → 409 VERSION_CONFLICT. */
+  private async applyOptimisticUpdate(
+    manager: EntityManager,
+    appointment: Appointment,
+    patch: Partial<Pick<Appointment, "status" | "cancellationReason" | "cancelledAt">>,
+  ): Promise<void> {
+    const result = await manager
+      .createQueryBuilder()
+      .update(Appointment)
+      .set({ ...patch, version: () => '"version" + 1' })
+      .where("id = :id AND version = :version", { id: appointment.id, version: appointment.version })
+      .execute();
+    if (!result.affected) {
+      throw new ApiError({
+        statusCode: 409,
+        code: "VERSION_CONFLICT",
+        message: "This appointment was just modified elsewhere. Please refresh and try again.",
+      });
+    }
   }
 
   /**

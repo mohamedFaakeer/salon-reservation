@@ -171,73 +171,90 @@ export class PaymentService {
     return payment;
   }
 
-  /** POST /payments/:id/refund — manual, record-only (P13); cancellation-policy-driven calculation is P14. */
-  async refund(tenant: Tenant, paymentId: string, dto: RefundPaymentDto, actorUserId: string): Promise<Refund> {
-    return this.dataSource.transaction(async (manager) => {
-      const paymentRepo = manager.getRepository(Payment);
-      const refundRepo = manager.getRepository(Refund);
+  /** POST /payments/:id/refund — manual entry point; opens its own transaction. */
+  async refund(tenant: Tenant, paymentId: string, dto: RefundPaymentDto, actorUserId: string | null): Promise<Refund> {
+    return this.dataSource.transaction((manager) => this.refundWithManager(manager, tenant, paymentId, dto, actorUserId));
+  }
 
-      const payment = await paymentRepo.findOne({ where: { id: paymentId, tenantId: tenant.id } });
-      if (!payment) {
-        throw new ApiError({ statusCode: 404, code: "NOT_FOUND", message: "Payment not found." });
-      }
+  /**
+   * The one place a `Refund` row is ever created. Takes an externally-owned
+   * manager so `BookingService.cancelAppointment`/`markNoShow` can call this
+   * atomically within their own transaction (the refund must commit or roll
+   * back together with the appointment's status change) — same pattern as
+   * `recordPayment` vs. `recordPaymentForAppointment`. Refunds recorded here
+   * are still manual/record-only (P13); the *amount* passed in may now come
+   * from `RefundCalculator` (P14) instead of a human-entered figure.
+   */
+  async refundWithManager(
+    manager: EntityManager,
+    tenant: Tenant,
+    paymentId: string,
+    dto: RefundPaymentDto,
+    actorUserId: string | null,
+  ): Promise<Refund> {
+    const paymentRepo = manager.getRepository(Payment);
+    const refundRepo = manager.getRepository(Refund);
 
-      const priorRefunds = await refundRepo.find({ where: { paymentId } });
-      const alreadyRefunded = priorRefunds.reduce((sum, r) => sum + r.amountCents, 0);
-      const refundable = payment.amountCents - alreadyRefunded;
-      if (dto.amountCents > refundable) {
-        throw new ApiError({
-          statusCode: 400,
-          code: "REFUND_EXCEEDS_PAYMENT",
-          message: `Amount exceeds the refundable balance of ${refundable} cents.`,
-        });
-      }
+    const payment = await paymentRepo.findOne({ where: { id: paymentId, tenantId: tenant.id } });
+    if (!payment) {
+      throw new ApiError({ statusCode: 404, code: "NOT_FOUND", message: "Payment not found." });
+    }
 
-      const provider = this.providers.resolve(payment.provider);
-      const { providerRef } = await provider.refund({
-        amountCents: dto.amountCents,
-        providerPaymentRef: payment.providerPaymentRef,
+    const priorRefunds = await refundRepo.find({ where: { paymentId } });
+    const alreadyRefunded = priorRefunds.reduce((sum, r) => sum + r.amountCents, 0);
+    const refundable = payment.amountCents - alreadyRefunded;
+    if (dto.amountCents > refundable) {
+      throw new ApiError({
+        statusCode: 400,
+        code: "REFUND_EXCEEDS_PAYMENT",
+        message: `Amount exceeds the refundable balance of ${refundable} cents.`,
       });
+    }
 
-      const refund = await refundRepo.save(
-        refundRepo.create({
-          paymentId,
-          amountCents: dto.amountCents,
-          reason: dto.reason,
-          state: RefundStatus.SUCCEEDED,
-          providerRef,
-          initiatedById: actorUserId,
-        }),
-      );
-
-      const totalRefunded = alreadyRefunded + dto.amountCents;
-      payment.state = totalRefunded >= payment.amountCents ? PaymentStatus.REFUNDED : PaymentStatus.PARTIALLY_REFUNDED;
-      await paymentRepo.save(payment);
-
-      if (payment.appointmentId) {
-        const appointmentRepo = manager.getRepository(Appointment);
-        const appointment = await appointmentRepo.findOne({ where: { id: payment.appointmentId } });
-        if (appointment) {
-          appointment.balanceCents += dto.amountCents;
-          appointment.advancePaidCents -= dto.amountCents;
-          await appointmentRepo.save(appointment);
-        }
-      }
-
-      await this.audit.record(
-        {
-          tenantId: tenant.id,
-          actorUserId,
-          action: "PAYMENT_REFUNDED",
-          entityType: "Refund",
-          entityId: refund.id,
-          metadata: { paymentId, amountCents: dto.amountCents, reason: dto.reason },
-        },
-        manager,
-      );
-
-      return refund;
+    const provider = this.providers.resolve(payment.provider);
+    const { providerRef } = await provider.refund({
+      amountCents: dto.amountCents,
+      providerPaymentRef: payment.providerPaymentRef,
     });
+
+    const refund = await refundRepo.save(
+      refundRepo.create({
+        paymentId,
+        amountCents: dto.amountCents,
+        reason: dto.reason,
+        state: RefundStatus.SUCCEEDED,
+        providerRef,
+        initiatedById: actorUserId,
+      }),
+    );
+
+    const totalRefunded = alreadyRefunded + dto.amountCents;
+    payment.state = totalRefunded >= payment.amountCents ? PaymentStatus.REFUNDED : PaymentStatus.PARTIALLY_REFUNDED;
+    await paymentRepo.save(payment);
+
+    if (payment.appointmentId) {
+      const appointmentRepo = manager.getRepository(Appointment);
+      const appointment = await appointmentRepo.findOne({ where: { id: payment.appointmentId } });
+      if (appointment) {
+        appointment.balanceCents += dto.amountCents;
+        appointment.advancePaidCents -= dto.amountCents;
+        await appointmentRepo.save(appointment);
+      }
+    }
+
+    await this.audit.record(
+      {
+        tenantId: tenant.id,
+        actorUserId,
+        action: "PAYMENT_REFUNDED",
+        entityType: "Refund",
+        entityId: refund.id,
+        metadata: { paymentId, amountCents: dto.amountCents, reason: dto.reason },
+      },
+      manager,
+    );
+
+    return refund;
   }
 
   async list(tenantId: string, query: PaymentQueryDto): Promise<PaymentListResult> {

@@ -96,6 +96,7 @@ export interface BookingDetail {
   bookingReference: string;
   staff: SalonStaff;
   lines: AppointmentServiceLineView[];
+  salonSlug: string;
 }
 
 export interface ConfirmResponse {
@@ -207,4 +208,21 @@ export function cancelHold(intentId: string): Promise<{ ok: true }> {
 
 export function fetchBookingByReference(reference: string, phone: string): Promise<BookingDetail> {
   return request<BookingDetail>(`/bookings/${reference}?phone=${encodeURIComponent(phone)}`);
+}
+
+export function cancelBooking(reference: string, phone: string, reason: string): Promise<BookingDetail> {
+  return request<BookingDetail>(`/bookings/${reference}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ phone, reason }),
+  });
+}
+
+export function rescheduleBooking(
+  reference: string,
+  input: { phone: string; newStart: string; newStaffId?: string },
+): Promise<BookingDetail> {
+  return request<BookingDetail>(`/bookings/${reference}/reschedule`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }

@@ -14,5 +14,6 @@ export * from "./dto/availability.dto";
 export * from "./dto/customer.dto";
 export * from "./dto/booking.dto";
 export * from "./dto/appointment.dto";
+export * from "./dto/appointment-lifecycle.dto";
 export * from "./dto/payment.dto";
 export * from "./errors/api-error";
