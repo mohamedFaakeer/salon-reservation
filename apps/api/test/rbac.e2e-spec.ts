@@ -10,14 +10,15 @@ import { ApiExceptionFilter } from "../src/common/filters/api-exception.filter";
 import { dayOfWeekOf } from "../src/availability/time.util";
 
 // TokenService requires JWT_SECRET at construction time (compile of AppModule).
-process.env.JWT_SECRET = process.env.JWT_SECRET ?? "e2e-test-secret";
+process.env.JWT_SECRET = process.env.JWT_SECRET ?? "e2e-test-secret-min-32-characters-long";
 
-// S6 (STAFF calls another staff's appointment mutation → 403) is deferred:
-// no Appointment resource exists until P10 (docs/DEVELOPMENT_PLAN.md). Once
-// it exists, ownership checks are enforced in the service layer per
+// S6 (STAFF calls another staff's appointment mutation → 403) is covered in
+// apps/api/test/appointments.e2e-spec.ts ("S6: a STAFF member may act on
+// their own appointment but not another's"), not here — that spec already
+// owns the Appointment fixtures and lifecycle setup this scenario needs.
+// Ownership is enforced in the service layer per
 // apps/api/src/common/authorization/role-permissions.ts's comment on
 // MANAGE_OWN_APPOINTMENT — RolesGuard only proves capability, not ownership.
-// See docs/DECISIONS.md (2026-08-11 entry).
 
 describe("RBAC (e2e)", () => {
   let app: INestApplication;

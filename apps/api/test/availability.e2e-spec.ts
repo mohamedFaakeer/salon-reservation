@@ -9,7 +9,7 @@ import { ApiExceptionFilter } from "../src/common/filters/api-exception.filter";
 import { dayOfWeekOf } from "../src/availability/time.util";
 
 // TokenService requires JWT_SECRET at construction time (compile of AppModule).
-process.env.JWT_SECRET = process.env.JWT_SECRET ?? "e2e-test-secret";
+process.env.JWT_SECRET = process.env.JWT_SECRET ?? "e2e-test-secret-min-32-characters-long";
 
 /** A date comfortably inside the default 30-day booking window, not "today". */
 function inWindowDate(daysAhead: number): string {

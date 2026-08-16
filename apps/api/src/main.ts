@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import cookieParser from "cookie-parser";
+import helmet from "helmet";
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
@@ -18,6 +19,7 @@ async function bootstrap(): Promise<void> {
     .map((origin: string) => origin.trim())
     .filter(Boolean);
 
+  app.use(helmet());
   app.use(cookieParser());
   app.setGlobalPrefix("api/v1");
   app.enableCors({

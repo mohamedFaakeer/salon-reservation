@@ -1,3 +1,4 @@
+import type { MiddlewareConsumer, NestModule } from "@nestjs/common";
 import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
@@ -24,6 +25,7 @@ import { SalonModule } from "./salon/salon.module";
 import { PaymentModule } from "./payment/payment.module";
 import { NotificationModule } from "./notification/notification.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
+import { RequestLoggingMiddleware } from "./common/middleware/request-logging.middleware";
 
 @Module({
   imports: [
@@ -81,4 +83,8 @@ import { DashboardModule } from "./dashboard/dashboard.module";
   ],
   controllers: [AppController],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(RequestLoggingMiddleware).forRoutes("*");
+  }
+}

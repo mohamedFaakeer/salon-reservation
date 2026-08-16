@@ -7,7 +7,7 @@ import { ValidationPipe, type INestApplication } from "@nestjs/common";
 import { AppModule } from "../src/app.module";
 import { ApiExceptionFilter } from "../src/common/filters/api-exception.filter";
 
-process.env.JWT_SECRET = process.env.JWT_SECRET ?? "e2e-test-secret";
+process.env.JWT_SECRET = process.env.JWT_SECRET ?? "e2e-test-secret-min-32-characters-long";
 
 /** Unique phone per run — the DB is persistent across e2e runs, so fixed numbers would collide. */
 let phoneCounter = 0;

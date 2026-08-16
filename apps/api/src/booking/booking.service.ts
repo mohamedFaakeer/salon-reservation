@@ -8,6 +8,7 @@ import type { DataSource, EntityManager } from "typeorm";
 import { In, Repository } from "typeorm";
 import {
   ApiError,
+  isApiError,
   BookingSource,
   SlotHoldStatus,
   AppointmentStatus,
@@ -185,6 +186,15 @@ export class BookingService {
     const end = new Date(start.getTime() + durationMin * 60_000);
     const localDate = colomboNow(start).date;
 
+    const holdResult = (hold: SlotHold): ReserveResult => ({
+      holdId: hold.id,
+      amountCents,
+      advanceRequiredCents: totals.advanceRequiredCents,
+      balanceCents: totals.balanceCents,
+      expiresAt: hold.expiresAt,
+      bookingReference: (hold.bookingSnapshot as BookingSnapshot).bookingReference,
+    });
+
     try {
       return await this.dataSource.transaction(async (manager) => {
         const slotHoldRepo = manager.getRepository(SlotHold);
@@ -192,14 +202,7 @@ export class BookingService {
         // Idempotent retry: an existing hold for this Idempotency-Key wins outright.
         const existing = await slotHoldRepo.findOne({ where: { tenantId: tenant.id, sessionKey } });
         if (existing) {
-          return {
-            holdId: existing.id,
-            amountCents,
-            advanceRequiredCents: totals.advanceRequiredCents,
-            balanceCents: totals.balanceCents,
-            expiresAt: existing.expiresAt,
-            bookingReference: (existing.bookingSnapshot as BookingSnapshot).bookingReference,
-          };
+          return holdResult(existing);
         }
 
         const [staffContext, salonClosed, qualified] = await Promise.all([
@@ -207,7 +210,24 @@ export class BookingService {
           this.availability.isSalonClosed(tenant.id, localDate),
           this.availability.isQualified(tenant.id, dto.staffId, dto.serviceIds),
         ]);
-        this.assertCanBook(start, end, qualified, staffContext, salonClosed, tenant);
+        try {
+          this.assertCanBook(start, end, qualified, staffContext, salonClosed, tenant);
+        } catch (err) {
+          // The staff/time conflict this just detected may be the racing
+          // twin of *this same* Idempotency-Key retry, which can commit its
+          // hold in the gap between this transaction's own sessionKey
+          // pre-check (above) and this in-app availability check — a TOCTOU
+          // window distinct from the DB-constraint race handled below. If a
+          // same-sessionKey hold exists now, this was that retry finishing,
+          // not a genuine conflict.
+          if (isApiError(err) && err.code === "SLOT_UNAVAILABLE") {
+            const winner = await slotHoldRepo.findOne({ where: { tenantId: tenant.id, sessionKey } });
+            if (winner) {
+              return holdResult(winner);
+            }
+          }
+          throw err;
+        }
 
         await this.sweepExpiredHolds(manager, tenant.id, dto.staffId);
 
@@ -221,54 +241,43 @@ export class BookingService {
           bookingReference,
         };
 
-        let hold: SlotHold;
-        try {
-          hold = await slotHoldRepo.save(
-            slotHoldRepo.create({
-              tenantId: tenant.id,
-              staffId: dto.staffId,
-              startTime: start,
-              endTime: end,
-              status: SlotHoldStatus.HELD,
-              expiresAt: new Date(Date.now() + 10 * 60_000),
-              sessionKey,
-              bookingSnapshot: snapshot,
-            }),
-          );
-        } catch (err) {
-          // Race: two requests with the same Idempotency-Key both passed the
-          // pre-check above; the unique (tenantId, sessionKey) index lets
-          // exactly one insert win. The loser's transaction is aborted by the
-          // violation, so the winner's hold is re-read *outside* this
-          // transaction (after the winner commits) and returned — idempotent
-          // retry, never a duplicate (API.md §1).
-          throw this.translateSlotUnavailable(err);
-        }
+        // Race: two requests with the same Idempotency-Key both passed the
+        // pre-check above. The loser's insert violates a constraint — but
+        // when both requests target the identical slot (the common retry
+        // case), it can violate *either* the unique (tenantId, sessionKey)
+        // index or the staff+time exclusion constraint, depending on which
+        // one Postgres evaluates first; which one fires is not something
+        // this code controls. Left untranslated here so the outer catch can
+        // check for a same-sessionKey winner regardless of which constraint
+        // reported the violation, before ever concluding this was a genuine
+        // slot conflict.
+        const hold = await slotHoldRepo.save(
+          slotHoldRepo.create({
+            tenantId: tenant.id,
+            staffId: dto.staffId,
+            startTime: start,
+            endTime: end,
+            status: SlotHoldStatus.HELD,
+            expiresAt: new Date(Date.now() + 10 * 60_000),
+            sessionKey,
+            bookingSnapshot: snapshot,
+          }),
+        );
 
-        return {
-          holdId: hold.id,
-          amountCents,
-          advanceRequiredCents: totals.advanceRequiredCents,
-          balanceCents: totals.balanceCents,
-          expiresAt: hold.expiresAt,
-          bookingReference,
-        };
+        return holdResult(hold);
       });
     } catch (err) {
-      if (isUniqueViolation(err)) {
+      if (isUniqueViolation(err) || isExclusionViolation(err)) {
+        // The winner's hold is re-read *outside* this transaction (after the
+        // winner commits) — idempotent retry, never a duplicate (API.md §1).
+        // A same-sessionKey winner existing is proof this was a retry, not a
+        // genuine conflict, no matter which constraint the loser tripped.
         const winner = await this.slotHolds.findOne({ where: { tenantId: tenant.id, sessionKey } });
         if (winner) {
-          return {
-            holdId: winner.id,
-            amountCents,
-            advanceRequiredCents: totals.advanceRequiredCents,
-            balanceCents: totals.balanceCents,
-            expiresAt: winner.expiresAt,
-            bookingReference: (winner.bookingSnapshot as BookingSnapshot).bookingReference,
-          };
+          return holdResult(winner);
         }
       }
-      throw err;
+      throw this.translateSlotUnavailable(err);
     }
   }
 

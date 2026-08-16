@@ -35,6 +35,13 @@ export class TokenService {
         "JWT_SECRET is required. Copy .env.example to .env and set it.",
       );
     }
+    if (raw.length < 32) {
+      // SECURITY.md §13 pre-demo checklist: JWT secret must be >= 32 random
+      // bytes. A short/guessable secret makes HS256 signatures forgeable.
+      throw new Error(
+        "JWT_SECRET must be at least 32 characters (SECURITY.md §13).",
+      );
+    }
     this.secret = TokenService.encodeSecret(raw);
   }
 

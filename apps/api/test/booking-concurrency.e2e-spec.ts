@@ -9,7 +9,7 @@ import { AppModule } from "../src/app.module";
 import { ApiExceptionFilter } from "../src/common/filters/api-exception.filter";
 import { dayOfWeekOf } from "../src/availability/time.util";
 
-process.env.JWT_SECRET = process.env.JWT_SECRET ?? "e2e-test-secret";
+process.env.JWT_SECRET = process.env.JWT_SECRET ?? "e2e-test-secret-min-32-characters-long";
 
 function inWindowDate(daysAhead: number): string {
   const d = new Date();

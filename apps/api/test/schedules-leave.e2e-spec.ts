@@ -8,7 +8,7 @@ import { AppModule } from "../src/app.module";
 import { ApiExceptionFilter } from "../src/common/filters/api-exception.filter";
 
 // TokenService requires JWT_SECRET at construction time (compile of AppModule).
-process.env.JWT_SECRET = process.env.JWT_SECRET ?? "e2e-test-secret";
+process.env.JWT_SECRET = process.env.JWT_SECRET ?? "e2e-test-secret-min-32-characters-long";
 
 describe("Schedules & Leave (e2e)", () => {
   let app: INestApplication;

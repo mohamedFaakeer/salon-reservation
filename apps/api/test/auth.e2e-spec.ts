@@ -10,7 +10,7 @@ import { TokenService } from "../src/auth/services/token.service";
 import { SessionService } from "../src/auth/services/session.service";
 
 // TokenService requires JWT_SECRET at construction time (compile of AppModule).
-process.env.JWT_SECRET = process.env.JWT_SECRET ?? "e2e-test-secret";
+process.env.JWT_SECRET = process.env.JWT_SECRET ?? "e2e-test-secret-min-32-characters-long";
 
 describe("Auth (e2e)", () => {
   let app: INestApplication;
