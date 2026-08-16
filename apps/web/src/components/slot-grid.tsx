@@ -1,7 +1,7 @@
 import type { BookingWizard } from "../hooks/use-booking-wizard";
 import { formatTime } from "../lib/format";
 import { EmptyState } from "./empty-state";
-import { LoadingSkeleton } from "./loading-skeleton";
+import { SlotsSkeleton } from "./loading-skeleton";
 
 export function SlotGrid({ wizard }: { wizard: BookingWizard }) {
   return (
@@ -20,7 +20,7 @@ export function SlotGrid({ wizard }: { wizard: BookingWizard }) {
       </div>
 
       {wizard.loadingSlots ? (
-        <LoadingSkeleton rows={4} />
+        <SlotsSkeleton />
       ) : wizard.slotsError ? (
         <EmptyState
           title={wizard.slotsError}
@@ -38,7 +38,7 @@ export function SlotGrid({ wizard }: { wizard: BookingWizard }) {
                 type="button"
                 data-testid="slot-option"
                 onClick={() => wizard.selectSlot(slot)}
-                className={`flex min-h-11 w-full flex-col items-center justify-center rounded-lg border p-2 text-sm transition ${
+                className={`flex min-h-11 w-full flex-col items-center justify-center rounded-lg border p-2 text-sm transition-colors active:scale-[0.98] ${
                   i === 0
                     ? "border-teal-600 bg-teal-50 text-teal-800"
                     : "border-slate-200 bg-white text-slate-900 hover:border-slate-300"

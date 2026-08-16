@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { BookingWizard } from "../hooks/use-booking-wizard";
 import { formatPriceCents } from "../lib/format";
+import { BusyLabel } from "./spinner";
 
 /** Client-side display only — the server's HOLD_EXPIRED response on confirm is the real authority. */
 function useCountdown(expiresAt: string): string {
@@ -74,7 +75,9 @@ export function PaymentStep({ wizard }: { wizard: BookingWizard }) {
           disabled={wizard.submitting || expired}
           className="min-h-11 flex-[2] rounded-md bg-teal-600 px-4 py-2 font-medium text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
-          {wizard.submitting ? "Confirming…" : "Book — pay advance"}
+          <BusyLabel busy={wizard.submitting} busyText="Confirming…">
+            Book — pay advance
+          </BusyLabel>
         </button>
       </div>
     </div>

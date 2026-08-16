@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/auth-context";
 import { ApiRequestError } from "../../lib/api-client";
+import { BusyLabel } from "../../components/spinner";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -64,7 +65,9 @@ export default function LoginPage() {
             disabled={submitting}
             className="w-full rounded bg-teal-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {submitting ? "Signing in…" : "Sign in"}
+            <BusyLabel busy={submitting} busyText="Signing in…">
+              Sign in
+            </BusyLabel>
           </button>
         </div>
       </form>

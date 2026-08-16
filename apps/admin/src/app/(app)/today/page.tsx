@@ -14,7 +14,11 @@ import { formatPriceCents, formatTime, todayLocalDate } from "../../../lib/forma
 import { canManageAppointments } from "../../../lib/permissions";
 import { useAuth } from "../../../context/auth-context";
 import { EmptyState } from "../../../components/empty-state";
-import { LoadingSkeleton } from "../../../components/loading-skeleton";
+import {
+  CalendarSkeleton,
+  ListSkeleton,
+  StatsSkeleton,
+} from "../../../components/loading-skeleton";
 import { BookingDrawer } from "../../../components/booking-drawer";
 import { AppointmentDetailDrawer } from "../../../components/appointment-detail-drawer";
 import { DashboardStats } from "../../../components/dashboard-stats";
@@ -99,10 +103,19 @@ export default function TodayPage() {
         ) : null}
       </div>
 
-      {stats ? <DashboardStats stats={stats} /> : null}
+      {stats ? <DashboardStats stats={stats} /> : loading ? <StatsSkeleton /> : null}
 
       {loading ? (
-        <LoadingSkeleton rows={4} />
+        // Mirrors the real responsive split below, so the placeholder occupies
+        // the same footprint the content will and nothing shifts on arrival.
+        <>
+          <div className="hidden lg:block">
+            <CalendarSkeleton />
+          </div>
+          <div className="lg:hidden">
+            <ListSkeleton />
+          </div>
+        </>
       ) : error ? (
         <EmptyState title={error} action={{ label: "Retry", onClick: load }} />
       ) : appointments.length === 0 ? (
@@ -132,13 +145,19 @@ export default function TodayPage() {
                 <ul className="flex flex-col gap-2">
                   {list
                     .sort((a, b) => a.startTime.localeCompare(b.startTime))
-                    .map((appt) => (
-                      <li key={appt.id}>
+                    .map((appt, i) => (
+                      <li
+                        key={appt.id}
+                        className="motion-rise"
+                        // Capped at 4 steps: a stagger should read as one arrival,
+                        // and a fully-booked day must not become a slow cascade.
+                        style={{ animationDelay: `${Math.min(i, 4) * 45}ms` }}
+                      >
                         <button
                           type="button"
                           data-testid={`appointment-card-${appt.id}`}
                           onClick={() => setOpenAppointmentId(appt.id)}
-                          className="flex min-h-11 w-full items-center justify-between rounded border border-slate-200 p-3 text-left text-sm hover:border-teal-400"
+                          className="flex min-h-11 w-full items-center justify-between rounded border border-slate-200 p-3 text-left text-sm transition-colors hover:border-teal-400"
                         >
                           <span>
                             <span className="font-medium text-slate-900">

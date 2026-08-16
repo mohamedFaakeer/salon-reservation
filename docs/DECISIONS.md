@@ -463,3 +463,63 @@ fix, and fixing them before the P19 deploy is cheaper than after.
 
 Verification: typecheck, lint and build green across all workspaces; detector
 clean on both apps; e2e status assertions updated for the humanised labels.
+
+---
+
+## 22. Motion & loading system (P18.5, second pass) (2026-08-17)
+
+A focused Impeccable `animate` pass over both frontends. Prior state: the
+entire codebase contained two `animate-pulse` calls and nothing else — no
+spinners, no route-level loading UI, no transitions. Operate-mode rules apply
+(motion serves feedback, state and continuity; staff never wait on
+choreography), so nothing below is decorative.
+
+1. **Shape-matched skeletons replace the one-size bar stack.** A single
+   `LoadingSkeleton` of identical `h-12` bars previously stood in for six
+   different layouts, so every load ended in a visible jump as real content
+   pushed the page around. Admin now has `StatsSkeleton`, `CalendarSkeleton`,
+   `TableSkeleton`, `ListSkeleton` and `SlotsSkeleton`; web has
+   `SlotsSkeleton`, `ServiceListSkeleton` and `BookingDetailSkeleton`. Each
+   mirrors its target's real structure — the calendar placeholder reproduces
+   the time axis, staff columns, header dots and varied card heights — so the
+   layout holds still. The Today page renders the *same* responsive split as
+   the loaded view (calendar at `lg`, list below), which is the specific reason
+   the jump disappears rather than merely shrinking.
+2. **Sweep instead of flat pulse.** A gradient sweep reads as "working"; a
+   whole-block opacity pulse reads as "stuck".
+3. **Busy spinners on all 13 submit paths** via a `BusyLabel` wrapper, so the
+   spinner's alignment and spacing are defined once rather than per button.
+   Labels still change to a present participle — motion says *something is
+   happening*, the word says *what*. The arc is authored SVG, not a bordered
+   div, so its stroke weight matches the icon set at any size.
+4. **Route-level `loading.tsx`** for `/today`, `/notifications`,
+   `/salon/[slug]` and `/booking/[reference]`. This became necessary *because*
+   of P18.5: converting admin nav to `next/link` made navigation a real
+   client-side transition, which had nothing to show while route data resolved.
+5. **The drawer entrance is the one authored moment.** 340 ms slide from the
+   docked edge with the scrim fading in, exiting faster at 220 ms.
+   `DrawerShell` holds the panel mounted for the exit duration and only then
+   reports the close, guarded so `onClose` fires exactly once even if Escape
+   and a backdrop click race. Everything else in the app stays quiet.
+6. **Capped stagger.** List and table rows arrive 45 ms apart, capped at 4
+   steps — a stagger should read as one arrival, and a fully-booked day must
+   not become a slow cascade.
+7. **Reduced motion removes travel, not meaning — and this fixed a real bug
+   shipped in §21.** That pass added a blanket `prefers-reduced-motion` block
+   setting `animation-iteration-count: 1`, which would have frozen a spinner
+   after a single rotation, turning live feedback into what looks like a hung
+   button. Spatial motion (slide, rise, sweep) is now suppressed and replaced
+   with a plain fade, while the spinner is explicitly exempted and keeps
+   turning. This is exactly the "global kill that destroys useful feedback"
+   the audit rubric warns about, caught only because the playbook was re-read
+   before implementing rather than after.
+8. **Craft-floor items picked up in passing.** The drawer's `✕` was a Unicode
+   glyph standing in for an icon — now an authored SVG matching the spinner's
+   stroke. Browser-owned surfaces are themed rather than left at defaults:
+   `::selection`, a brand-coloured `:focus-visible` ring (which also
+   strengthens the keyboard affordance from §21), and a `.tabular` class for
+   the numerals in time and money columns.
+
+Verification: typecheck, lint and build green across all workspaces; detector
+clean on both apps; drawer entrance, skeleton and Escape-to-close confirmed
+against the running app under a throttled API.

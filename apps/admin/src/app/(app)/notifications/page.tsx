@@ -11,7 +11,8 @@ import { formatTime } from "../../../lib/format";
 import { canManageNotifications } from "../../../lib/permissions";
 import { useAuth } from "../../../context/auth-context";
 import { EmptyState } from "../../../components/empty-state";
-import { LoadingSkeleton } from "../../../components/loading-skeleton";
+import { TableSkeleton } from "../../../components/loading-skeleton";
+import { BusyLabel } from "../../../components/spinner";
 
 const STATUS_STYLES: Record<string, string> = {
   SENT: "bg-emerald-100 text-emerald-800",
@@ -65,7 +66,7 @@ export default function NotificationsPage() {
       <h1 className="text-xl font-semibold text-slate-900">Notifications</h1>
 
       {loading ? (
-        <LoadingSkeleton rows={4} />
+        <TableSkeleton />
       ) : error ? (
         <EmptyState title={error} action={{ label: "Retry", onClick: load }} />
       ) : notifications.length === 0 ? (
@@ -84,11 +85,12 @@ export default function NotificationsPage() {
               </tr>
             </thead>
             <tbody>
-              {notifications.map((n) => (
+              {notifications.map((n, i) => (
                 <tr
                   key={n.id}
                   data-testid={`notification-row-${n.id}`}
-                  className="border-b border-slate-100"
+                  className="motion-rise border-b border-slate-100"
+                  style={{ animationDelay: `${Math.min(i, 4) * 45}ms` }}
                 >
                   <td className="px-4 py-2 text-slate-500">{formatTime(n.createdAt)}</td>
                   <td className="px-4 py-2">{humanize(n.type)}</td>
@@ -111,7 +113,9 @@ export default function NotificationsPage() {
                         onClick={() => void handleRetry(n.id)}
                         className="rounded border border-teal-600 px-2 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-60"
                       >
-                        {retryingId === n.id ? "Retrying…" : "Retry"}
+                        <BusyLabel busy={retryingId === n.id} busyText="Retrying…">
+                          Retry
+                        </BusyLabel>
                       </button>
                     ) : null}
                   </td>

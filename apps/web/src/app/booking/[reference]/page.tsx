@@ -19,6 +19,7 @@ import {
   formatTime,
   statusLabel,
 } from "../../../lib/format";
+import { BusyLabel } from "../../../components/spinner";
 
 const NOT_CANCELLABLE_STATUSES = new Set([
   "CANCELLED",
@@ -172,7 +173,9 @@ export default function ManageBookingPage() {
             disabled={loading}
             className="min-h-11 rounded-md bg-teal-600 px-4 py-2 font-medium text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
-            {loading ? "Looking up…" : "View booking"}
+            <BusyLabel busy={loading} busyText="Looking up…">
+              View booking
+            </BusyLabel>
           </button>
         </form>
       ) : (
@@ -252,7 +255,9 @@ export default function ManageBookingPage() {
                   onClick={() => void submitCancel()}
                   className="min-h-11 flex-1 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
-                  {cancelling ? "Cancelling…" : "Confirm cancellation"}
+                  <BusyLabel busy={cancelling} busyText="Cancelling…">
+                    Confirm cancellation
+                  </BusyLabel>
                 </button>
               </div>
             </div>

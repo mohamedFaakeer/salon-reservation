@@ -36,6 +36,7 @@ import {
 import { formatDurationMin, formatPriceCents, formatTime, todayLocalDate } from "../lib/format";
 import { DrawerShell } from "./drawer-shell";
 import { LoadingSkeleton } from "./loading-skeleton";
+import { BusyLabel } from "./spinner";
 import { StatusBadge } from "./status-badge";
 
 const PAYMENT_METHODS: PaymentMethod[] = ["CASH", "BANK_TRANSFER", "CARD_CAPTURED"];
@@ -446,7 +447,9 @@ export function AppointmentDetailDrawer({
                     onClick={() => void submitRemoveService(removingLineId)}
                     className="flex-1 rounded bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-60"
                   >
-                    {removeSubmitting ? "Removing…" : "Confirm removal"}
+                    <BusyLabel busy={removeSubmitting} busyText="Removing…">
+                      Confirm removal
+                    </BusyLabel>
                   </button>
                 </div>
               </div>
@@ -504,7 +507,9 @@ export function AppointmentDetailDrawer({
                       onClick={() => void submitAddService()}
                       className="flex-1 rounded bg-teal-600 px-2 py-1 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-60"
                     >
-                      {addServiceSubmitting ? "Adding…" : "Add"}
+                      <BusyLabel busy={addServiceSubmitting} busyText="Adding…">
+                        Add
+                      </BusyLabel>
                     </button>
                   </div>
                 </div>
@@ -600,7 +605,9 @@ export function AppointmentDetailDrawer({
                     onClick={() => void submitRefund(refundingId)}
                     className="flex-1 rounded bg-teal-600 px-2 py-1 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-60"
                   >
-                    {refundSubmitting ? "Refunding…" : "Confirm refund"}
+                    <BusyLabel busy={refundSubmitting} busyText="Refunding…">
+                      Confirm refund
+                    </BusyLabel>
                   </button>
                 </div>
               </div>
@@ -669,7 +676,9 @@ export function AppointmentDetailDrawer({
                       onClick={() => void submitRecordPayment()}
                       className="flex-1 rounded bg-teal-600 px-2 py-1 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-60"
                     >
-                      {recordSubmitting ? "Recording…" : "Record"}
+                      <BusyLabel busy={recordSubmitting} busyText="Recording…">
+                        Record
+                      </BusyLabel>
                     </button>
                   </div>
                 </div>
@@ -735,7 +744,9 @@ export function AppointmentDetailDrawer({
                   onClick={() => void submitCancel()}
                   className="flex-1 rounded bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-60"
                 >
-                  {cancelSubmitting ? "Cancelling…" : "Confirm cancellation"}
+                  <BusyLabel busy={cancelSubmitting} busyText="Cancelling…">
+                    Confirm cancellation
+                  </BusyLabel>
                 </button>
               </div>
             </div>

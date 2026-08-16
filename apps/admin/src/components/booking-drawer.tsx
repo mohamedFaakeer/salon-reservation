@@ -16,7 +16,8 @@ import {
 import { formatDurationMin, formatPriceCents, formatTime, todayLocalDate } from "../lib/format";
 import { CustomerSearch } from "./customer-search";
 import { DrawerShell } from "./drawer-shell";
-import { LoadingSkeleton } from "./loading-skeleton";
+import { SlotsSkeleton } from "./loading-skeleton";
+import { BusyLabel } from "./spinner";
 
 const SOURCES = ["WALK_IN", "PHONE", "WHATSAPP"] as const;
 type Source = (typeof SOURCES)[number];
@@ -239,7 +240,7 @@ export function BookingDrawer({
             ) : null}
           </div>
           {loadingSlots ? (
-            <LoadingSkeleton rows={2} />
+            <SlotsSkeleton />
           ) : selectedServiceIds.length === 0 ? (
             <p className="text-xs text-slate-500">Select a service to see available times.</p>
           ) : slots.length === 0 ? (
@@ -317,7 +318,9 @@ export function BookingDrawer({
           disabled={!customer || !selectedSlot || submitting}
           className="min-h-11 rounded bg-teal-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
-          {submitting ? "Booking…" : "Book appointment"}
+          <BusyLabel busy={submitting} busyText="Booking…">
+            Book appointment
+          </BusyLabel>
         </button>
       </div>
     </DrawerShell>

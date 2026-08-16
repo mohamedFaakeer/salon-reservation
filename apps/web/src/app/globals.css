@@ -1,15 +1,23 @@
 @import "tailwindcss";
 
 /*
- * Only the app-shell background lives here. Component colour comes from
- * Tailwind utilities (teal-600 is the brand primary); the previous
- * --color-primary / --color-primary-dark / --color-slate-100 declarations were
- * never referenced by any component and were removed rather than left to read
- * as a theming layer that does not exist. Promoting the ~400 utility usages
- * into real semantic tokens is a separate, deliberate refactor.
+ * Only the app-shell background and the motion vocabulary live here. Component
+ * colour comes from Tailwind utilities (teal-600 is the brand primary); the
+ * previous --color-primary / --color-primary-dark / --color-slate-50
+ * declarations were never referenced by any component and were removed rather
+ * than left to read as a theming layer that does not exist. Promoting the ~400
+ * utility usages into real semantic tokens is a separate, deliberate refactor.
  */
 :root {
   --color-app-bg: #f8fafc;
+  --color-brand: #0d9488;
+
+  /* Operate-mode durations: fast enough that staff never wait on choreography. */
+  --motion-feedback: 140ms; /* immediate acknowledgement */
+  --motion-state: 220ms; /* routine state change */
+  --motion-overlay: 340ms; /* drawer / overlay entrance */
+  --motion-overlay-exit: 220ms; /* exits are faster than entrances */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 html,
@@ -32,19 +40,133 @@ a {
 }
 
 /*
- * Loading skeletons pulse indefinitely. Vestibular-sensitive users get a
- * static skeleton instead — the element still communicates "loading" through
- * its shape and its role="status" label, so nothing is lost by holding it
- * still. Transitions are shortened rather than removed so state changes
- * (hover, focus, selection) remain perceptible.
+ * Browser-owned surfaces still belong to the design. Left at their defaults
+ * they are the clearest tell that a page was assembled rather than built.
+ */
+::selection {
+  background: #99f6e4;
+  color: #134e4a;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Times, prices and counts sit in columns; proportional digits make them jitter. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- motion --
+ * Every keyframe below explains feedback, state, or continuity. Each animates
+ * from an already-visible default so a failed stylesheet never hides content.
+ */
+
+/* Skeleton sweep — reads as "working", where a flat pulse reads as "stuck". */
+@keyframes skeleton-sweep {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Busy spinner. The only intentionally infinite animation in the app. */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* List/section arrival. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* The one authored moment: a panel arriving over the day board. */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: #e2e8f0;
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.75), transparent);
+  animation: skeleton-sweep 1.4s infinite;
+}
+
+.motion-spin {
+  animation: spin 0.6s linear infinite;
+}
+
+.motion-rise {
+  animation: rise-in var(--motion-state) var(--ease-out) backwards;
+}
+
+.motion-fade {
+  animation: fade-in var(--motion-state) var(--ease-out) backwards;
+}
+
+.motion-slide-in {
+  animation: slide-in-right var(--motion-overlay) var(--ease-out);
+}
+
+.motion-scrim {
+  animation: fade-in var(--motion-overlay-exit) ease-out;
+}
+
+/*
+ * Reduced motion removes travel, not meaning.
+ *
+ * Spatial movement (slide, rise, sweep) is suppressed and replaced with a
+ * plain opacity fade, which conveys the same arrival without vestibular cost.
+ * The spinner is deliberately exempt: it is not decoration, it is the only
+ * signal that a submitted action is still running, and freezing it would turn
+ * live feedback into what looks like a hung button. Transitions are shortened
+ * rather than removed so hover, focus and selection stay perceptible.
  */
 @media (prefers-reduced-motion: reduce) {
-  *,
+  *:not(.motion-spin),
   *::before,
   *::after {
-    animation-duration: 0.001ms !important;
+    animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  .skeleton::after {
+    animation: none;
+  }
+
+  .motion-rise,
+  .motion-fade,
+  .motion-slide-in,
+  .motion-scrim {
+    animation: fade-in 0.01ms both;
+  }
+
+  /* Restated after the blanket rule so the busy indicator keeps turning. */
+  .motion-spin {
+    animation: spin 0.8s linear infinite !important;
   }
 }

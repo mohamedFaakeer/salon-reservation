@@ -46,7 +46,7 @@ export function DayCalendar({
   const gridHeight = (DAY_END_MIN - DAY_START_MIN) * PX_PER_MIN;
 
   return (
-    <div className="flex overflow-x-auto rounded-lg border border-slate-200 bg-white">
+    <div className="motion-fade flex overflow-x-auto rounded-lg border border-slate-200 bg-white">
       <div className="w-14 shrink-0 border-r border-slate-200">
         <div className="h-10 border-b border-slate-200" />
         <div style={{ height: gridHeight }} className="relative">

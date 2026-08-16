@@ -8,6 +8,7 @@ import {
   type CustomerRecord,
 } from "../lib/api-client";
 import { EmptyState } from "./empty-state";
+import { BusyLabel } from "./spinner";
 
 export function CustomerSearch({ onSelect }: { onSelect: (customer: CustomerRecord) => void }) {
   const [query, setQuery] = useState("");
@@ -180,7 +181,9 @@ function NewCustomerForm({
           disabled={submitting || !firstName.trim() || !lastName.trim() || !phone.trim()}
           className="flex-1 rounded bg-teal-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
-          {submitting ? "Creating…" : "Create"}
+          <BusyLabel busy={submitting} busyText="Creating…">
+            Create
+          </BusyLabel>
         </button>
       </div>
     </div>

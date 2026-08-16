@@ -2,6 +2,7 @@
 
 import { useId, useState, type FormEvent } from "react";
 import type { BookingWizard } from "../hooks/use-booking-wizard";
+import { BusyLabel } from "./spinner";
 
 const PHONE_PATTERN = /^\+?[0-9\s-]{7,15}$/;
 
@@ -114,7 +115,9 @@ export function CustomerDetailsForm({ wizard }: { wizard: BookingWizard }) {
         disabled={!canSubmit || wizard.submitting}
         className="mt-2 min-h-11 rounded-md bg-teal-600 px-4 py-2 font-medium text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"
       >
-        {wizard.submitting ? "Holding your slot…" : "Hold this slot"}
+        <BusyLabel busy={wizard.submitting} busyText="Holding your slot…">
+          Hold this slot
+        </BusyLabel>
       </button>
     </form>
   );

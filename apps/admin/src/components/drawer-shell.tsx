@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** Kept in sync with --motion-overlay-exit in globals.css. */
+const EXIT_MS = 220;
 
 /**
  * Modal drawer chrome shared by BookingDrawer and AppointmentDetailDrawer.
@@ -27,6 +30,31 @@ export function DrawerShell({
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreFocusTo = useRef<HTMLElement | null>(null);
+  const [closing, setClosing] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * Play the exit before unmounting. The parent owns the drawer's existence, so
+   * we hold it on screen for the exit duration and only then report the close.
+   * Guarded against double-invocation (Escape while a backdrop click is already
+   * animating out) so `onClose` fires exactly once.
+   */
+  const requestClose = useCallback(() => {
+    if (closeTimer.current) {
+      return;
+    }
+    setClosing(true);
+    closeTimer.current = setTimeout(onClose, EXIT_MS);
+  }, [onClose]);
+
+  useEffect(
+    () => () => {
+      if (closeTimer.current) {
+        clearTimeout(closeTimer.current);
+      }
+    },
+    [],
+  );
 
   // Remember what opened the drawer so focus can go back there on close —
   // otherwise focus falls to <body> and keyboard users lose their place.
@@ -43,7 +71,7 @@ export function DrawerShell({
     function onKeyDown(e: KeyboardEvent): void {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onClose();
+        requestClose();
         return;
       }
       if (e.key !== "Tab") {
@@ -72,16 +100,17 @@ export function DrawerShell({
     }
     document.addEventListener("keydown", onKeyDown, true);
     return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [onClose]);
+  }, [requestClose]);
 
   return (
     <div
-      className="fixed inset-0 z-40 flex justify-end bg-black/30"
+      className="motion-scrim fixed inset-0 z-40 flex justify-end bg-black/30"
+      style={closing ? { animationDirection: "reverse" } : undefined}
       // Clicking the backdrop dismisses, matching every other modal on the web.
       // Guarded so clicks inside the panel don't bubble up and close it.
       onClick={(e) => {
         if (e.target === e.currentTarget) {
-          onClose();
+          requestClose();
         }
       }}
     >
@@ -90,7 +119,12 @@ export function DrawerShell({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="flex h-full w-full max-w-md flex-col overflow-y-auto bg-white p-6 shadow-xl"
+        // The panel travels in from the edge it is docked to, which is what
+        // makes it read as a layer over the day board rather than a new page.
+        className="motion-slide-in flex h-full w-full max-w-md flex-col overflow-y-auto bg-white p-6 shadow-xl"
+        style={
+          closing ? { animationDirection: "reverse", animationDuration: EXIT_MS + "ms" } : undefined
+        }
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 id={titleId} className="text-lg font-semibold text-slate-900">
@@ -98,15 +132,31 @@ export function DrawerShell({
           </h2>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             aria-label={`Close ${title.toLowerCase()}`}
-            className="-mr-2 flex h-11 w-11 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+            className="-mr-2 flex h-11 w-11 items-center justify-center rounded text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
           >
-            <span aria-hidden="true">✕</span>
+            <CloseIcon />
           </button>
         </div>
         {children}
       </div>
     </div>
+  );
+}
+
+/** Drawn rather than a "✕" glyph, so it carries the same stroke weight as Spinner. */
+function CloseIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="m4 4 8 8M12 4l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
   );
 }
