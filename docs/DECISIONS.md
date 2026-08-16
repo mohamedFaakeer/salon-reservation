@@ -391,3 +391,75 @@ Verified live from the npm registry (`npm view <pkg> version engines peerDepende
    - S1–S12 all green — confirmed this phase (pt.1).
    - `npm audit` clean of high/critical — confirmed this phase (pt.4).
    - The two checklist items tied to the live Render/Neon deployment itself (HTTPS, actual CORS origin values) are correctly P19's responsibility, not re-scoped into P18 — P18 closes everything that's a code-level or local-environment concern.
+
+---
+
+## 21. UI quality & accessibility pass (P18.5) (2026-08-17)
+
+Inserted between P18 and P19 at the user's direction, after an Impeccable audit
+of `apps/admin` and `apps/web` scored the frontends **12/20 (Acceptable)**. The
+audit is what justified the phase: the failures were concentrated and cheap to
+fix, and fixing them before the P19 deploy is cheaper than after.
+
+1. **Status colours were failing in two opposite directions, and are now one
+   accessible system.** `UX.md §1`'s semantic status hexes are accent-weight
+   colours, but were used as badge fills under white text (8 of 9 fell below
+   WCAG AA 4.5:1 — `PENDING_PAYMENT` measured **2.15:1**) and simultaneously as
+   10%-alpha calendar tints (all 9 composited to **1.08–1.14:1** against the
+   white card, making every status on the day board look identical). Each
+   status now carries a `{fill, fg, accent, label}` triple in
+   `apps/admin/src/lib/format.ts`. Hues are unchanged — amber still means
+   "waiting on money" — only the weights are chosen per role. Verified by
+   script: all 9 fg-on-fill pairs ≥ 5.40:1, all 9 accents ≥ 3.19:1 on white,
+   and every pairwise fill/accent distance ≥ dE 11.9 so no two statuses read
+   alike. A first iteration was rejected for reintroducing the same defect
+   class (`COMPLETED` vs `NO_SHOW` differed by 3/255).
+   `NO_SHOW` is deliberately the single dark badge: it is the only status
+   meaning "revenue lost, nobody came", and the extra weight makes it scannable.
+2. **Colour is never the only channel.** Every status now ships with a written
+   label alongside fill and accent dot (WCAG 1.4.1), so the day board survives
+   colour-blindness and low-contrast displays.
+3. **The two admin drawers are real dialogs.** `BookingDrawer` and
+   `AppointmentDetailDrawer` — where every booking, cancellation, refund and
+   reschedule happens — were bare `fixed inset-0` overlays with no dialog role,
+   no accessible name, no Escape, no focus containment, and an unlabelled `✕`
+   at 2.56:1. Extracted `DrawerShell` now supplies `role="dialog"`,
+   `aria-modal`, `aria-labelledby`, Escape-to-close, backdrop-click-to-close, a
+   Tab focus trap, focus restore to the invoking element, and a named 44px
+   close button. Extracted rather than duplicated so the two cannot drift apart.
+4. **Errors and status changes are announced.** `aria-live`, `role="alert"`,
+   `aria-invalid` and `aria-describedby` appeared **zero times** across both
+   apps against 28 inputs. All 16 error surfaces now carry `role="alert"`; the
+   phone field links its message via `aria-invalid`/`aria-describedby`; and the
+   slot-taken race notice (both apps) sits in a polite live region. Closes WCAG
+   3.3.1 and 4.1.3.
+5. **Raw enums no longer reach users.** `PENDING_PAYMENT` was rendered verbatim
+   in 5 places including the **customer-facing** booking lookup. Admin and web
+   each expose a `statusLabel` with identical wording, so staff and customer say
+   the same words on the phone. Deliberately duplicated per app rather than
+   promoted to `packages/shared`: it is presentation, `packages/shared` is
+   imported by the API, and both `format.ts` files already duplicate four
+   sibling helpers — the duplication follows the established local pattern.
+6. **Admin caught up to patterns `apps/web` already used.** `next/link` instead
+   of `<a href>` (every Today↔Notifications hop was a full document reload that
+   re-ran the auth bootstrap), a `<main>` landmark and `<nav>` around the nav
+   links, and 44px touch targets — admin had **zero** despite being scoped
+   desktop/**tablet**-first, where web already had 24.
+7. **`prefers-reduced-motion` honoured** in both apps; the pulsing skeletons
+   still communicate "loading" via shape and their existing `role="status"`.
+8. **Dead token layer removed.** All four `:root` custom properties were
+   unreferenced by any component. Replaced with the single `--color-app-bg`
+   actually consumed by `body`, rather than left to read as a theming system
+   that does not exist. **Deferred:** promoting the ~400 hard-coded Tailwind
+   colour utilities into semantic tokens, and dark mode — neither is in the MVP
+   spec, and the refactor carries real regression risk for zero visual change.
+9. **Detector finding verified, not blindly obeyed.** Impeccable flagged
+   `border-l-4` on calendar cards as a "side-tab" AI tell. That is a legitimate
+   calendar convention (Google Calendar, Outlook), so it was scored a partial
+   false positive — but the surrounding analysis showed the staff colour it
+   carried was redundant (the column header already names the staff member).
+   The card now encodes status instead, which both resolves the finding and
+   improves the information design. Both apps scan clean.
+
+Verification: typecheck, lint and build green across all workspaces; detector
+clean on both apps; e2e status assertions updated for the humanised labels.

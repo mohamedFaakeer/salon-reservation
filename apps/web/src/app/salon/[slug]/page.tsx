@@ -26,15 +26,16 @@ export default async function SalonProfilePage({ params }: { params: Promise<{ s
           <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
             {salon.closures.map((c, i) => (
               <p key={`${c.name}-${c.startDate}-${i}`}>
-                Closed {c.startDate === c.endDate ? c.startDate : `${c.startDate} – ${c.endDate}`}: {c.name}
+                Closed {c.startDate === c.endDate ? c.startDate : `${c.startDate} – ${c.endDate}`}:{" "}
+                {c.name}
               </p>
             ))}
           </div>
         ) : null}
         {salon.services.length > 0 ? (
-          <p className="mt-3 text-xs text-slate-400">
-            {salon.services.length} services · e.g. {formatDurationMin(salon.services[0].durationMin)} for{" "}
-            {salon.services[0].name}
+          <p className="mt-3 text-xs text-slate-500">
+            {salon.services.length} services · e.g.{" "}
+            {formatDurationMin(salon.services[0].durationMin)} for {salon.services[0].name}
           </p>
         ) : null}
       </header>

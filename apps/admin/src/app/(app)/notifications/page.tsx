@@ -19,6 +19,12 @@ const STATUS_STYLES: Record<string, string> = {
   FAILED: "bg-red-100 text-red-800",
 };
 
+/** Enum names are for the wire, not the screen: BOOKING_CONFIRMATION -> "Booking confirmation". */
+function humanize(value: string): string {
+  const lower = value.replace(/_/g, " ").toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
 export default function NotificationsPage() {
   const { user } = useAuth();
   const canRetry = canManageNotifications(user?.roles ?? []);
@@ -79,17 +85,21 @@ export default function NotificationsPage() {
             </thead>
             <tbody>
               {notifications.map((n) => (
-                <tr key={n.id} data-testid={`notification-row-${n.id}`} className="border-b border-slate-100">
+                <tr
+                  key={n.id}
+                  data-testid={`notification-row-${n.id}`}
+                  className="border-b border-slate-100"
+                >
                   <td className="px-4 py-2 text-slate-500">{formatTime(n.createdAt)}</td>
-                  <td className="px-4 py-2">{n.type}</td>
-                  <td className="px-4 py-2">{n.channel}</td>
+                  <td className="px-4 py-2">{humanize(n.type)}</td>
+                  <td className="px-4 py-2">{humanize(n.channel)}</td>
                   <td className="px-4 py-2 text-slate-600">{n.recipient}</td>
                   <td className="px-4 py-2">
                     <span
                       data-testid={`notification-status-${n.id}`}
                       className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[n.status] ?? "bg-slate-100 text-slate-700"}`}
                     >
-                      {n.status}
+                      {humanize(n.status)}
                     </span>
                   </td>
                   <td className="px-4 py-2">

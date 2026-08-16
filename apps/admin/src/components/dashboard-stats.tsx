@@ -7,8 +7,16 @@ export function DashboardStats({ stats }: { stats: DashboardToday }) {
     { testId: "checked-in", label: "Check-ins", value: String(stats.checkedInNow) },
     { testId: "waiting", label: "Waiting", value: String(stats.waitingLate) },
     { testId: "in-service", label: "In service", value: String(stats.inServiceNow) },
-    { testId: "expected-revenue", label: "Expected revenue", value: formatPriceCents(stats.expectedRevenueCents) },
-    { testId: "outstanding", label: "Outstanding", value: formatPriceCents(stats.outstandingCents) },
+    {
+      testId: "expected-revenue",
+      label: "Expected revenue",
+      value: formatPriceCents(stats.expectedRevenueCents),
+    },
+    {
+      testId: "outstanding",
+      label: "Outstanding",
+      value: formatPriceCents(stats.outstandingCents),
+    },
     { testId: "cancellations", label: "Cancellations", value: String(stats.cancellations) },
     { testId: "no-shows", label: "No-shows", value: String(stats.noShows) },
   ];

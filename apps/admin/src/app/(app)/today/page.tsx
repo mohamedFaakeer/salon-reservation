@@ -10,7 +10,7 @@ import {
   type DashboardToday,
   type StaffMember,
 } from "../../../lib/api-client";
-import { formatPriceCents, formatTime, statusColor, todayLocalDate } from "../../../lib/format";
+import { formatPriceCents, formatTime, todayLocalDate } from "../../../lib/format";
 import { canManageAppointments } from "../../../lib/permissions";
 import { useAuth } from "../../../context/auth-context";
 import { EmptyState } from "../../../components/empty-state";
@@ -18,6 +18,7 @@ import { LoadingSkeleton } from "../../../components/loading-skeleton";
 import { BookingDrawer } from "../../../components/booking-drawer";
 import { AppointmentDetailDrawer } from "../../../components/appointment-detail-drawer";
 import { DashboardStats } from "../../../components/dashboard-stats";
+import { StatusBadge } from "../../../components/status-badge";
 import { DayCalendar } from "../../../components/day-calendar";
 
 export default function TodayPage() {
@@ -38,7 +39,9 @@ export default function TodayPage() {
     fetchAppointments(todayLocalDate())
       .then((res) => setAppointments(res.data))
       .catch((err: unknown) => {
-        setError(err instanceof ApiRequestError ? err.message : "Could not load today's appointments.");
+        setError(
+          err instanceof ApiRequestError ? err.message : "Could not load today's appointments.",
+        );
       })
       .finally(() => setLoading(false));
     void fetchDashboardToday()
@@ -80,7 +83,7 @@ export default function TodayPage() {
               type="button"
               data-testid="walk-in-button"
               onClick={openWalkIn}
-              className="rounded border border-teal-600 px-4 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50"
+              className="min-h-11 rounded border border-teal-600 px-4 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50"
             >
               Walk-in
             </button>
@@ -88,7 +91,7 @@ export default function TodayPage() {
               type="button"
               data-testid="new-booking-button"
               onClick={openNewBooking}
-              className="rounded bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
+              className="min-h-11 rounded bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
             >
               New booking
             </button>
@@ -110,12 +113,22 @@ export default function TodayPage() {
       ) : (
         <>
           <div className="hidden lg:block">
-            <DayCalendar appointments={appointments} staff={staff} onSelect={setOpenAppointmentId} />
+            <DayCalendar
+              appointments={appointments}
+              staff={staff}
+              onSelect={setOpenAppointmentId}
+            />
           </div>
           <div className="flex flex-col gap-4 lg:hidden">
             {Array.from(byStaff.entries()).map(([staffId, list]) => (
-              <div key={staffId} data-testid={`staff-group-${staffId}`} className="rounded-lg border border-slate-200 bg-white p-4">
-                <p className="mb-2 text-sm font-medium text-slate-500">{staffNameById.get(staffId) ?? "Staff"}</p>
+              <div
+                key={staffId}
+                data-testid={`staff-group-${staffId}`}
+                className="rounded-lg border border-slate-200 bg-white p-4"
+              >
+                <p className="mb-2 text-sm font-medium text-slate-500">
+                  {staffNameById.get(staffId) ?? "Staff"}
+                </p>
                 <ul className="flex flex-col gap-2">
                   {list
                     .sort((a, b) => a.startTime.localeCompare(b.startTime))
@@ -125,20 +138,19 @@ export default function TodayPage() {
                           type="button"
                           data-testid={`appointment-card-${appt.id}`}
                           onClick={() => setOpenAppointmentId(appt.id)}
-                          className="flex w-full items-center justify-between rounded border border-slate-200 p-3 text-left text-sm hover:border-teal-400"
+                          className="flex min-h-11 w-full items-center justify-between rounded border border-slate-200 p-3 text-left text-sm hover:border-teal-400"
                         >
                           <span>
-                            <span className="font-medium text-slate-900">{formatTime(appt.startTime)}</span>{" "}
+                            <span className="font-medium text-slate-900">
+                              {formatTime(appt.startTime)}
+                            </span>{" "}
                             <span className="text-slate-500">· {appt.bookingReference}</span>
                           </span>
                           <span className="flex items-center gap-2">
-                            <span className="text-slate-500">{formatPriceCents(appt.totalCents)}</span>
-                            <span
-                              className="rounded px-2 py-0.5 text-xs font-medium text-white"
-                              style={{ backgroundColor: statusColor(appt.status) }}
-                            >
-                              {appt.status}
+                            <span className="text-slate-500">
+                              {formatPriceCents(appt.totalCents)}
                             </span>
+                            <StatusBadge status={appt.status} />
                           </span>
                         </button>
                       </li>

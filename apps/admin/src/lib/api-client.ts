@@ -20,7 +20,14 @@ export interface LoginResponse {
 }
 
 export interface TenantMe {
-  tenant: { id: string; slug: string; name: string; status: string; currency: string; timezone: string };
+  tenant: {
+    id: string;
+    slug: string;
+    name: string;
+    status: string;
+    currency: string;
+    timezone: string;
+  };
 }
 
 export interface TenantSettingsView {
@@ -140,7 +147,12 @@ export class ApiRequestError extends Error {
   readonly code: string;
   readonly details?: Record<string, unknown>;
 
-  constructor(statusCode: number, code: string, message: string, details?: Record<string, unknown>) {
+  constructor(
+    statusCode: number,
+    code: string,
+    message: string,
+    details?: Record<string, unknown>,
+  ) {
     super(message);
     this.name = "ApiRequestError";
     this.statusCode = statusCode;
@@ -151,7 +163,11 @@ export class ApiRequestError extends Error {
 
 function apiBaseUrl(): string {
   if (typeof window === "undefined") {
-    return process.env.API_SERVER_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api/v1";
+    return (
+      process.env.API_SERVER_URL ??
+      process.env.NEXT_PUBLIC_API_URL ??
+      "http://localhost:3000/api/v1"
+    );
   }
   return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api/v1";
 }
@@ -321,14 +337,21 @@ export function markNoShow(id: string): Promise<AppointmentRecord> {
   return request<AppointmentRecord>(`/appointments/${id}/no-show`, { method: "POST" });
 }
 
-export function addAppointmentService(appointmentId: string, serviceIds: string[]): Promise<unknown> {
+export function addAppointmentService(
+  appointmentId: string,
+  serviceIds: string[],
+): Promise<unknown> {
   return request<unknown>(`/appointments/${appointmentId}/services`, {
     method: "POST",
     body: JSON.stringify({ serviceIds }),
   });
 }
 
-export function removeAppointmentService(appointmentId: string, lineId: string, reason: string): Promise<unknown> {
+export function removeAppointmentService(
+  appointmentId: string,
+  lineId: string,
+  reason: string,
+): Promise<unknown> {
   return request<unknown>(`/appointments/${appointmentId}/services/${lineId}`, {
     method: "DELETE",
     body: JSON.stringify({ reason }),
@@ -351,7 +374,10 @@ export function recordPayment(
   });
 }
 
-export function refundPayment(paymentId: string, input: { amountCents: number; reason: string }): Promise<unknown> {
+export function refundPayment(
+  paymentId: string,
+  input: { amountCents: number; reason: string },
+): Promise<unknown> {
   return request<unknown>(`/payments/${paymentId}/refund`, {
     method: "POST",
     body: JSON.stringify(input),
@@ -363,7 +389,9 @@ export function fetchDashboardToday(): Promise<DashboardToday> {
 }
 
 export function fetchNotifications(status?: string): Promise<{ data: NotificationRecord[] }> {
-  return request<{ data: NotificationRecord[] }>(`/notifications${status ? `?status=${status}` : ""}`);
+  return request<{ data: NotificationRecord[] }>(
+    `/notifications${status ? `?status=${status}` : ""}`,
+  );
 }
 
 export function retryNotification(id: string): Promise<NotificationRecord> {

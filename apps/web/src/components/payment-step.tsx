@@ -50,9 +50,13 @@ export function PaymentStep({ wizard }: { wizard: BookingWizard }) {
       </div>
 
       {expired ? (
-        <p className="text-sm text-red-600">This hold has expired. Please start again.</p>
+        <p role="alert" className="text-sm text-red-600">
+          This hold has expired. Please start again.
+        </p>
       ) : wizard.error ? (
-        <p className="text-sm text-red-600">{wizard.error}</p>
+        <p role="alert" className="text-sm text-red-600">
+          {wizard.error}
+        </p>
       ) : null}
 
       <div className="flex gap-2">

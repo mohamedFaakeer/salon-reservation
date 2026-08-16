@@ -26,6 +26,7 @@
 | **P16 Dashboard / calendar** | Day operations | Today dashboard (counts, revenue, outstanding, check-ins), day calendar w/ status colors, quick actions, staff view | Dashboard e2e; calendar renders |
 | **P17 Testing** | Full sweep | Run all unit + e2e suites; fix gaps; concurrency soak | All green |
 | **P18 Security review** | Hardening | Security e2e matrix §2.4, OWASP checklist (SECURITY.md §12–13), `npm audit` clean of high/critical | Pre-demo checklist complete |
+| **P18.5 UI quality & a11y** | Frontend audit | Impeccable audit of `apps/admin` + `apps/web`; accessible status palette, modal dialog semantics, announced errors, touch targets, humanised enums | Audit score improves; typecheck/lint/build green |
 | **P19 Production readiness** | Deploy | Render (api/web/admin) + Neon; migrations on deploy; demo seed idempotent; cold-start warm-up documented; smoke demo script | Live demo URL works end-to-end |
 
 ---

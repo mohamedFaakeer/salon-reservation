@@ -27,19 +27,66 @@ export function todayLocalDate(): string {
   return new Date(Date.now() + COLOMBO_OFFSET_MINUTES * 60_000).toISOString().slice(0, 10);
 }
 
-/** UX.md §1 "Semantic status colors" — exact hex values, single source of truth for calendar cards + status badges. */
-const STATUS_COLORS: Record<string, string> = {
-  PENDING_PAYMENT: "#F59E0B",
-  CONFIRMED: "#3B82F6",
-  CHECKED_IN: "#10B981",
-  IN_SERVICE: "#8B5CF6",
-  COMPLETED: "#64748B",
-  CANCELLED: "#EF4444",
-  NO_SHOW: "#9CA3AF",
-  EXPIRED: "#F97316",
-  RESCHEDULED: "#0EA5E9",
+export interface StatusStyle {
+  /** Badge/card background. */
+  fill: string;
+  /** Text on `fill` — every pair is >= 4.5:1 (WCAG AA). */
+  fg: string;
+  /** Saturated dot/accent, >= 3:1 on white (WCAG AA non-text). */
+  accent: string;
+  /** Human-readable label. Raw enum names are never shown to users. */
+  label: string;
+}
+
+/**
+ * UX.md §1 "Semantic status colors", re-derived for accessibility.
+ *
+ * UX.md's original hex values were accent-weight colors (amber-500, blue-500,
+ * …) but were being used two ways that both failed:
+ *   - as badge fills under white text — 8 of 9 fell below WCAG AA 4.5:1
+ *     (PENDING_PAYMENT was 2.15:1, less than half the requirement);
+ *   - as 10%-alpha calendar tints — all 9 composited to 1.08–1.14:1 against
+ *     the white card, so every status looked identical on the day board.
+ *
+ * Each status now carries a fill/fg/accent triple instead of one hex. The
+ * hues are unchanged (amber still means "waiting on money"); only the weights
+ * are chosen per role. Verified: all 9 fg-on-fill pairs >= 5.4:1, all 9
+ * accents >= 3.19:1 on white, and every pairwise fill/accent distance is
+ * >= dE 11.9 so no two statuses read alike. NO_SHOW is deliberately the one
+ * dark badge — it is the only status meaning "revenue lost, nobody came", and
+ * the extra weight makes it scannable at a glance.
+ *
+ * Colour is never the sole channel: `label` always ships alongside (WCAG 1.4.1).
+ */
+const STATUS_STYLES: Record<string, StatusStyle> = {
+  PENDING_PAYMENT: { fill: "#FEF3C7", fg: "#92400E", accent: "#D97706", label: "Pending payment" },
+  CONFIRMED: { fill: "#DBEAFE", fg: "#1E40AF", accent: "#2563EB", label: "Confirmed" },
+  CHECKED_IN: { fill: "#D1FAE5", fg: "#065F46", accent: "#059669", label: "Checked in" },
+  IN_SERVICE: { fill: "#DDD6FE", fg: "#5B21B6", accent: "#7C3AED", label: "In service" },
+  COMPLETED: { fill: "#D4D4D8", fg: "#3F3F46", accent: "#52525B", label: "Completed" },
+  CANCELLED: { fill: "#FEE2E2", fg: "#991B1B", accent: "#DC2626", label: "Cancelled" },
+  NO_SHOW: { fill: "#334155", fg: "#FFFFFF", accent: "#334155", label: "No-show" },
+  EXPIRED: { fill: "#FED7AA", fg: "#9A3412", accent: "#EA580C", label: "Expired" },
+  RESCHEDULED: { fill: "#CFFAFE", fg: "#155E75", accent: "#0891B2", label: "Rescheduled" },
 };
 
-export function statusColor(status: string): string {
-  return STATUS_COLORS[status] ?? "#64748B";
+const FALLBACK_STATUS: StatusStyle = {
+  fill: "#D4D4D8",
+  fg: "#3F3F46",
+  accent: "#52525B",
+  label: "Unknown",
+};
+
+export function statusStyle(status: string): StatusStyle {
+  return STATUS_STYLES[status] ?? { ...FALLBACK_STATUS, label: humanizeStatus(status) };
+}
+
+export function statusLabel(status: string): string {
+  return STATUS_STYLES[status]?.label ?? humanizeStatus(status);
+}
+
+/** Last-resort formatting for a status the API adds before the UI knows it. */
+function humanizeStatus(status: string): string {
+  const lower = status.replace(/_/g, " ").toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
 }

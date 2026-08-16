@@ -120,7 +120,11 @@ export class ApiRequestError extends Error {
 /** SSR (Server Components) uses the private API_SERVER_URL; the browser uses NEXT_PUBLIC_API_URL. */
 function apiBaseUrl(): string {
   if (typeof window === "undefined") {
-    return process.env.API_SERVER_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api/v1";
+    return (
+      process.env.API_SERVER_URL ??
+      process.env.NEXT_PUBLIC_API_URL ??
+      "http://localhost:3000/api/v1"
+    );
   }
   return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api/v1";
 }
@@ -172,7 +176,11 @@ export function fetchAvailability(
 ): Promise<{ slots: AvailabilitySlot[] }> {
   return request<{ slots: AvailabilitySlot[] }>(`/salons/${slug}/availability`, {
     method: "POST",
-    body: JSON.stringify({ serviceIds: input.serviceIds, staffId: input.staffId, date: input.date }),
+    body: JSON.stringify({
+      serviceIds: input.serviceIds,
+      staffId: input.staffId,
+      date: input.date,
+    }),
   });
 }
 
@@ -210,7 +218,11 @@ export function fetchBookingByReference(reference: string, phone: string): Promi
   return request<BookingDetail>(`/bookings/${reference}?phone=${encodeURIComponent(phone)}`);
 }
 
-export function cancelBooking(reference: string, phone: string, reason: string): Promise<BookingDetail> {
+export function cancelBooking(
+  reference: string,
+  phone: string,
+  reason: string,
+): Promise<BookingDetail> {
   return request<BookingDetail>(`/bookings/${reference}/cancel`, {
     method: "POST",
     body: JSON.stringify({ phone, reason }),

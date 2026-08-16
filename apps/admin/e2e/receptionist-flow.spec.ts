@@ -43,9 +43,9 @@ test("receptionist books a walk-in and runs it through check-in -> in-service ->
   await expect(column).toBeVisible();
   await column.locator('[data-testid^="calendar-card-"]').first().click();
 
-  await expect(page.getByTestId("detail-status")).toHaveText("CONFIRMED");
+  await expect(page.getByTestId("detail-status")).toHaveText("Confirmed");
   await page.getByTestId("action-check-in").click();
-  await expect(page.getByTestId("detail-status")).toHaveText("CHECKED_IN");
+  await expect(page.getByTestId("detail-status")).toHaveText("Checked in");
   await page.getByTestId("action-in-service").click();
   await expect(page.getByTestId("detail-status")).toHaveText("IN_SERVICE");
   await page.getByTestId("action-complete").click();

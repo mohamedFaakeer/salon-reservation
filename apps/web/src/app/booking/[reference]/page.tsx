@@ -11,9 +11,22 @@ import {
   type AvailabilitySlot,
   type BookingDetail,
 } from "../../../lib/api-client";
-import { colomboToday, formatDateLong, formatDurationMin, formatPriceCents, formatTime } from "../../../lib/format";
+import {
+  colomboToday,
+  formatDateLong,
+  formatDurationMin,
+  formatPriceCents,
+  formatTime,
+  statusLabel,
+} from "../../../lib/format";
 
-const NOT_CANCELLABLE_STATUSES = new Set(["CANCELLED", "NO_SHOW", "RESCHEDULED", "EXPIRED", "COMPLETED"]);
+const NOT_CANCELLABLE_STATUSES = new Set([
+  "CANCELLED",
+  "NO_SHOW",
+  "RESCHEDULED",
+  "EXPIRED",
+  "COMPLETED",
+]);
 
 export default function ManageBookingPage() {
   const params = useParams<{ reference: string }>();
@@ -94,7 +107,9 @@ export default function ManageBookingPage() {
       });
       setSlots(res.slots);
     } catch (err) {
-      setRescheduleError(err instanceof ApiRequestError ? err.message : "Could not load availability.");
+      setRescheduleError(
+        err instanceof ApiRequestError ? err.message : "Could not load availability.",
+      );
       setSlots([]);
     } finally {
       setLoadingSlots(false);
@@ -147,7 +162,11 @@ export default function ManageBookingPage() {
               className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
             />
           </label>
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {error ? (
+            <p role="alert" className="text-sm text-red-600">
+              {error}
+            </p>
+          ) : null}
           <button
             type="submit"
             disabled={loading}
@@ -161,7 +180,7 @@ export default function ManageBookingPage() {
           <div className="rounded-lg border border-slate-200 bg-white p-4">
             <p className="text-sm text-slate-500">Status</p>
             <p data-testid="booking-status" className="font-semibold text-slate-900">
-              {booking.status}
+              {statusLabel(booking.status)}
             </p>
             <p className="mt-3 text-sm text-slate-500">When</p>
             <p className="font-medium text-slate-900">
@@ -176,11 +195,17 @@ export default function ManageBookingPage() {
                 </li>
               ))}
             </ul>
-            <p className="mt-3 font-semibold text-slate-900">{formatPriceCents(booking.totalCents)}</p>
+            <p className="mt-3 font-semibold text-slate-900">
+              {formatPriceCents(booking.totalCents)}
+            </p>
             {booking.advancePaidCents > 0 ? (
-              <p className="text-sm text-slate-600">Advance paid: {formatPriceCents(booking.advancePaidCents)}</p>
+              <p className="text-sm text-slate-600">
+                Advance paid: {formatPriceCents(booking.advancePaidCents)}
+              </p>
             ) : null}
-            <p className="text-sm text-slate-600">Balance due: {formatPriceCents(booking.balanceCents)}</p>
+            <p className="text-sm text-slate-600">
+              Balance due: {formatPriceCents(booking.balanceCents)}
+            </p>
           </div>
 
           {refundedCents !== null ? (
@@ -195,7 +220,8 @@ export default function ManageBookingPage() {
             <div className="rounded-lg border border-red-200 bg-red-50 p-4">
               <p className="text-sm font-medium text-red-800">Cancel this booking?</p>
               <p className="mt-1 text-xs text-red-700">
-                Cancelling within a few hours of your appointment may not be refundable — the salon will confirm.
+                Cancelling within a few hours of your appointment may not be refundable — the salon
+                will confirm.
               </p>
               <label className="mt-2 flex flex-col gap-1 text-sm text-slate-700">
                 Reason
@@ -206,7 +232,11 @@ export default function ManageBookingPage() {
                   className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                 />
               </label>
-              {cancelError ? <p className="mt-2 text-sm text-red-600">{cancelError}</p> : null}
+              {cancelError ? (
+                <p role="alert" className="mt-2 text-sm text-red-600">
+                  {cancelError}
+                </p>
+              ) : null}
               <div className="mt-3 flex gap-2">
                 <button
                   type="button"
@@ -260,7 +290,11 @@ export default function ManageBookingPage() {
                   ))}
                 </div>
               )}
-              {rescheduleError ? <p className="mt-2 text-sm text-red-600">{rescheduleError}</p> : null}
+              {rescheduleError ? (
+                <p role="alert" className="mt-2 text-sm text-red-600">
+                  {rescheduleError}
+                </p>
+              ) : null}
               <button
                 type="button"
                 onClick={() => setShowRescheduleForm(false)}

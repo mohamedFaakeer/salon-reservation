@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/auth-context";
 import { fetchTenantMe, ApiRequestError } from "../../lib/api-client";
@@ -39,17 +40,28 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-slate-100">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-6 py-3">
         <div className="flex items-center gap-6">
           <span className="font-semibold text-slate-900">{salonName ?? "Salon Admin"}</span>
-          <a href="/today" className="text-sm font-medium text-teal-700 hover:text-teal-800">
-            Today
-          </a>
-          {canManageNotifications(user.roles) ? (
-            <a href="/notifications" className="text-sm font-medium text-teal-700 hover:text-teal-800">
-              Notifications
-            </a>
-          ) : null}
+          <nav aria-label="Main" className="flex items-center gap-6">
+            {/* next/link keeps this a client-side transition; a bare <a> made
+                every Today <-> Notifications hop a full document reload that
+                re-ran the auth bootstrap and refetched the tenant. */}
+            <Link
+              href="/today"
+              className="flex min-h-11 items-center text-sm font-medium text-teal-700 hover:text-teal-800"
+            >
+              Today
+            </Link>
+            {canManageNotifications(user.roles) ? (
+              <Link
+                href="/notifications"
+                className="flex min-h-11 items-center text-sm font-medium text-teal-700 hover:text-teal-800"
+              >
+                Notifications
+              </Link>
+            ) : null}
+          </nav>
         </div>
         <div className="flex items-center gap-3 text-sm text-slate-600">
           <span data-testid="current-user">
@@ -58,13 +70,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <button
             type="button"
             onClick={() => void logout()}
-            className="rounded border border-slate-300 px-3 py-1 text-sm hover:bg-slate-50"
+            className="min-h-11 rounded border border-slate-300 px-3 py-1 text-sm hover:bg-slate-50"
           >
             Log out
           </button>
         </div>
       </header>
-      <div className="p-6">{children}</div>
+      <main className="p-6">{children}</main>
     </div>
   );
 }

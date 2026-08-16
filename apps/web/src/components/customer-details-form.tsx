@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import type { BookingWizard } from "../hooks/use-booking-wizard";
 
 const PHONE_PATTERN = /^\+?[0-9\s-]{7,15}$/;
@@ -12,6 +12,7 @@ export function CustomerDetailsForm({ wizard }: { wizard: BookingWizard }) {
   const [email, setEmail] = useState("");
   const [notes, setNotes] = useState("");
   const [phoneTouched, setPhoneTouched] = useState(false);
+  const phoneErrorId = useId();
 
   const phoneValid = PHONE_PATTERN.test(phone.trim());
   const canSubmit = firstName.trim().length > 0 && lastName.trim().length > 0 && phoneValid;
@@ -23,7 +24,12 @@ export function CustomerDetailsForm({ wizard }: { wizard: BookingWizard }) {
       return;
     }
     void wizard.submitDetailsAndReserve(
-      { firstName: firstName.trim(), lastName: lastName.trim(), phone: phone.trim(), email: email.trim() || undefined },
+      {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        phone: phone.trim(),
+        email: email.trim() || undefined,
+      },
       notes.trim(),
     );
   }
@@ -31,7 +37,9 @@ export function CustomerDetailsForm({ wizard }: { wizard: BookingWizard }) {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
       <h2 className="text-lg font-semibold text-slate-900">Your details</h2>
-      <p className="text-sm text-slate-500">No account needed — your booking reference is your access code.</p>
+      <p className="text-sm text-slate-500">
+        No account needed — your booking reference is your access code.
+      </p>
 
       <label className="flex flex-col gap-1 text-sm text-slate-700">
         First name
@@ -62,10 +70,17 @@ export function CustomerDetailsForm({ wizard }: { wizard: BookingWizard }) {
           onBlur={() => setPhoneTouched(true)}
           required
           inputMode="tel"
+          // Without aria-invalid + aria-describedby the message below is
+          // visible but unreachable: a screen reader announces the field as
+          // valid and never reads the reason the form won't submit.
+          aria-invalid={phoneTouched && !phoneValid}
+          aria-describedby={phoneTouched && !phoneValid ? phoneErrorId : undefined}
           className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
         />
         {phoneTouched && !phoneValid ? (
-          <span className="text-xs text-red-600">Enter a valid phone number.</span>
+          <span id={phoneErrorId} role="alert" className="text-xs text-red-600">
+            Enter a valid phone number.
+          </span>
         ) : null}
       </label>
       <label className="flex flex-col gap-1 text-sm text-slate-700">
@@ -87,7 +102,11 @@ export function CustomerDetailsForm({ wizard }: { wizard: BookingWizard }) {
         />
       </label>
 
-      {wizard.error ? <p className="text-sm text-red-600">{wizard.error}</p> : null}
+      {wizard.error ? (
+        <p role="alert" className="text-sm text-red-600">
+          {wizard.error}
+        </p>
+      ) : null}
 
       <button
         type="submit"

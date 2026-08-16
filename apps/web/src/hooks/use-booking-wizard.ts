@@ -15,7 +15,8 @@ import {
 } from "../lib/api-client";
 import { colomboToday } from "../lib/format";
 
-export type WizardStep = "services" | "staff" | "date" | "slots" | "details" | "payment" | "success";
+export type WizardStep =
+  "services" | "staff" | "date" | "slots" | "details" | "payment" | "success";
 
 function generateIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {

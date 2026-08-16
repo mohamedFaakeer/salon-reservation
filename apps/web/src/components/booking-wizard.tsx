@@ -11,7 +11,15 @@ import { CustomerDetailsForm } from "./customer-details-form";
 import { PaymentStep } from "./payment-step";
 import { SuccessScreen } from "./success-screen";
 
-const STEP_ORDER: WizardStep[] = ["services", "staff", "date", "slots", "details", "payment", "success"];
+const STEP_ORDER: WizardStep[] = [
+  "services",
+  "staff",
+  "date",
+  "slots",
+  "details",
+  "payment",
+  "success",
+];
 
 const STICKY_BAR_STEPS = new Set<WizardStep>(["services", "staff", "date"]);
 
@@ -34,12 +42,20 @@ export function BookingWizard({ salon }: { salon: SalonProfile }) {
   }
 
   const canContinue =
-    wizard.step === "services" ? wizard.selectedServiceIds.length > 0 : wizard.step === "date" ? Boolean(wizard.selectedDate) : true;
+    wizard.step === "services"
+      ? wizard.selectedServiceIds.length > 0
+      : wizard.step === "date"
+        ? Boolean(wizard.selectedDate)
+        : true;
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-4 pb-24">
       {stepIndex > 0 && wizard.step !== "success" ? (
-        <button type="button" onClick={back} className="self-start text-sm text-slate-500 hover:text-slate-700">
+        <button
+          type="button"
+          onClick={back}
+          className="self-start text-sm text-slate-500 hover:text-slate-700"
+        >
           ← Back
         </button>
       ) : null}
@@ -56,7 +72,8 @@ export function BookingWizard({ salon }: { salon: SalonProfile }) {
         <div className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white p-4">
           <div className="mx-auto flex max-w-lg items-center justify-between gap-4">
             <div className="text-sm text-slate-600">
-              {wizard.selectedServiceIds.length} {wizard.selectedServiceIds.length === 1 ? "service" : "services"}
+              {wizard.selectedServiceIds.length}{" "}
+              {wizard.selectedServiceIds.length === 1 ? "service" : "services"}
               {wizard.totalPriceCents > 0 ? ` · ${formatPriceCents(wizard.totalPriceCents)}` : ""}
             </div>
             <button

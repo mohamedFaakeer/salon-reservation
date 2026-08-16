@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ApiRequestError, createCustomer, searchCustomers, type CustomerRecord } from "../lib/api-client";
+import {
+  ApiRequestError,
+  createCustomer,
+  searchCustomers,
+  type CustomerRecord,
+} from "../lib/api-client";
 import { EmptyState } from "./empty-state";
 
 export function CustomerSearch({ onSelect }: { onSelect: (customer: CustomerRecord) => void }) {
@@ -35,7 +40,7 @@ export function CustomerSearch({ onSelect }: { onSelect: (customer: CustomerReco
         placeholder="Search by name or phone…"
         className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
       />
-      {loading ? <p className="text-xs text-slate-400">Searching…</p> : null}
+      {loading ? <p className="text-xs text-slate-500">Searching…</p> : null}
       {!loading && query.trim().length >= 2 && results.length === 0 && !showCreate ? (
         <EmptyState
           title={`No customers match "${query.trim()}"`}
@@ -145,7 +150,11 @@ function NewCustomerForm({
         placeholder="Email (optional)"
         className="rounded border border-slate-300 px-2 py-1.5 text-sm"
       />
-      {error ? <p className="text-xs text-red-600">{error}</p> : null}
+      {error ? (
+        <p role="alert" className="text-xs text-red-600">
+          {error}
+        </p>
+      ) : null}
       {existing ? (
         <button
           type="button"

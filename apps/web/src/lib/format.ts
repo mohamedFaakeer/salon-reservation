@@ -15,6 +15,32 @@ export function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-LK", { hour: "numeric", minute: "2-digit" });
 }
 
+/**
+ * Human-readable appointment status. Customers should never be shown the raw
+ * enum ("PENDING_PAYMENT"); the labels match apps/admin's `statusLabel` so
+ * staff and customer wording stays identical when they talk on the phone.
+ */
+const STATUS_LABELS: Record<string, string> = {
+  PENDING_PAYMENT: "Pending payment",
+  CONFIRMED: "Confirmed",
+  CHECKED_IN: "Checked in",
+  IN_SERVICE: "In service",
+  COMPLETED: "Completed",
+  CANCELLED: "Cancelled",
+  NO_SHOW: "No-show",
+  EXPIRED: "Expired",
+  RESCHEDULED: "Rescheduled",
+};
+
+export function statusLabel(status: string): string {
+  const known = STATUS_LABELS[status];
+  if (known) {
+    return known;
+  }
+  const lower = status.replace(/_/g, " ").toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
 export function formatDateLong(dateStr: string): string {
   return new Date(`${dateStr}T00:00:00Z`).toLocaleDateString("en-LK", {
     weekday: "short",

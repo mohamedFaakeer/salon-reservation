@@ -1,17 +1,22 @@
 @import "tailwindcss";
 
+/*
+ * Only the app-shell background lives here. Component colour comes from
+ * Tailwind utilities (teal-600 is the brand primary); the previous
+ * --color-primary / --color-primary-dark / --color-slate-50 declarations were
+ * never referenced by any component and were removed rather than left to read
+ * as a theming layer that does not exist. Promoting the ~400 utility usages
+ * into real semantic tokens is a separate, deliberate refactor.
+ */
 :root {
-  --color-primary: #0d9488;
-  --color-primary-dark: #0f766e;
-  --color-slate-50: #f8fafc;
-  --color-slate-100: #f1f5f9;
+  --color-app-bg: #f1f5f9;
 }
 
 html,
 body {
   max-width: 100vw;
   overflow-x: hidden;
-  background: var(--color-slate-100);
+  background: var(--color-app-bg);
   color: #0f172a;
   font-family:
     system-ui,
@@ -24,4 +29,22 @@ body {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+/*
+ * Loading skeletons pulse indefinitely. Vestibular-sensitive users get a
+ * static skeleton instead — the element still communicates "loading" through
+ * its shape and its role="status" label, so nothing is lost by holding it
+ * still. Transitions are shortened rather than removed so state changes
+ * (hover, focus, selection) remain perceptible.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

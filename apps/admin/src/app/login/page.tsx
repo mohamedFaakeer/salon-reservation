@@ -21,7 +21,9 @@ export default function LoginPage() {
       await login(email, password);
       router.replace("/today");
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Could not sign in. Please try again.");
+      setError(
+        err instanceof ApiRequestError ? err.message : "Could not sign in. Please try again.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -51,7 +53,11 @@ export default function LoginPage() {
             placeholder="Password"
             className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
           />
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {error ? (
+            <p role="alert" className="text-sm text-red-600">
+              {error}
+            </p>
+          ) : null}
           <button
             data-testid="login-submit"
             type="submit"

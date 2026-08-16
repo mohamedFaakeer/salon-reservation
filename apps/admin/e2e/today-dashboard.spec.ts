@@ -41,7 +41,7 @@ test("walk-in quick action pre-checks immediate check-in, and the dashboard refl
   await expect(column).toBeVisible();
   const card = column.locator('[data-testid^="calendar-card-"]').first();
   await expect(card).toBeVisible();
-  await expect(card).toContainText("CHECKED_IN");
+  await expect(card).toContainText("Checked in");
 
   // The "Check-ins" stat card increments to reflect the new CHECKED_IN appointment.
   const checkedInAfter = page.getByTestId("stat-card-checked-in").locator("p").nth(1);
@@ -49,5 +49,5 @@ test("walk-in quick action pre-checks immediate check-in, and the dashboard refl
 
   // Clicking the calendar card opens the same detail drawer used elsewhere.
   await card.click();
-  await expect(page.getByTestId("detail-status")).toHaveText("CHECKED_IN");
+  await expect(page.getByTestId("detail-status")).toHaveText("Checked in");
 });
