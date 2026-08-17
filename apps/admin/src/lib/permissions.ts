@@ -27,3 +27,28 @@ export function canIssueRefund(roles: string[]): boolean {
 export function canManageNotifications(roles: string[]): boolean {
   return roles.some((r) => r === "OWNER" || r === "MANAGER" || r === "RECEPTIONIST");
 }
+
+/** Mirrors MANAGE_SERVICES (OWNER, MANAGER only). */
+export function canManageServices(roles: string[]): boolean {
+  return roles.some((r) => r === "OWNER" || r === "MANAGER");
+}
+
+/** Mirrors MANAGE_STAFF (OWNER, MANAGER only) — covers staff, skills, rotas, leave, closures. */
+export function canManageStaff(roles: string[]): boolean {
+  return roles.some((r) => r === "OWNER" || r === "MANAGER");
+}
+
+/** Mirrors MANAGE_TENANT_SETTINGS (OWNER, MANAGER only). */
+export function canManageSettings(roles: string[]): boolean {
+  return roles.some((r) => r === "OWNER" || r === "MANAGER");
+}
+
+/** Mirrors VIEW_AUDIT_LOG (OWNER, MANAGER only). */
+export function canViewAudit(roles: string[]): boolean {
+  return roles.some((r) => r === "OWNER" || r === "MANAGER");
+}
+
+/** Mirrors VIEW_DASHBOARD (OWNER, MANAGER, RECEPTIONIST) — STAFF has no day board. */
+export function canViewDashboard(roles: string[]): boolean {
+  return roles.some((r) => r === "OWNER" || r === "MANAGER" || r === "RECEPTIONIST");
+}

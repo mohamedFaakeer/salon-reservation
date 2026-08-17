@@ -16,6 +16,17 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   reporter: [["list"]],
+  /**
+   * Playwright's defaults (5s per assertion, 30s per test) are too tight for
+   * this stack on a loaded dev machine: the API runs under `nest start
+   * --watch` and every sign-in performs a deliberately expensive argon2id
+   * verification, so login alone can take several seconds. A multi-step spec
+   * that signs in and then books through several screens needs a budget that
+   * is not mostly spent on the first request. These specs assert behaviour,
+   * not latency — a slow-but-correct response should pass.
+   */
+  timeout: 90_000,
+  expect: { timeout: 15_000 },
   use: {
     baseURL,
     trace: "retain-on-failure",

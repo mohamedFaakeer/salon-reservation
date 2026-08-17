@@ -253,6 +253,29 @@ export function fetchServices(): Promise<ServiceItem[]> {
   return request<ServiceItem[]>("/services");
 }
 
+export interface ServiceInput {
+  name: string;
+  category?: string;
+  description?: string;
+  durationMin: number;
+  priceCents: number;
+}
+
+export function createService(input: ServiceInput): Promise<ServiceItem> {
+  return request<ServiceItem>("/services", { method: "POST", body: JSON.stringify(input) });
+}
+
+/** PATCH semantics — send only what changed. `active` toggles retirement. */
+export function updateService(
+  id: string,
+  patch: Partial<ServiceInput> & { active?: boolean },
+): Promise<ServiceItem> {
+  return request<ServiceItem>(`/services/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
 export function searchCustomers(q: string): Promise<CustomerRecord[]> {
   return request<CustomerRecord[]>(`/customers?q=${encodeURIComponent(q)}`);
 }

@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/auth-context";
 import { fetchTenantMe, ApiRequestError } from "../../lib/api-client";
-import { canManageNotifications } from "../../lib/permissions";
+import { AppSidebar } from "../../components/app-sidebar";
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -39,44 +38,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-6 py-3">
-        <div className="flex items-center gap-6">
-          <span className="font-semibold text-slate-900">{salonName ?? "Salon Admin"}</span>
-          <nav aria-label="Main" className="flex items-center gap-6">
-            {/* next/link keeps this a client-side transition; a bare <a> made
-                every Today <-> Notifications hop a full document reload that
-                re-ran the auth bootstrap and refetched the tenant. */}
-            <Link
-              href="/today"
-              className="flex min-h-11 items-center text-sm font-medium text-teal-700 hover:text-teal-800"
-            >
-              Today
-            </Link>
-            {canManageNotifications(user.roles) ? (
-              <Link
-                href="/notifications"
-                className="flex min-h-11 items-center text-sm font-medium text-teal-700 hover:text-teal-800"
-              >
-                Notifications
-              </Link>
-            ) : null}
-          </nav>
-        </div>
-        <div className="flex items-center gap-3 text-sm text-slate-600">
-          <span data-testid="current-user">
-            {user.name} · {user.roles.join(", ")}
-          </span>
-          <button
-            type="button"
-            onClick={() => void logout()}
-            className="min-h-11 rounded border border-slate-300 px-3 py-1 text-sm hover:bg-slate-50"
-          >
-            Log out
-          </button>
-        </div>
-      </header>
-      <main className="p-6">{children}</main>
+    // Sidebar beside content on desktop; stacked above it on tablet and
+    // narrower, where a fixed 224px rail would eat too much of the board.
+    <div className="min-h-screen bg-slate-100 lg:flex">
+      <AppSidebar
+        roles={user.roles}
+        salonName={salonName}
+        userName={user.name}
+        onLogout={() => void logout()}
+      />
+      <main className="min-w-0 flex-1 p-6 lg:h-screen lg:overflow-y-auto">{children}</main>
     </div>
   );
 }
