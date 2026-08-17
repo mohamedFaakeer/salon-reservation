@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import {
   canManageNotifications,
   canManageServices,
+  canManageStaff,
   canViewDashboard,
 } from "../lib/permissions";
 
@@ -81,6 +82,18 @@ const GROUPS: NavGroup[] = [
           </Icon>
         ),
       },
+      {
+        href: "/staff",
+        label: "Staff & skills",
+        visible: canManageStaff,
+        icon: (
+          <Icon>
+            <circle cx="6" cy="6" r="2.4" {...stroke} />
+            <path d="M2 13c.7-1.9 2.2-2.9 4-2.9s3.3 1 4 2.9" {...stroke} />
+            <path d="M11 5.5h3M12.5 4v3" {...stroke} />
+          </Icon>
+        ),
+      },
     ],
   },
   {
@@ -110,7 +123,6 @@ export const PLANNED_DESTINATIONS = [
   "Schedule",
   "Appointments",
   "Customers",
-  "Staff & skills",
   "Availability",
   "Settings",
   "Payments",

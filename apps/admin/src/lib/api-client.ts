@@ -40,6 +40,8 @@ export interface StaffMember {
   name: string;
   active: boolean;
   color: string | null;
+  phone: string | null;
+  specialties: string | null;
 }
 
 export interface ServiceItem {
@@ -247,6 +249,36 @@ export function fetchTenantSettings(): Promise<TenantSettingsView> {
 
 export function fetchStaff(): Promise<StaffMember[]> {
   return request<StaffMember[]>("/staff");
+}
+
+export interface StaffInput {
+  name: string;
+  phone?: string;
+  specialties?: string;
+  color?: string;
+}
+
+export function createStaff(input: StaffInput): Promise<StaffMember> {
+  return request<StaffMember>("/staff", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateStaff(
+  id: string,
+  patch: Partial<StaffInput> & { active?: boolean },
+): Promise<StaffMember> {
+  return request<StaffMember>(`/staff/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+}
+
+export function fetchStaffServices(staffId: string): Promise<ServiceItem[]> {
+  return request<ServiceItem[]>(`/staff/${staffId}/services`);
+}
+
+/** PUT replaces the whole assignment set — always send the complete list. */
+export function setStaffServices(staffId: string, serviceIds: string[]): Promise<ServiceItem[]> {
+  return request<ServiceItem[]>(`/staff/${staffId}/services`, {
+    method: "PUT",
+    body: JSON.stringify({ serviceIds }),
+  });
 }
 
 export function fetchServices(): Promise<ServiceItem[]> {
