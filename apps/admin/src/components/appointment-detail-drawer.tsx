@@ -123,7 +123,7 @@ export function AppointmentDetailDrawer({
 
   useEffect(() => {
     load();
-    void fetchTenantSettings().then((s) => setGraceMinutes(s.noShowGraceMinutes ?? 0));
+    void fetchTenantSettings().then((s) => setGraceMinutes(s.noShowGraceMinutes));
     void fetchTenantMe().then((res) => setSlug(res.tenant.slug));
   }, [appointmentId]);
 

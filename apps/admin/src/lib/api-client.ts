@@ -30,9 +30,57 @@ export interface TenantMe {
   };
 }
 
+export type AdvanceRuleValue = "NO_ADVANCE" | "FIXED_AMOUNT" | "PERCENTAGE" | "FULL_PAYMENT";
+
+export interface CancellationPolicyView {
+  selfServiceCutoffHours: number;
+  refundPercentBeforeCutoff: number;
+  refundPercentAfterCutoff: number;
+  noShowRefundPercent: number;
+}
+
+/**
+ * `GET /tenant/me/settings` — the stored settings plus the tenant's currency
+ * and timezone, which are read-only here (no DTO field accepts them).
+ *
+ * `advanceValueCents` and `advancePercent` are not interchangeable: the server
+ * prices FIXED_AMOUNT from the first and PERCENTAGE from the second, and the
+ * unused one stays null.
+ */
 export interface TenantSettingsView {
+  currency: string;
+  timezone: string;
+  advanceRule: AdvanceRuleValue;
+  /**
+   * Absent, not merely null, on tenant rows written before the field existed —
+   * `tenant.settings` is a jsonb blob with no migration backfilling it, so
+   * treat missing and null as the same "not set".
+   */
+  advanceValueCents?: number | null;
+  advancePercent?: number | null;
+  cancellationPolicy: CancellationPolicyView;
+  bookingWindowDays: number;
+  sameDayLeadMinutes: number;
   noShowGraceMinutes: number;
-  [key: string]: unknown;
+  reminderOffsets: number[];
+}
+
+export interface TenantSettingsPatch {
+  advanceRule?: AdvanceRuleValue;
+  advanceValueCents?: number | null;
+  advancePercent?: number | null;
+  cancellationPolicy?: Partial<CancellationPolicyView>;
+  bookingWindowDays?: number;
+  sameDayLeadMinutes?: number;
+  noShowGraceMinutes?: number;
+  reminderOffsets?: number[];
+}
+
+export interface BranchRecord {
+  id: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
 }
 
 export interface StaffMember {
@@ -245,6 +293,52 @@ export function fetchTenantMe(): Promise<TenantMe> {
 
 export function fetchTenantSettings(): Promise<TenantSettingsView> {
   return request<TenantSettingsView>("/tenant/me/settings");
+}
+
+/** PATCH semantics — send only what changed. `cancellationPolicy` merges field-wise server-side. */
+export function updateTenantSettings(patch: TenantSettingsPatch): Promise<TenantSettingsView> {
+  return request<TenantSettingsView>("/tenant/me/settings", {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+/**
+ * Registered by AppLayout, which renders the salon name in the sidebar from a
+ * fetch it only makes on mount. Without this, renaming the salon leaves the
+ * old name on screen until the next full page load — the same reason
+ * `setUnauthorizedHandler` exists rather than each call site handling a 401.
+ */
+let tenantProfileListener: ((tenant: TenantMe["tenant"]) => void) | null = null;
+export function setTenantProfileListener(
+  handler: ((tenant: TenantMe["tenant"]) => void) | null,
+): void {
+  tenantProfileListener = handler;
+}
+
+/** Name only — slug, currency and timezone are fixed at provisioning. */
+export async function updateTenantProfile(patch: { name: string }): Promise<TenantMe["tenant"]> {
+  const tenant = await request<TenantMe["tenant"]>("/tenant/me", {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  tenantProfileListener?.(tenant);
+  return tenant;
+}
+
+export function fetchBranch(): Promise<BranchRecord> {
+  return request<BranchRecord>("/tenant/me/branch");
+}
+
+export function updateBranch(patch: {
+  name?: string;
+  address?: string;
+  phone?: string;
+}): Promise<BranchRecord> {
+  return request<BranchRecord>("/tenant/me/branch", {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
 }
 
 export function fetchStaff(): Promise<StaffMember[]> {

@@ -145,17 +145,25 @@ describe("SalonService", () => {
       expect(profile.hours[0]).toEqual({ dayOfWeek: 0, startMin: 540, endMin: 1020 });
     });
 
+    /**
+     * The value fields are deliberately kept apart: FIXED_AMOUNT is priced from
+     * `advanceValueCents`, PERCENTAGE from `advancePercent`. The label has to
+     * read the same field the engine charges from, so each case sets only its
+     * own — a percentage row that leaves `advancePercent` null must not still
+     * find a number to print.
+     */
     it.each([
-      [AdvanceRule.FIXED_AMOUNT, 50000, "Rs. 500 advance required"],
-      [AdvanceRule.PERCENTAGE, 20, "20% advance required"],
-      [AdvanceRule.FULL_PAYMENT, null, "Full payment required at booking"],
-    ])("formats %s as %s", async (advanceRule, advanceValueCents, expected) => {
+      [AdvanceRule.FIXED_AMOUNT, 50000, null, "Rs. 500 advance required"],
+      [AdvanceRule.PERCENTAGE, null, 20, "20% advance required"],
+      [AdvanceRule.FULL_PAYMENT, null, null, "Full payment required at booking"],
+    ])("formats %s as %s", async (advanceRule, advanceValueCents, advancePercent, expected) => {
       vi.mocked(tenantService.findActiveBySlug).mockResolvedValue(
         fakeTenant({
           settings: {
             ...fakeTenant().settings,
             advanceRule,
             advanceValueCents,
+            advancePercent,
           },
         }),
       );

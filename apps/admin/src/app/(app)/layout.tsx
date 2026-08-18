@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/auth-context";
-import { fetchTenantMe, ApiRequestError } from "../../lib/api-client";
+import { fetchTenantMe, setTenantProfileListener, ApiRequestError } from "../../lib/api-client";
 import { AppSidebar } from "../../components/app-sidebar";
 
 export default function AppLayout({ children }: { children: ReactNode }) {
@@ -32,6 +32,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         }
       });
   }, [user]);
+
+  // Settings can rename the salon; the name in the rail is fetched once on
+  // mount, so it hears about the change rather than going stale until reload.
+  useEffect(() => {
+    setTenantProfileListener((tenant) => setSalonName(tenant.name));
+    return () => setTenantProfileListener(null);
+  }, []);
 
   if (loading || !user) {
     return null;

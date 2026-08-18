@@ -5,7 +5,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 // erase it and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { MoreThanOrEqual, Repository } from "typeorm";
-import { AdvanceRule } from "@salon/shared";
+import { AdvanceRule, type TenantSettings } from "@salon/shared";
 import { Tenant } from "../entities/tenant.entity";
 import { Branch } from "../entities/branch.entity";
 import { Service } from "../entities/service.entity";
@@ -109,7 +109,7 @@ export class SalonService {
       })),
       staff: staff.map((s) => ({ id: s.id, name: s.name })),
       hours,
-      advanceRuleLabel: formatAdvanceRule(tenant.settings.advanceRule, tenant.settings.advanceValueCents),
+      advanceRuleLabel: formatAdvanceRule(tenant.settings),
       cancellationPolicySummary: formatCancellationPolicy(tenant.settings.cancellationPolicy),
       closures: closures.map((c) => ({ name: c.name, startDate: c.startDate, endDate: c.endDate })),
     };
@@ -139,14 +139,24 @@ function todayLocalDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function formatAdvanceRule(rule: AdvanceRule, advanceValueCents: number | null): string {
-  switch (rule) {
+/**
+ * The customer-facing sentence for the advance rule.
+ *
+ * Takes the whole settings object because the two value fields are not
+ * interchangeable: FIXED_AMOUNT reads `advanceValueCents`, PERCENTAGE reads
+ * `advancePercent`, and `PricingService.computeRawAdvance` charges on exactly
+ * that split. Reading cents under PERCENTAGE (as this did) always found null
+ * and promised customers "0% advance required" while the engine charged the
+ * real percentage.
+ */
+function formatAdvanceRule(settings: TenantSettings): string {
+  switch (settings.advanceRule) {
     case AdvanceRule.NO_ADVANCE:
       return "No advance required";
     case AdvanceRule.FIXED_AMOUNT:
-      return `Rs. ${((advanceValueCents ?? 0) / 100).toFixed(0)} advance required`;
+      return `Rs. ${((settings.advanceValueCents ?? 0) / 100).toFixed(0)} advance required`;
     case AdvanceRule.PERCENTAGE:
-      return `${advanceValueCents ?? 0}% advance required`;
+      return `${settings.advancePercent ?? 0}% advance required`;
     case AdvanceRule.FULL_PAYMENT:
       return "Full payment required at booking";
     default:

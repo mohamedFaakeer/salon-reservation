@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import {
   canManageNotifications,
   canManageServices,
+  canManageSettings,
   canManageStaff,
   canViewDashboard,
 } from "../lib/permissions";
@@ -112,6 +113,20 @@ const GROUPS: NavGroup[] = [
     label: "System",
     items: [
       {
+        href: "/settings",
+        label: "Settings",
+        visible: canManageSettings,
+        icon: (
+          <Icon>
+            <circle cx="8" cy="8" r="2.1" {...stroke} />
+            <path
+              d="M8 1.8v1.4M8 12.8v1.4M2.6 8H4m8 0h1.4M4.2 4.2l1 1m5.6 5.6 1 1m0-7.6-1 1m-5.6 5.6-1 1"
+              {...stroke}
+            />
+          </Icon>
+        ),
+      },
+      {
         href: "/notifications",
         label: "Notifications",
         visible: canManageNotifications,
@@ -127,7 +142,7 @@ const GROUPS: NavGroup[] = [
 ];
 
 /**
- * Destinations specified in UX.md §4.1 that do not exist yet (FE2–FE7).
+ * Destinations specified in UX.md §4.1 that do not exist yet (FE5–FE7).
  * Listing them here rather than in the nav keeps the sidebar honest: a link
  * that 404s is worse than no link.
  */
@@ -135,7 +150,6 @@ export const PLANNED_DESTINATIONS = [
   "Schedule",
   "Appointments",
   "Customers",
-  "Settings",
   "Payments",
   "Audit",
 ] as const;

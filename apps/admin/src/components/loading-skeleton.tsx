@@ -117,6 +117,37 @@ export function ListSkeleton({ rows = 4 }: { rows?: number }) {
   );
 }
 
+/**
+ * Mirrors Settings' stack of titled cards. The field counts match the real
+ * sections (4 / 4 / 3 / 3 / 1) so the page doesn't reflow when they arrive.
+ */
+export function SettingsSkeleton() {
+  return (
+    <div
+      className="mx-auto flex max-w-3xl flex-col gap-4"
+      role="status"
+      aria-label="Loading settings"
+    >
+      {[4, 4, 3, 3, 1].map((fields, s) => (
+        <div key={s} className="rounded-lg border border-slate-200 bg-white">
+          <div className="border-b border-slate-100 px-4 py-3">
+            <Bar className="h-3.5 w-32" />
+            <Bar className="mt-2 h-2.5 w-64 max-w-full" />
+          </div>
+          <div className="flex flex-col gap-4 px-4 py-4">
+            {Array.from({ length: fields }).map((_, f) => (
+              <div key={f} className="flex flex-col gap-1.5">
+                <Bar className="h-2.5 w-24" />
+                <Bar className="h-11" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** Mirrors the drawer's time-slot grid. */
 export function SlotsSkeleton({ count = 6 }: { count?: number }) {
   return (
