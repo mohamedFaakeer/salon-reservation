@@ -94,6 +94,18 @@ const GROUPS: NavGroup[] = [
           </Icon>
         ),
       },
+      {
+        href: "/availability",
+        label: "Availability",
+        visible: canManageStaff,
+        icon: (
+          <Icon>
+            <rect x="2" y="3.5" width="12" height="10" rx="1.8" {...stroke} />
+            <path d="M2 7h12" {...stroke} />
+            <path d="M6 10h4" {...stroke} />
+          </Icon>
+        ),
+      },
     ],
   },
   {
@@ -123,7 +135,6 @@ export const PLANNED_DESTINATIONS = [
   "Schedule",
   "Appointments",
   "Customers",
-  "Availability",
   "Settings",
   "Payments",
   "Audit",

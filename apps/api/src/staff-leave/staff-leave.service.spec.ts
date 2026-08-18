@@ -2,6 +2,7 @@ import type { ObjectLiteral, Repository } from "typeorm";
 import { StaffLeaveService } from "./staff-leave.service";
 import type { StaffLeave } from "../entities/staff-leave.entity";
 import type { Staff } from "../entities/staff.entity";
+import type { Appointment } from "../entities/appointment.entity";
 import type { AuditService } from "../audit/audit.service";
 
 function mockRepo<T extends ObjectLiteral>() {
@@ -18,14 +19,16 @@ function mockRepo<T extends ObjectLiteral>() {
 describe("StaffLeaveService", () => {
   let leaves: Repository<StaffLeave>;
   let staff: Repository<Staff>;
+  let appointments: Repository<Appointment>;
   let audit: AuditService;
   let service: StaffLeaveService;
 
   beforeEach(() => {
     leaves = mockRepo<StaffLeave>();
     staff = mockRepo<Staff>();
+    appointments = mockRepo<Appointment>();
     audit = { record: vi.fn() } as unknown as AuditService;
-    service = new StaffLeaveService(leaves, staff, audit);
+    service = new StaffLeaveService(leaves, staff, appointments, audit);
   });
 
   describe("create", () => {
@@ -45,7 +48,7 @@ describe("StaffLeaveService", () => {
       ).rejects.toMatchObject({ statusCode: 400, code: "INVALID_DATE_RANGE" });
     });
 
-    it("persists with tenantId/staffId/createdBy and returns affectedAppointments: 0 (P10 deferral)", async () => {
+    it("persists with tenantId/staffId/createdBy and reports no collisions for a clear range", async () => {
       vi.mocked(staff.findOne).mockResolvedValue({ id: "staff-1" } as Staff);
 
       const result = await service.create(
@@ -88,6 +91,63 @@ describe("StaffLeaveService", () => {
         ),
       ).resolves.toBeDefined();
       expect(leaves.save).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("affected appointments", () => {
+    /**
+     * The count exists so an operator learns what booking leave has just
+     * stranded. Creating leave deliberately cancels nothing, so getting this
+     * wrong means customers are silently left with appointments nobody will
+     * keep.
+     */
+    it("counts and returns the appointments a new leave collides with", async () => {
+      vi.mocked(staff.findOne).mockResolvedValue({ id: "staff-1" } as Staff);
+      vi.mocked(appointments.find).mockResolvedValue([
+        {
+          id: "appt-1",
+          appointmentDate: "2026-09-02",
+          startTime: new Date("2026-09-02T04:30:00Z"),
+          bookingReference: "ELE-AAA11",
+          customer: { firstName: "Ayesha", lastName: "Perera" },
+        },
+        {
+          id: "appt-2",
+          appointmentDate: "2026-09-03",
+          startTime: new Date("2026-09-03T03:45:00Z"),
+          bookingReference: "ELE-BBB22",
+          customer: null,
+        },
+      ] as unknown as Appointment[]);
+
+      const result = await service.create(
+        "tenant-1",
+        "staff-1",
+        { startDate: "2026-09-02", endDate: "2026-09-03" },
+        "user-1",
+      );
+
+      expect(result.affectedAppointments).toBe(2);
+      expect(result.affected[0]).toMatchObject({
+        bookingReference: "ELE-AAA11",
+        customerName: "Ayesha Perera",
+      });
+      // A walk-in with no customer record still counts — it still occupies the day.
+      expect(result.affected[1].customerName).toBeNull();
+    });
+
+    it("excludes statuses that no longer occupy the day", async () => {
+      vi.mocked(staff.findOne).mockResolvedValue({ id: "staff-1" } as Staff);
+      vi.mocked(appointments.find).mockResolvedValue([]);
+
+      await service.findAffected("tenant-1", "staff-1", "2026-09-02", "2026-09-03");
+
+      const where = vi.mocked(appointments.find).mock.calls[0][0]?.where as Record<string, unknown>;
+      expect(where.tenantId).toBe("tenant-1");
+      expect(where.staffId).toBe("staff-1");
+      // Cancelled/no-show/rescheduled/expired/completed must not be counted.
+      expect(where.status).toBeDefined();
+      expect(where.appointmentDate).toBeDefined();
     });
   });
 

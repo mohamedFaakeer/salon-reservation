@@ -269,6 +269,126 @@ export function updateStaff(
   return request<StaffMember>(`/staff/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
 }
 
+/* ----------------------------------------------------- availability (FE3) */
+
+export interface WorkingSchedule {
+  id: string;
+  staffId: string;
+  /** 0 = Monday … 6 = Sunday. */
+  dayOfWeek: number;
+  /** Minutes from midnight; the UI shows real clock times. */
+  startMin: number;
+  endMin: number;
+  breakStartMin: number | null;
+  breakEndMin: number | null;
+}
+
+export interface ScheduleInput {
+  staffId: string;
+  dayOfWeek: number;
+  startMin: number;
+  endMin: number;
+  breakStartMin?: number | null;
+  breakEndMin?: number | null;
+}
+
+export function fetchSchedules(staffId?: string): Promise<WorkingSchedule[]> {
+  const qs = staffId ? `?staffId=${encodeURIComponent(staffId)}` : "";
+  return request<WorkingSchedule[]>(`/schedules${qs}`);
+}
+
+export function createSchedule(input: ScheduleInput): Promise<WorkingSchedule> {
+  return request<WorkingSchedule>("/schedules", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateSchedule(
+  id: string,
+  patch: Partial<Omit<ScheduleInput, "staffId" | "dayOfWeek">>,
+): Promise<WorkingSchedule> {
+  return request<WorkingSchedule>(`/schedules/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+export function deleteSchedule(id: string): Promise<void> {
+  return request<void>(`/schedules/${id}`, { method: "DELETE" });
+}
+
+export interface StaffLeaveRecord {
+  id: string;
+  staffId: string;
+  startDate: string;
+  endDate: string;
+  reason: string | null;
+}
+
+export interface AffectedAppointment {
+  id: string;
+  appointmentDate: string;
+  startTime: string;
+  bookingReference: string;
+  customerName: string | null;
+}
+
+export interface CreateLeaveResult {
+  leave: StaffLeaveRecord;
+  affectedAppointments: number;
+  affected: AffectedAppointment[];
+}
+
+export function fetchLeave(staffId: string): Promise<StaffLeaveRecord[]> {
+  return request<StaffLeaveRecord[]>(`/staff/${staffId}/leave`);
+}
+
+/** What a leave over this range would strand — queried before creating it. */
+export function fetchAffectedByLeave(
+  staffId: string,
+  startDate: string,
+  endDate: string,
+): Promise<AffectedAppointment[]> {
+  return request<AffectedAppointment[]>(
+    `/staff/${staffId}/leave/affected?startDate=${startDate}&endDate=${endDate}`,
+  );
+}
+
+export function createLeave(
+  staffId: string,
+  input: { startDate: string; endDate: string; reason?: string },
+): Promise<CreateLeaveResult> {
+  return request<CreateLeaveResult>(`/staff/${staffId}/leave`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteLeave(staffId: string, leaveId: string): Promise<void> {
+  return request<void>(`/staff/${staffId}/leave/${leaveId}`, { method: "DELETE" });
+}
+
+export interface ClosureRecord {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+}
+
+export function fetchClosures(): Promise<ClosureRecord[]> {
+  return request<ClosureRecord[]>("/closures");
+}
+
+export function createClosure(input: {
+  name: string;
+  startDate: string;
+  endDate: string;
+}): Promise<ClosureRecord> {
+  return request<ClosureRecord>("/closures", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function deleteClosure(id: string): Promise<void> {
+  return request<void>(`/closures/${id}`, { method: "DELETE" });
+}
+
 export function fetchStaffServices(staffId: string): Promise<ServiceItem[]> {
   return request<ServiceItem[]>(`/staff/${staffId}/services`);
 }
