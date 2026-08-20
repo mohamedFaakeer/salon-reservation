@@ -119,7 +119,10 @@ Browser (any device)
    ```
    DATABASE_URL=<neon-url> npm run user:set-password -w apps/api -- --email you@salon.io --generate
    ```
-6. **Health check:** `GET /health` → 200 (add as Render health check path).
+6. **Health check:** `GET /api/v1/health` → 200. Set this as Render's health
+   check path. It is **not** `/health` — the app sets a global `api/v1` prefix,
+   so a bare `/health` returns 404 and Render would restart the service in a
+   loop while the API itself was working fine.
 
 ---
 
