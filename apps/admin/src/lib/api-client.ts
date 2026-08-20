@@ -446,6 +446,11 @@ export function fetchAffectedByLeave(
   );
 }
 
+/** Tenant-wide leave, for the availability board's overlay. */
+export function fetchAllLeave(): Promise<Array<StaffLeaveRecord & { staffId: string }>> {
+  return request<Array<StaffLeaveRecord & { staffId: string }>>("/leave");
+}
+
 export function createLeave(
   staffId: string,
   input: { startDate: string; endDate: string; reason?: string },
@@ -481,6 +486,20 @@ export function createClosure(input: {
 
 export function deleteClosure(id: string): Promise<void> {
   return request<void>(`/closures/${id}`, { method: "DELETE" });
+}
+
+export interface StaffServiceAssignment {
+  staffId: string;
+  serviceIds: string[];
+}
+
+/**
+ * Every stylist's assignments in one request. The skills matrix needs all of
+ * them at once, and asking per stylist made the cost of opening it grow with
+ * the size of the team.
+ */
+export function fetchStaffServiceAssignments(): Promise<StaffServiceAssignment[]> {
+  return request<StaffServiceAssignment[]>("/staff/services");
 }
 
 export function fetchStaffServices(staffId: string): Promise<ServiceItem[]> {

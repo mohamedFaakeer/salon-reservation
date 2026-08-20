@@ -1,23 +1,20 @@
 import { test, expect } from "@playwright/test";
-import { assignServices, createScheduleForToday, createService, createStaff, login } from "./fixtures";
+import { signInAs } from "./auth";
+import { assignServices, createScheduleForToday, createService, createStaff, login, e2eName } from "./fixtures";
 
 test("receptionist adds a service to an appointment, then removes it via the detail drawer", async ({
   page,
   request,
 }) => {
   const owner = await login(request, "owner@demo.salon", "demo1234");
-  const unique = `PW Services ${Date.now()}`;
+  const unique = e2eName("Services");
   const staffId = await createStaff(request, owner, `${unique} Staff`);
   const serviceAId = await createService(request, owner, `${unique} Service A`, 30, 500000);
   const serviceBId = await createService(request, owner, `${unique} Service B`, 15, 300000);
   await assignServices(request, owner, staffId, [serviceAId, serviceBId]);
   await createScheduleForToday(request, owner, staffId);
 
-  await page.goto("/login");
-  await page.getByTestId("login-email").fill("receptionist@demo.salon");
-  await page.getByTestId("login-password").fill("demo1234");
-  await page.getByTestId("login-submit").click();
-  await expect(page).toHaveURL(/\/today$/);
+  await signInAs(page, request, "receptionist@demo.salon");
 
   await page.getByTestId("walk-in-button").click();
   const customerName = `ServicesPanel${Date.now()}`;

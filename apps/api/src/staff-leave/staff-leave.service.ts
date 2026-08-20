@@ -132,6 +132,20 @@ export class StaffLeaveService {
     }));
   }
 
+  /**
+   * All of the tenant's leave in one query.
+   *
+   * The availability board overlays leave on the rota, and used to call
+   * `list` once per stylist to get it — one request per team member, growing
+   * with the team, for a screen that always needs every row anyway.
+   */
+  async listAll(tenantId: string): Promise<StaffLeave[]> {
+    return this.leaves.find({
+      where: { tenantId },
+      order: { startDate: "ASC" },
+    });
+  }
+
   async list(tenantId: string, staffId: string): Promise<StaffLeave[]> {
     await this.assertStaffOwned(tenantId, staffId);
     return this.leaves.find({

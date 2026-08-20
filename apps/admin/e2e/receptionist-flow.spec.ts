@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { signInAs } from "./auth";
 import { bookableFixture } from "./fixtures";
 
 test("receptionist books a walk-in and runs it through check-in -> in-service -> complete", async ({
@@ -7,12 +8,7 @@ test("receptionist books a walk-in and runs it through check-in -> in-service ->
 }) => {
   const { staffId, serviceId } = await bookableFixture(request, "PW Admin Walkin");
 
-  await page.goto("/login");
-  await page.getByTestId("login-email").fill("receptionist@demo.salon");
-  await page.getByTestId("login-password").fill("demo1234");
-  await page.getByTestId("login-submit").click();
-
-  await expect(page).toHaveURL(/\/today$/);
+  await signInAs(page, request, "receptionist@demo.salon");
   await expect(page.getByTestId("new-booking-button")).toBeVisible();
 
   await page.getByTestId("new-booking-button").click();
@@ -47,7 +43,7 @@ test("receptionist books a walk-in and runs it through check-in -> in-service ->
   await page.getByTestId("action-check-in").click();
   await expect(page.getByTestId("detail-status")).toHaveText("Checked in");
   await page.getByTestId("action-in-service").click();
-  await expect(page.getByTestId("detail-status")).toHaveText("IN_SERVICE");
+  await expect(page.getByTestId("detail-status")).toHaveText("In service");
   await page.getByTestId("action-complete").click();
-  await expect(page.getByTestId("detail-status")).toHaveText("COMPLETED");
+  await expect(page.getByTestId("detail-status")).toHaveText("Completed");
 });

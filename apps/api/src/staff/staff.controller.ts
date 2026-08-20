@@ -34,6 +34,16 @@ export class StaffController {
     return this.staff.list(ctx.tenantId);
   }
 
+  /**
+   * Declared before the `:id` routes so "services" is not captured as an id.
+   * One request for the whole skills matrix, instead of one per stylist.
+   */
+  @Get("services")
+  listServiceAssignments(@Req() req: Request) {
+    const ctx = getTenantContext(req);
+    return this.staff.listAllServiceAssignments(ctx.tenantId);
+  }
+
   @Patch(":id")
   @Permissions(Permission.MANAGE_STAFF)
   update(@Req() req: Request, @Param("id") id: string, @Body() dto: UpdateStaffDto) {

@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { signInAs } from "./auth";
 import { bookableFixture } from "./fixtures";
 
 test("walk-in quick action pre-checks immediate check-in, and the dashboard reflects it end-to-end", async ({
@@ -7,11 +8,7 @@ test("walk-in quick action pre-checks immediate check-in, and the dashboard refl
 }) => {
   const { staffId, serviceId } = await bookableFixture(request, "PW Dashboard");
 
-  await page.goto("/login");
-  await page.getByTestId("login-email").fill("receptionist@demo.salon");
-  await page.getByTestId("login-password").fill("demo1234");
-  await page.getByTestId("login-submit").click();
-  await expect(page).toHaveURL(/\/today$/);
+  await signInAs(page, request, "receptionist@demo.salon");
 
   // Stat cards render before any interaction.
   await expect(page.getByTestId("stat-card-checked-in")).toBeVisible();

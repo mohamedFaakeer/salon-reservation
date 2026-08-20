@@ -68,3 +68,23 @@ export class StaffLeaveController {
     return { ok: true };
   }
 }
+
+/**
+ * The tenant-wide view of the same resource.
+ *
+ * It cannot live on `staff/:staffId/leave`, whose every path carries a staff
+ * id, so it gets its own route rather than making the availability board ask
+ * once per stylist.
+ */
+@ApiTags("staff-leave")
+@ApiBearerAuth()
+@Controller("leave")
+export class LeaveController {
+  constructor(private readonly leave: StaffLeaveService) {}
+
+  @Get()
+  list(@Req() req: Request) {
+    const ctx = getTenantContext(req);
+    return this.leave.listAll(ctx.tenantId);
+  }
+}

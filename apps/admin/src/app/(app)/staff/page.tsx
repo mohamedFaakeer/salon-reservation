@@ -5,7 +5,7 @@ import {
   ApiRequestError,
   fetchServices,
   fetchStaff,
-  fetchStaffServices,
+  fetchStaffServiceAssignments,
   updateStaff,
   type ServiceItem,
   type StaffMember,
@@ -38,16 +38,17 @@ export default function StaffPage() {
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    Promise.all([fetchStaff(), fetchServices()])
-      .then(async ([staffRows, serviceRows]) => {
+    Promise.all([fetchStaff(), fetchServices(), fetchStaffServiceAssignments()])
+      .then(([staffRows, serviceRows, assignmentRows]) => {
         setStaff(staffRows);
         setServices(serviceRows.filter((s) => s.active));
-        // One request per stylist: the API exposes assignments per staff
-        // member, and a salon has tens of staff at most, not thousands.
-        const pairs = await Promise.all(
-          staffRows.map(async (m) => [m.id, (await fetchStaffServices(m.id)).map((s) => s.id)] as const),
+        // Three requests, whatever the size of the team. This used to ask once
+        // per stylist, on the reasoning that a salon has tens of staff at
+        // most — true, and still enough to make opening this screen cost
+        // forty requests.
+        setAssignments(
+          Object.fromEntries(assignmentRows.map((a) => [a.staffId, a.serviceIds])),
         );
-        setAssignments(Object.fromEntries(pairs));
       })
       .catch((err: unknown) => {
         setError(err instanceof ApiRequestError ? err.message : "Could not load the team.");

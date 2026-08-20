@@ -1,4 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { signInAs } from "./auth";
+import { e2eName } from "./fixtures";
 
 /**
  * FE2 — Staff & skills.
@@ -6,24 +8,12 @@ import { test, expect, type Page } from "@playwright/test";
  * Names are uniquified per run: staff are deactivated rather than deleted, so
  * a fixed name would collide with leftovers from an earlier run.
  */
-function uniqueName(prefix: string): string {
-  return `${prefix} ${Date.now().toString().slice(-6)}`;
-}
-
-async function loginAs(page: Page, email: string): Promise<void> {
-  await page.goto("/login");
-  await page.getByTestId("login-email").fill(email);
-  await page.getByTestId("login-password").fill("demo1234");
-  await page.getByTestId("login-submit").click();
-  await expect(page).toHaveURL(/\/today$/);
-}
-
-test("a new stylist is flagged unbookable until skills are assigned", async ({ page }) => {
-  await loginAs(page, "owner@demo.salon");
+test("a new stylist is flagged unbookable until skills are assigned", async ({ page, request }) => {
+  await signInAs(page, request, "owner@demo.salon");
   await page.getByTestId("nav-staff").click();
   await expect(page).toHaveURL(/\/staff$/);
 
-  const name = uniqueName("Ishara");
+  const name = e2eName("Ishara");
   await page.getByTestId("add-staff-button").click();
   await page.getByTestId("staff-name").fill(name);
   await page.getByTestId("staff-save").click();
@@ -39,11 +29,11 @@ test("a new stylist is flagged unbookable until skills are assigned", async ({ p
   await expect(row.getByRole("button", { name: "Assign skills" })).toBeVisible();
 });
 
-test("assigning a skill clears the unbookable warning", async ({ page }) => {
-  await loginAs(page, "owner@demo.salon");
+test("assigning a skill clears the unbookable warning", async ({ page, request }) => {
+  await signInAs(page, request, "owner@demo.salon");
   await page.getByTestId("nav-staff").click();
 
-  const name = uniqueName("Tharindu");
+  const name = e2eName("Tharindu");
   await page.getByTestId("add-staff-button").click();
   await page.getByTestId("staff-name").fill(name);
   await page.getByTestId("staff-save").click();
@@ -60,12 +50,12 @@ test("assigning a skill clears the unbookable warning", async ({ page }) => {
   await expect(teamRow).not.toContainText("Can't be booked");
 });
 
-test("a service no active stylist can perform is called out", async ({ page }) => {
-  await loginAs(page, "owner@demo.salon");
+test("a service no active stylist can perform is called out", async ({ page, request }) => {
+  await signInAs(page, request, "owner@demo.salon");
   await page.getByTestId("nav-services").click();
 
   // A brand-new service has nobody qualified for it by definition.
-  const serviceName = uniqueName("Threading");
+  const serviceName = e2eName("Threading");
   await page.getByTestId("new-service-button").click();
   await page.getByTestId("service-name").fill(serviceName);
   await page.getByTestId("service-duration").fill("20");
@@ -80,7 +70,7 @@ test("a service no active stylist can perform is called out", async ({ page }) =
   await expect(page.getByTestId("uncovered-warning")).toContainText(serviceName);
 });
 
-test("RECEPTIONIST has no Staff destination", async ({ page }) => {
-  await loginAs(page, "receptionist@demo.salon");
+test("RECEPTIONIST has no Staff destination", async ({ page, request }) => {
+  await signInAs(page, request, "receptionist@demo.salon");
   await expect(page.getByTestId("nav-staff")).toHaveCount(0);
 });

@@ -1,4 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { signInAs } from "./auth";
+import { e2eName } from "./fixtures";
 
 /**
  * FE1 — Services screen.
@@ -7,25 +9,13 @@ import { test, expect, type Page } from "@playwright/test";
  * persistent dev database and services are never hard-deleted, so a fixed
  * name would collide with its own leftovers from an earlier run.
  */
-function uniqueName(prefix: string): string {
-  return `${prefix} ${Date.now().toString().slice(-6)}`;
-}
-
-async function loginAs(page: Page, email: string): Promise<void> {
-  await page.goto("/login");
-  await page.getByTestId("login-email").fill(email);
-  await page.getByTestId("login-password").fill("demo1234");
-  await page.getByTestId("login-submit").click();
-  await expect(page).toHaveURL(/\/(today|services)$/);
-}
-
-test("owner creates a service, and it appears with rupee pricing", async ({ page }) => {
-  await loginAs(page, "owner@demo.salon");
+test("owner creates a service, and it appears with rupee pricing", async ({ page, request }) => {
+  await signInAs(page, request, "owner@demo.salon");
 
   await page.getByTestId("nav-services").click();
   await expect(page).toHaveURL(/\/services$/);
 
-  const name = uniqueName("Scalp Treatment");
+  const name = e2eName("Scalp Treatment");
   await page.getByTestId("new-service-button").click();
   await page.getByTestId("service-name").fill(name);
   await page.getByTestId("service-category").fill("Hair");
@@ -40,11 +30,11 @@ test("owner creates a service, and it appears with rupee pricing", async ({ page
   await expect(row).toContainText("40 min");
 });
 
-test("changing a price warns that existing bookings are unaffected", async ({ page }) => {
-  await loginAs(page, "owner@demo.salon");
+test("changing a price warns that existing bookings are unaffected", async ({ page, request }) => {
+  await signInAs(page, request, "owner@demo.salon");
   await page.getByTestId("nav-services").click();
 
-  const name = uniqueName("Hot Towel Shave");
+  const name = e2eName("Hot Towel Shave");
   await page.getByTestId("new-service-button").click();
   await page.getByTestId("service-name").fill(name);
   await page.getByTestId("service-duration").fill("20");
@@ -68,11 +58,11 @@ test("changing a price warns that existing bookings are unaffected", async ({ pa
   await expect(page.locator("tr", { hasText: name })).toContainText("Rs. 1,400");
 });
 
-test("retiring a service hides it until 'Show retired' is ticked", async ({ page }) => {
-  await loginAs(page, "owner@demo.salon");
+test("retiring a service hides it until 'Show retired' is ticked", async ({ page, request }) => {
+  await signInAs(page, request, "owner@demo.salon");
   await page.getByTestId("nav-services").click();
 
-  const name = uniqueName("Paraffin Wax");
+  const name = e2eName("Paraffin Wax");
   await page.getByTestId("new-service-button").click();
   await page.getByTestId("service-name").fill(name);
   await page.getByTestId("service-duration").fill("25");
@@ -89,8 +79,8 @@ test("retiring a service hides it until 'Show retired' is ticked", async ({ page
   await expect(page.locator("tr", { hasText: name })).toContainText("Retired");
 });
 
-test("RECEPTIONIST has no Services destination", async ({ page }) => {
-  await loginAs(page, "receptionist@demo.salon");
+test("RECEPTIONIST has no Services destination", async ({ page, request }) => {
+  await signInAs(page, request, "receptionist@demo.salon");
 
   // MANAGE_SERVICES is OWNER/MANAGER only, so the nav item should not exist.
   await expect(page.getByTestId("nav-services")).toHaveCount(0);

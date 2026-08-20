@@ -1,10 +1,8 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { signInAs } from "./auth";
+import { e2eName } from "./fixtures";
 
 /** FE3 — Availability: weekly rota, leave with collision warnings, closures. */
-
-function unique(prefix: string): string {
-  return `${prefix} ${Date.now().toString().slice(-6)}`;
-}
 
 /** YYYY-MM-DD, n days from today — far enough out to avoid the seeded bookings. */
 function futureDate(daysAhead: number): string {
@@ -13,20 +11,12 @@ function futureDate(daysAhead: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-async function loginAs(page: Page, email: string): Promise<void> {
-  await page.goto("/login");
-  await page.getByTestId("login-email").fill(email);
-  await page.getByTestId("login-password").fill("demo1234");
-  await page.getByTestId("login-submit").click();
-  await expect(page).toHaveURL(/\/today$/);
-}
-
-test("a stylist with no rota is called out rather than shown seven empty days", async ({ page }) => {
-  await loginAs(page, "owner@demo.salon");
+test("a stylist with no rota is called out rather than shown seven empty days", async ({ page, request }) => {
+  await signInAs(page, request, "owner@demo.salon");
 
   // A brand-new stylist has no schedule rows by definition.
   await page.getByTestId("nav-staff").click();
-  const name = unique("Rota QA");
+  const name = e2eName("Rota QA");
   await page.getByTestId("add-staff-button").click();
   await page.getByTestId("staff-name").fill(name);
   await page.getByTestId("staff-save").click();
@@ -39,10 +29,10 @@ test("a stylist with no rota is called out rather than shown seven empty days", 
   await expect(row).toContainText("can't be booked on any day");
 });
 
-test("setting hours replaces the warning with real times", async ({ page }) => {
-  await loginAs(page, "owner@demo.salon");
+test("setting hours replaces the warning with real times", async ({ page, request }) => {
+  await signInAs(page, request, "owner@demo.salon");
   await page.getByTestId("nav-staff").click();
-  const name = unique("Hours QA");
+  const name = e2eName("Hours QA");
   await page.getByTestId("add-staff-button").click();
   await page.getByTestId("staff-name").fill(name);
   await page.getByTestId("staff-save").click();
@@ -61,8 +51,8 @@ test("setting hours replaces the warning with real times", async ({ page }) => {
   await expect(page.locator("tr", { hasText: name })).not.toContainText("can't be booked");
 });
 
-test("leave over an empty period reports no collisions", async ({ page }) => {
-  await loginAs(page, "owner@demo.salon");
+test("leave over an empty period reports no collisions", async ({ page, request }) => {
+  await signInAs(page, request, "owner@demo.salon");
   await page.getByTestId("nav-availability").click();
   await page.getByTestId("tab-leave").click();
   await page.getByTestId("add-leave-button").click();
@@ -78,12 +68,12 @@ test("leave over an empty period reports no collisions", async ({ page }) => {
   await expect(page.locator('[data-testid^="leave-row-"]').first()).toBeVisible();
 });
 
-test("a closure can be added and removed", async ({ page }) => {
-  await loginAs(page, "owner@demo.salon");
+test("a closure can be added and removed", async ({ page, request }) => {
+  await signInAs(page, request, "owner@demo.salon");
   await page.getByTestId("nav-availability").click();
   await page.getByTestId("tab-closures").click();
 
-  const name = unique("Refurbishment");
+  const name = e2eName("Refurbishment");
   await page.getByTestId("add-closure-button").click();
   await page.getByTestId("closure-name").fill(name);
   await page.getByTestId("closure-start").fill(futureDate(300));
@@ -98,7 +88,7 @@ test("a closure can be added and removed", async ({ page }) => {
   await expect(page.locator("li", { hasText: name })).toHaveCount(0);
 });
 
-test("RECEPTIONIST has no Availability destination", async ({ page }) => {
-  await loginAs(page, "receptionist@demo.salon");
+test("RECEPTIONIST has no Availability destination", async ({ page, request }) => {
+  await signInAs(page, request, "receptionist@demo.salon");
   await expect(page.getByTestId("nav-availability")).toHaveCount(0);
 });

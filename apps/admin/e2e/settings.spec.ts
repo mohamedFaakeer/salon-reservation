@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { signInAs } from "./auth";
 
 /**
  * FE4 — Settings.
@@ -10,22 +11,14 @@ import { test, expect, type Page } from "@playwright/test";
  * payment.
  */
 
-async function loginAs(page: Page, email: string): Promise<void> {
-  await page.goto("/login");
-  await page.getByTestId("login-email").fill(email);
-  await page.getByTestId("login-password").fill("demo1234");
-  await page.getByTestId("login-submit").click();
-  await expect(page).toHaveURL(/\/today$/);
-}
-
 async function openSettings(page: Page): Promise<void> {
   await page.getByTestId("nav-settings").click();
   await expect(page).toHaveURL(/\/settings$/);
   await expect(page.getByTestId("settings-savebar")).toBeVisible();
 }
 
-test("the save bar stays quiet until something actually changes", async ({ page }) => {
-  await loginAs(page, "owner@demo.salon");
+test("the save bar stays quiet until something actually changes", async ({ page, request }) => {
+  await signInAs(page, request, "owner@demo.salon");
   await openSettings(page);
 
   await expect(page.getByTestId("settings-dirty-state")).toHaveText("No changes to save.");
@@ -42,8 +35,8 @@ test("the save bar stays quiet until something actually changes", async ({ page 
   await expect(page.getByTestId("settings-save")).toBeDisabled();
 });
 
-test("an out-of-range value blocks saving and says why", async ({ page }) => {
-  await loginAs(page, "owner@demo.salon");
+test("an out-of-range value blocks saving and says why", async ({ page, request }) => {
+  await signInAs(page, request, "owner@demo.salon");
   await openSettings(page);
 
   // The DTO caps the booking window at 365 days.
@@ -57,8 +50,8 @@ test("an out-of-range value blocks saving and says why", async ({ page }) => {
   await page.getByTestId("settings-discard").click();
 });
 
-test("a changed refund percentage survives a reload", async ({ page }) => {
-  await loginAs(page, "owner@demo.salon");
+test("a changed refund percentage survives a reload", async ({ page, request }) => {
+  await signInAs(page, request, "owner@demo.salon");
   await openSettings(page);
 
   const original = await page.getByTestId("refund-after").inputValue();
@@ -77,8 +70,8 @@ test("a changed refund percentage survives a reload", async ({ page }) => {
   await expect(page.getByText("Settings saved.")).toBeVisible();
 });
 
-test("switching the deposit rule reveals only that rule's value field", async ({ page }) => {
-  await loginAs(page, "owner@demo.salon");
+test("switching the deposit rule reveals only that rule's value field", async ({ page, request }) => {
+  await signInAs(page, request, "owner@demo.salon");
   await openSettings(page);
 
   await page.getByTestId("advance-PERCENTAGE").check();
@@ -94,8 +87,8 @@ test("switching the deposit rule reveals only that rule's value field", async ({
   await expect(page.getByTestId("settings-dirty-state")).toHaveText("No changes to save.");
 });
 
-test("reminders are capped at five and read as sentences", async ({ page }) => {
-  await loginAs(page, "owner@demo.salon");
+test("reminders are capped at five and read as sentences", async ({ page, request }) => {
+  await signInAs(page, request, "owner@demo.salon");
   await openSettings(page);
 
   const list = page.getByTestId("reminder-list");
@@ -116,8 +109,8 @@ test("reminders are capped at five and read as sentences", async ({ page }) => {
   await page.getByTestId("settings-discard").click();
 });
 
-test("renaming the salon updates the name in the sidebar", async ({ page }) => {
-  await loginAs(page, "owner@demo.salon");
+test("renaming the salon updates the name in the sidebar", async ({ page, request }) => {
+  await signInAs(page, request, "owner@demo.salon");
   await openSettings(page);
 
   const original = await page.getByTestId("salon-name").inputValue();
@@ -133,7 +126,7 @@ test("renaming the salon updates the name in the sidebar", async ({ page }) => {
   await expect(page.getByText("Settings saved.")).toBeVisible();
 });
 
-test("RECEPTIONIST has no Settings destination", async ({ page }) => {
-  await loginAs(page, "receptionist@demo.salon");
+test("RECEPTIONIST has no Settings destination", async ({ page, request }) => {
+  await signInAs(page, request, "receptionist@demo.salon");
   await expect(page.getByTestId("nav-settings")).toHaveCount(0);
 });

@@ -6,7 +6,7 @@ import {
   deleteClosure,
   deleteLeave,
   fetchClosures,
-  fetchLeave,
+  fetchAllLeave,
   fetchSchedules,
   fetchStaff,
   type ClosureRecord,
@@ -77,16 +77,19 @@ export default function AvailabilityPage() {
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    Promise.all([fetchStaff(), fetchSchedules(), fetchClosures()])
-      .then(async ([staffRows, scheduleRows, closureRows]) => {
+    Promise.all([fetchStaff(), fetchSchedules(), fetchClosures(), fetchAllLeave()])
+      .then(([staffRows, scheduleRows, closureRows, leaveRows]) => {
         const active = staffRows.filter((s) => s.active);
         setStaff(active);
         setSchedules(scheduleRows);
         setClosures(closureRows);
-        const pairs = await Promise.all(
-          active.map(async (m) => [m.id, await fetchLeave(m.id)] as const),
-        );
-        setLeave(Object.fromEntries(pairs));
+        // Four requests, whatever the size of the team — this used to ask for
+        // leave once per stylist.
+        const byStaff: Record<string, StaffLeaveRecord[]> = {};
+        for (const row of leaveRows) {
+          (byStaff[row.staffId] ??= []).push(row);
+        }
+        setLeave(byStaff);
       })
       .catch((err: unknown) => {
         setError(err instanceof ApiRequestError ? err.message : "Could not load availability.");

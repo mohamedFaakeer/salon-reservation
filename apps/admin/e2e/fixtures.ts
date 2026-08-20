@@ -2,6 +2,23 @@ import type { APIRequestContext } from "@playwright/test";
 
 export const apiUrl = process.env.PLAYWRIGHT_API_URL ?? "http://localhost:3000/api/v1";
 
+/**
+ * Every row this suite creates carries this marker, so `global-setup.ts` can
+ * find and remove them without touching demo data.
+ *
+ * Nothing is deleted by the app itself (CLAUDE.md §1.8 — no hard deletes on
+ * business records), and there is deliberately no endpoint that would. The
+ * cleanup is test infrastructure reaching into a development database to
+ * remove its own fixtures, which is why it is scoped by this marker and
+ * refuses to run against anything but a local database.
+ */
+export const E2E_MARKER = "E2E";
+
+/** A unique, prunable name for anything a spec creates. */
+export function e2eName(label: string): string {
+  return `${E2E_MARKER} ${label} ${Date.now().toString().slice(-6)}`;
+}
+
 const COLOMBO_OFFSET_MINUTES = 330;
 
 /** Colombo-local "today" — mirrors apps/api's time.util.ts `colomboNow` (fixed +05:30, no DST). */
@@ -22,10 +39,42 @@ export function dayOfWeekOf(date: string): number {
   return (jsDay + 6) % 7;
 }
 
-export async function login(request: APIRequestContext, email: string, password: string): Promise<string> {
+export interface ApiSession {
+  accessToken: string;
+  user: { id: string; email: string; name: string; tenantId: string | null; roles: string[] };
+}
+
+/**
+ * One sign-in per account for the lifetime of the worker.
+ *
+ * Sign-in is deliberately expensive (argon2id) and deliberately rate-limited
+ * per account (SECURITY.md §2). A run that signs in for every test and every
+ * fixture competes with a safeguard that is doing its job, and the later tests
+ * are the ones told 429.
+ */
+const sessions = new Map<string, ApiSession>();
+
+export async function signInApi(
+  request: APIRequestContext,
+  email: string,
+  password = "demo1234",
+): Promise<ApiSession> {
+  const cached = sessions.get(email);
+  if (cached) {
+    return cached;
+  }
   const res = await request.post(`${apiUrl}/auth/login`, { data: { email, password } });
-  const body = await res.json();
-  return body.accessToken as string;
+  if (!res.ok()) {
+    throw new Error(`Could not sign in as ${email}: ${res.status()} ${await res.text()}`);
+  }
+  const session = (await res.json()) as ApiSession;
+  sessions.set(email, session);
+  return session;
+}
+
+export async function login(request: APIRequestContext, email: string, password: string): Promise<string> {
+  const session = await signInApi(request, email, password);
+  return session.accessToken;
 }
 
 export async function createStaff(request: APIRequestContext, token: string, name: string): Promise<string> {
@@ -90,7 +139,7 @@ export async function bookableFixture(
   namePrefix: string,
 ): Promise<{ staffId: string; serviceId: string; serviceName: string }> {
   const token = await login(request, "owner@demo.salon", "demo1234");
-  const unique = `${namePrefix} ${Date.now()}`;
+  const unique = e2eName(namePrefix);
   const staffId = await createStaff(request, token, `${unique} Staff`);
   const serviceName = `${unique} Service`;
   const serviceId = await createService(request, token, serviceName, 30);
