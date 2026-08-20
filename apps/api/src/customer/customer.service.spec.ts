@@ -1,6 +1,10 @@
 import type { ObjectLiteral, Repository } from "typeorm";
 import { CustomerService } from "./customer.service";
+import { AppointmentStatus } from "@salon/shared";
 import type { Customer } from "../entities/customer.entity";
+import type { Appointment } from "../entities/appointment.entity";
+import type { AppointmentServiceLine } from "../entities/appointment-service.entity";
+import type { Payment } from "../entities/payment.entity";
 
 function mockRepo<T extends ObjectLiteral>() {
   return {
@@ -9,16 +13,46 @@ function mockRepo<T extends ObjectLiteral>() {
     find: vi.fn(async () => [] as T[]),
     findAndCount: vi.fn(async () => [[] as T[], 0] as [T[], number]),
     findOne: vi.fn(async () => null as T | null),
+    createQueryBuilder: vi.fn(() => queryBuilder([])),
   } as unknown as Repository<T>;
+}
+
+/**
+ * Chainable query-builder stub. `stats` runs four aggregates in parallel, so
+ * each test seeds the rows it cares about and leaves the rest empty.
+ */
+function queryBuilder(rows: unknown[], one: unknown = null) {
+  const qb: Record<string, unknown> = {};
+  for (const method of [
+    "select",
+    "addSelect",
+    "where",
+    "andWhere",
+    "innerJoin",
+    "groupBy",
+    "orderBy",
+    "limit",
+  ]) {
+    qb[method] = vi.fn(() => qb);
+  }
+  qb.getRawMany = vi.fn(async () => rows);
+  qb.getRawOne = vi.fn(async () => one);
+  return qb;
 }
 
 describe("CustomerService", () => {
   let customers: Repository<Customer>;
+  let appointments: Repository<Appointment>;
+  let lines: Repository<AppointmentServiceLine>;
+  let payments: Repository<Payment>;
   let service: CustomerService;
 
   beforeEach(() => {
     customers = mockRepo<Customer>();
-    service = new CustomerService(customers);
+    appointments = mockRepo<Appointment>();
+    lines = mockRepo<AppointmentServiceLine>();
+    payments = mockRepo<Payment>();
+    service = new CustomerService(customers, appointments, lines, payments);
   });
 
   describe("search", () => {
@@ -153,6 +187,101 @@ describe("CustomerService", () => {
       vi.mocked(customers.findOne).mockResolvedValue(null);
 
       await expect(service.findById("tenant-1", "cust-1")).rejects.toMatchObject({
+        statusCode: 404,
+        code: "CUSTOMER_NOT_FOUND",
+      });
+    });
+  });
+
+  describe("stats", () => {
+    function seed({
+      statuses = [] as Array<{ status: AppointmentStatus; count: number }>,
+      spent = 0,
+      services = [] as Array<{ name: string; count: number }>,
+      dates = { first: null as string | null, last: null as string | null },
+    }) {
+      vi.mocked(customers.findOne).mockResolvedValue({ id: "c1", tenantId: "t1" } as Customer);
+      // Two aggregates run off the appointment repo: the status grouping first,
+      // then the first/last visit dates.
+      vi.mocked(appointments.createQueryBuilder)
+        .mockReturnValueOnce(queryBuilder(statuses) as never)
+        .mockReturnValueOnce(queryBuilder([], dates) as never);
+      vi.mocked(payments.createQueryBuilder).mockReturnValue(
+        queryBuilder([], { total: spent }) as never,
+      );
+      vi.mocked(lines.createQueryBuilder).mockReturnValue(queryBuilder(services) as never);
+    }
+
+    it("counts visits, cancellations and no-shows from one grouped query", async () => {
+      seed({
+        statuses: [
+          { status: AppointmentStatus.COMPLETED, count: 7 },
+          { status: AppointmentStatus.CANCELLED, count: 2 },
+          { status: AppointmentStatus.NO_SHOW, count: 1 },
+        ],
+      });
+
+      const result = await service.stats("t1", "c1");
+
+      expect(result.visits).toBe(7);
+      expect(result.cancellations).toBe(2);
+      expect(result.noShows).toBe(1);
+      expect(result.totalBookings).toBe(10);
+    });
+
+    it("rates reliability over concluded appointments only", async () => {
+      // 1 missed out of 4 that actually resolved. Future bookings are not
+      // evidence either way and must not dilute the ratio.
+      seed({
+        statuses: [
+          { status: AppointmentStatus.COMPLETED, count: 3 },
+          { status: AppointmentStatus.NO_SHOW, count: 1 },
+          { status: AppointmentStatus.CONFIRMED, count: 5 },
+        ],
+      });
+
+      const result = await service.stats("t1", "c1");
+
+      expect(result.noShowRate).toBe(25);
+    });
+
+    it("has no rate to report for a customer who has never concluded a booking", async () => {
+      seed({ statuses: [{ status: AppointmentStatus.CONFIRMED, count: 1 }] });
+
+      const result = await service.stats("t1", "c1");
+
+      // Null, not zero: zero would claim a perfect record they have not earned.
+      expect(result.noShowRate).toBeNull();
+    });
+
+    it("reports money received, not money billed", async () => {
+      seed({ spent: 412500 });
+
+      const result = await service.stats("t1", "c1");
+
+      expect(result.totalSpentCents).toBe(412500);
+    });
+
+    it("returns the services they actually book, most frequent first", async () => {
+      seed({
+        services: [
+          { name: "Women's Haircut", count: 5 },
+          { name: "Facial", count: 2 },
+        ],
+      });
+
+      const result = await service.stats("t1", "c1");
+
+      expect(result.services).toEqual([
+        { name: "Women's Haircut", count: 5 },
+        { name: "Facial", count: 2 },
+      ]);
+    });
+
+    it("refuses a customer belonging to another salon", async () => {
+      vi.mocked(customers.findOne).mockResolvedValue(null);
+
+      await expect(service.stats("t1", "someone-elses-customer")).rejects.toMatchObject({
         statusCode: 404,
         code: "CUSTOMER_NOT_FOUND",
       });

@@ -597,6 +597,24 @@ export function fetchCustomers(params: {
   return request<{ data: CustomerRecord[]; meta: ListMeta }>(`/customers?${qs.toString()}`);
 }
 
+export interface CustomerStats {
+  totalBookings: number;
+  visits: number;
+  cancellations: number;
+  noShows: number;
+  /** Percent of concluded appointments missed. Null when there is nothing to judge. */
+  noShowRate: number | null;
+  totalSpentCents: number;
+  firstVisitDate: string | null;
+  lastVisitDate: string | null;
+  services: Array<{ name: string; count: number }>;
+}
+
+/** Aggregated in the database — never tally these from a page of results. */
+export function fetchCustomerStats(id: string): Promise<CustomerStats> {
+  return request<CustomerStats>(`/customers/${id}/stats`);
+}
+
 export function fetchCustomer(id: string): Promise<CustomerDetail> {
   return request<CustomerDetail>(`/customers/${id}`);
 }

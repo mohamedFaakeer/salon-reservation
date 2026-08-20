@@ -7,8 +7,10 @@ import {
   ApiRequestError,
   fetchCustomer,
   fetchCustomerAppointments,
+  fetchCustomerStats,
   type AppointmentRecord,
   type CustomerDetail,
+  type CustomerStats,
   type ListMeta,
 } from "../../../../lib/api-client";
 import { canManageCustomers } from "../../../../lib/permissions";
@@ -43,7 +45,7 @@ export default function CustomerDetailPage() {
   const [customer, setCustomer] = useState<CustomerDetail | null>(null);
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([]);
   const [meta, setMeta] = useState<ListMeta | null>(null);
-  const [noShows, setNoShows] = useState<number | null>(null);
+  const [stats, setStats] = useState<CustomerStats | null>(null);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,14 +56,13 @@ export default function CustomerDetailPage() {
     Promise.all([
       fetchCustomer(customerId),
       fetchCustomerAppointments(customerId, { limit: PAGE_SIZE, offset }),
-      // limit: 1 — only the total is wanted, not the rows.
-      fetchCustomerAppointments(customerId, { status: "NO_SHOW", limit: 1 }),
+      fetchCustomerStats(customerId),
     ])
-      .then(([customerRow, history, noShowPage]) => {
+      .then(([customerRow, history, customerStats]) => {
         setCustomer(customerRow);
         setAppointments(history.data);
         setMeta(history.meta);
-        setNoShows(noShowPage.meta.total);
+        setStats(customerStats);
       })
       .catch((err: unknown) => {
         setError(err instanceof ApiRequestError ? err.message : "Could not load this customer.");
@@ -116,10 +117,9 @@ export default function CustomerDetailPage() {
           <Fact label="Email" value={customer.email ?? "Not given"} />
           <Fact label="Customer since" value={formatDate(customer.createdAt)} tabular />
           <Fact
-            label="Bookings"
-            value={meta ? String(meta.total) : "—"}
+            label="Last visit"
+            value={stats?.lastVisitDate ? formatDate(stats.lastVisitDate) : "Not yet"}
             tabular
-            note={noShowNote(noShows)}
           />
         </dl>
 
@@ -132,6 +132,8 @@ export default function CustomerDetailPage() {
           </div>
         ) : null}
       </div>
+
+      {stats ? <CustomerHistory stats={stats} /> : null}
 
       <div className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-slate-900">Booking history</h2>
@@ -199,12 +201,68 @@ export default function CustomerDetailPage() {
   );
 }
 
-/** Only worth saying when there are some — "0 no-shows" is noise on every other customer. */
-function noShowNote(noShows: number | null): string | undefined {
-  if (noShows === null || noShows === 0) {
-    return undefined;
-  }
-  return `${noShows} no-show${noShows === 1 ? "" : "s"}`;
+/**
+ * What this customer is worth, and how reliable they are.
+ *
+ * Every number is aggregated server-side over their whole history, not over
+ * the page of bookings below — those are different questions, and answering
+ * the first with the second is how a customer with three no-shows on page two
+ * reads as spotless.
+ */
+function CustomerHistory({ stats }: { stats: CustomerStats }) {
+  const risky = stats.noShowRate !== null && stats.noShowRate >= 25;
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-4">
+      <h2 className="text-sm font-semibold text-slate-900">History at this salon</h2>
+
+      <dl className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Fact label="Visits" value={String(stats.visits)} tabular />
+        <Fact label="Total spent" value={formatPriceCents(stats.totalSpentCents)} tabular />
+        <Fact
+          label="Cancelled"
+          value={String(stats.cancellations)}
+          tabular
+        />
+        <Fact
+          label="No-shows"
+          value={String(stats.noShows)}
+          tabular
+          note={
+            /* A rate only means something once something has concluded, and
+               only worth flagging when it is bad enough to change how you
+               treat the booking. */
+            risky ? `${stats.noShowRate}% of concluded bookings` : undefined
+          }
+        />
+      </dl>
+
+      {stats.services.length > 0 ? (
+        <div className="mt-4 border-t border-slate-100 pt-3">
+          <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-slate-400">
+            What they book
+          </p>
+          <ul className="mt-2 flex flex-wrap gap-1.5">
+            {stats.services.map((service) => (
+              <li
+                key={service.name}
+                className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700"
+              >
+                {service.name}
+                <span className="ml-1 font-semibold tabular">×{service.count}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {stats.totalBookings === 0 ? (
+        <p className="mt-3 text-sm text-slate-500">
+          No bookings yet — this customer was added but has never been in.
+        </p>
+      ) : null}
+    </section>
+  );
 }
 
 function Fact({

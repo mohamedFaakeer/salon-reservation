@@ -39,4 +39,15 @@ export class CustomerController {
     const ctx = getTenantContext(req);
     return this.customers.findById(ctx.tenantId, id);
   }
+
+  /**
+   * Aggregated history for one customer: visits, spend, reliability and the
+   * services they actually book. Computed in the database — a client tallying
+   * a page of results reports "0 no-shows" for someone with three on page two.
+   */
+  @Get(":id/stats")
+  stats(@Req() req: Request, @Param("id") id: string) {
+    const ctx = getTenantContext(req);
+    return this.customers.stats(ctx.tenantId, id);
+  }
 }

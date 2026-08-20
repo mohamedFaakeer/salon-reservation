@@ -6,10 +6,37 @@ import type { EntityManager } from "typeorm";
 // erase it and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { ILike, Repository } from "typeorm";
-import { ApiError, type CreateCustomerDto, type CustomerQueryDto } from "@salon/shared";
+import {
+  ApiError,
+  AppointmentStatus,
+  PaymentStatus,
+  type CreateCustomerDto,
+  type CustomerQueryDto,
+} from "@salon/shared";
 import { Customer } from "../entities/customer.entity";
+import { Appointment } from "../entities/appointment.entity";
+import { AppointmentServiceLine } from "../entities/appointment-service.entity";
+import { Payment } from "../entities/payment.entity";
 import { isUniqueViolation } from "../common/postgres-errors.util";
 import { normalizePhone } from "./phone.util";
+
+export interface CustomerServiceCount {
+  name: string;
+  count: number;
+}
+
+export interface CustomerStats {
+  totalBookings: number;
+  visits: number;
+  cancellations: number;
+  noShows: number;
+  /** Percent of concluded appointments missed. Null when there is nothing to judge. */
+  noShowRate: number | null;
+  totalSpentCents: number;
+  firstVisitDate: string | null;
+  lastVisitDate: string | null;
+  services: CustomerServiceCount[];
+}
 
 export interface CustomerListResult {
   data: Customer[];
@@ -27,6 +54,9 @@ export interface BookingCustomerInput {
 export class CustomerService {
   constructor(
     @InjectRepository(Customer) private readonly customers: Repository<Customer>,
+    @InjectRepository(Appointment) private readonly appointments: Repository<Appointment>,
+    @InjectRepository(AppointmentServiceLine) private readonly lines: Repository<AppointmentServiceLine>,
+    @InjectRepository(Payment) private readonly payments: Repository<Payment>,
   ) {}
 
   /** POST /customers — hard block on a phone/email match (PRD: "no silent duplicates"). */
@@ -147,6 +177,87 @@ export class CustomerService {
       });
     }
     return customer;
+  }
+
+  /**
+   * What this customer is worth to this salon, and how reliable they are.
+   *
+   * Every figure is aggregated in the database rather than tallied from a page
+   * of results in the browser: a client-side count reports "0 no-shows" for
+   * someone with three of them on page two, which is worse than showing
+   * nothing. Scoped by tenantId on every query — a customer record is never
+   * shared across salons, but the aggregates must not be either.
+   */
+  async stats(tenantId: string, customerId: string): Promise<CustomerStats> {
+    // Confirms the customer belongs to this tenant before aggregating.
+    await this.findById(tenantId, customerId);
+
+    const [byStatus, spend, services, visitDates] = await Promise.all([
+      this.appointments
+        .createQueryBuilder("a")
+        .select("a.status", "status")
+        .addSelect("COUNT(*)::int", "count")
+        .where("a.tenantId = :tenantId AND a.customerId = :customerId", { tenantId, customerId })
+        .groupBy("a.status")
+        .getRawMany<{ status: AppointmentStatus; count: number }>(),
+
+      // Money actually received, not money billed. A completed appointment the
+      // customer never paid for is not spending.
+      this.payments
+        .createQueryBuilder("p")
+        .select("COALESCE(SUM(p.amountCents), 0)::int", "total")
+        .where("p.tenantId = :tenantId AND p.customerId = :customerId AND p.state = :state", {
+          tenantId,
+          customerId,
+          state: PaymentStatus.SUCCESS,
+        })
+        .getRawOne<{ total: number }>(),
+
+      // Names come from the snapshot on the line, not the current Service row:
+      // a service renamed last year must still read as what they booked.
+      this.lines
+        .createQueryBuilder("l")
+        .innerJoin(Appointment, "a", 'a.id = l."appointmentId"')
+        .select("l.nameSnapshot", "name")
+        .addSelect("COUNT(*)::int", "count")
+        .where("a.tenantId = :tenantId AND a.customerId = :customerId", { tenantId, customerId })
+        .andWhere("l.status = :active", { active: "ACTIVE" })
+        .andWhere("a.status NOT IN (:...ignored)", {
+          ignored: [AppointmentStatus.CANCELLED, AppointmentStatus.RESCHEDULED, AppointmentStatus.EXPIRED],
+        })
+        .groupBy("l.nameSnapshot")
+        .orderBy("2", "DESC")
+        .limit(6)
+        .getRawMany<{ name: string; count: number }>(),
+
+      this.appointments
+        .createQueryBuilder("a")
+        .select("MIN(a.appointmentDate)", "first")
+        .addSelect("MAX(a.appointmentDate)", "last")
+        .where("a.tenantId = :tenantId AND a.customerId = :customerId", { tenantId, customerId })
+        .andWhere("a.status = :completed", { completed: AppointmentStatus.COMPLETED })
+        .getRawOne<{ first: string | null; last: string | null }>(),
+    ]);
+
+    const counts = new Map(byStatus.map((r) => [r.status, Number(r.count)]));
+    const total = byStatus.reduce((sum, r) => sum + Number(r.count), 0);
+    const visits = counts.get(AppointmentStatus.COMPLETED) ?? 0;
+    const cancellations = counts.get(AppointmentStatus.CANCELLED) ?? 0;
+    const noShows = counts.get(AppointmentStatus.NO_SHOW) ?? 0;
+
+    return {
+      totalBookings: total,
+      visits,
+      cancellations,
+      noShows,
+      // Of the appointments that reached a conclusion. Bookings still in the
+      // future are not evidence either way, so they stay out of the ratio.
+      noShowRate: visits + noShows === 0 ? null : Math.round((noShows / (visits + noShows)) * 100),
+      totalSpentCents: Number(spend?.total ?? 0),
+      firstVisitDate: visitDates?.first ?? null,
+      lastVisitDate: visitDates?.last ?? null,
+      services: services.map((r) => ({ name: r.name, count: Number(r.count) })),
+    };
   }
 
   private async findDuplicate(
