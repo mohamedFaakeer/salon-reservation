@@ -1,4 +1,4 @@
-import { Controller, Get, Param } from "@nestjs/common";
+import { Controller, Get, Param, Query } from "@nestjs/common";
 import { Public } from "../common/decorators/public.decorator";
 // SalonService must stay a VALUE import: NestJS resolves constructor
 // injection via design:paramtypes metadata at runtime; `import type` would
@@ -13,8 +13,8 @@ export class SalonController {
   constructor(private readonly salons: SalonService) {}
 
   @Get()
-  list() {
-    return this.salons.list();
+  list(@Query("q") q?: string) {
+    return this.salons.list(q);
   }
 
   @Get(":slug")

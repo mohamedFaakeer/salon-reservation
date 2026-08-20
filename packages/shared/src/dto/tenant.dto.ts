@@ -146,6 +146,11 @@ export class BranchUpdateDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(80)
+  city?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(32)
   phone?: string;
 }

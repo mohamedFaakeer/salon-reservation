@@ -34,6 +34,7 @@ export class BranchService {
     const branch = await this.getDefaultBranch(tenantId);
     if (patch.name !== undefined) branch.name = patch.name;
     if (patch.address !== undefined) branch.address = patch.address;
+    if (patch.city !== undefined) branch.city = patch.city;
     if (patch.phone !== undefined) branch.phone = patch.phone;
     return this.branches.save(branch);
   }

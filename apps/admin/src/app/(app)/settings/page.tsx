@@ -48,6 +48,7 @@ interface FormState {
   salonName: string;
   branchName: string;
   branchAddress: string;
+  branchCity: string;
   branchPhone: string;
   advanceRule: AdvanceRuleValue;
   advanceRupees: string;
@@ -85,6 +86,7 @@ function toForm(
     salonName: tenant.name,
     branchName: branch.name,
     branchAddress: branch.address ?? "",
+    branchCity: branch.city ?? "",
     branchPhone: branch.phone ?? "",
     advanceRule: settings.advanceRule,
     // Cents in, rupees on screen — the same translation the service drawer makes.
@@ -214,6 +216,7 @@ export default function SettingsPage() {
     if (
       form.branchName.trim() !== baseline.branchName ||
       form.branchAddress.trim() !== baseline.branchAddress ||
+      form.branchCity.trim() !== baseline.branchCity ||
       form.branchPhone.trim() !== baseline.branchPhone
     ) {
       steps.push({
@@ -222,6 +225,7 @@ export default function SettingsPage() {
           updateBranch({
             name: form.branchName.trim(),
             address: form.branchAddress.trim(),
+            city: form.branchCity.trim(),
             phone: form.branchPhone.trim(),
           }),
       });
@@ -366,6 +370,16 @@ export default function SettingsPage() {
           disabled={!canManage}
           optional
           placeholder="42 Galle Road, Colombo 03"
+        />
+        <TextField
+          id="branch-city"
+          label="City"
+          value={form.branchCity}
+          onChange={(v) => set("branchCity", v)}
+          disabled={!canManage}
+          optional
+          placeholder="Colombo"
+          hint="Shown on your card in the salon list, and matched by customer search."
         />
         <TextField
           id="branch-phone"

@@ -7,7 +7,11 @@ export interface SalonListItem {
   slug: string;
   name: string;
   address: string | null;
+  city: string | null;
   servicesCount: number;
+  /** Cheapest active service; null when the salon lists none yet. */
+  priceFromCents: number | null;
+  topServices: string[];
 }
 
 export interface SalonService {
@@ -39,6 +43,7 @@ export interface SalonProfile {
   slug: string;
   name: string;
   address: string | null;
+  city: string | null;
   phone: string | null;
   services: SalonService[];
   staff: SalonStaff[];
@@ -162,8 +167,9 @@ async function request<T>(
   return (await res.json()) as T;
 }
 
-export function fetchSalons(): Promise<SalonListItem[]> {
-  return request<SalonListItem[]>("/salons");
+export function fetchSalons(q?: string): Promise<SalonListItem[]> {
+  const term = q?.trim();
+  return request<SalonListItem[]>(term ? `/salons?q=${encodeURIComponent(term)}` : "/salons");
 }
 
 export function fetchSalonProfile(slug: string): Promise<SalonProfile> {

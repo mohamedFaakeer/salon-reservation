@@ -9,11 +9,24 @@ import type { WorkingSchedule } from "../entities/working-schedule.entity";
 import type { Closure } from "../entities/closure.entity";
 import type { TenantService } from "../tenant/tenant.service";
 
+/** Chainable query-builder stub; `getMany` is what the code under test awaits. */
+function mockQueryBuilder<T>(rows: T[] = []) {
+  const qb = {
+    leftJoin: vi.fn(() => qb),
+    where: vi.fn(() => qb),
+    andWhere: vi.fn(() => qb),
+    orderBy: vi.fn(() => qb),
+    getMany: vi.fn(async () => rows),
+  };
+  return qb;
+}
+
 function mockRepo<T extends ObjectLiteral>() {
   return {
     find: vi.fn(async () => [] as T[]),
     findOne: vi.fn(async () => null as T | null),
     count: vi.fn(async () => 0),
+    createQueryBuilder: vi.fn(() => mockQueryBuilder<T>()),
   } as unknown as Repository<T>;
 }
 
@@ -62,23 +75,71 @@ describe("SalonService", () => {
   });
 
   describe("list", () => {
-    it("returns active tenants with their default branch address and active service count", async () => {
-      vi.mocked(tenants.find).mockResolvedValue([fakeTenant({ id: "t1", slug: "elegance", name: "Elegance" })]);
-      vi.mocked(branches.findOne).mockResolvedValue({ address: "123 Galle Rd" } as Branch);
-      vi.mocked(services.count).mockResolvedValue(5);
+    function listReturning(rows: Tenant[]) {
+      const qb = mockQueryBuilder(rows);
+      vi.mocked(tenants.createQueryBuilder).mockReturnValue(qb as never);
+      return qb;
+    }
+
+    it("returns active tenants with their branch, service count, and cheapest price", async () => {
+      listReturning([fakeTenant({ id: "t1", slug: "elegance", name: "Elegance" })]);
+      vi.mocked(branches.findOne).mockResolvedValue({
+        address: "123 Galle Rd",
+        city: "Colombo",
+      } as Branch);
+      vi.mocked(services.find).mockResolvedValue([
+        { name: "Blow dry", priceCents: 90000 } as Service,
+        { name: "Colour", priceCents: 450000 } as Service,
+        { name: "Haircut", priceCents: 150000 } as Service,
+      ]);
 
       const result = await service.list();
 
-      expect(result).toEqual([{ slug: "elegance", name: "Elegance", address: "123 Galle Rd", servicesCount: 5 }]);
+      expect(result).toEqual([
+        {
+          slug: "elegance",
+          name: "Elegance",
+          address: "123 Galle Rd",
+          city: "Colombo",
+          servicesCount: 3,
+          // "price from" is the cheapest, not the first by name.
+          priceFromCents: 90000,
+          topServices: ["Blow dry", "Colour", "Haircut"],
+        },
+      ]);
     });
 
-    it("returns null address when the tenant has no active branch", async () => {
-      vi.mocked(tenants.find).mockResolvedValue([fakeTenant()]);
+    it("returns null address and city when the tenant has no active branch", async () => {
+      listReturning([fakeTenant()]);
       vi.mocked(branches.findOne).mockResolvedValue(null);
 
       const [result] = await service.list();
 
       expect(result.address).toBeNull();
+      expect(result.city).toBeNull();
+    });
+
+    it("has no price to quote when the salon lists no services", async () => {
+      listReturning([fakeTenant()]);
+      vi.mocked(services.find).mockResolvedValue([]);
+
+      const [result] = await service.list();
+
+      // Math.min() of nothing is Infinity, which would render as a price.
+      expect(result.priceFromCents).toBeNull();
+      expect(result.topServices).toEqual([]);
+    });
+
+    it("filters on name or city only when a search term is given", async () => {
+      const withoutTerm = listReturning([]);
+      await service.list("   ");
+      expect(withoutTerm.andWhere).not.toHaveBeenCalled();
+
+      const withTerm = listReturning([]);
+      await service.list("colombo");
+      expect(withTerm.andWhere).toHaveBeenCalledWith(expect.stringContaining("ILIKE"), {
+        q: "%colombo%",
+      });
     });
   });
 

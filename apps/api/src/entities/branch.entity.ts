@@ -29,6 +29,14 @@ export class Branch {
   @Column({ type: "varchar", length: 255, nullable: true })
   address!: string | null;
 
+  /**
+   * Kept separate from `address` because the customer-facing cards and the
+   * home search need a city on its own, and no reliable city token can be
+   * parsed back out of a free-text address line.
+   */
+  @Column({ type: "varchar", length: 80, nullable: true })
+  city!: string | null;
+
   @Column({ type: "varchar", length: 32, nullable: true })
   phone!: string | null;
 

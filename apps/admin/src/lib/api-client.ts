@@ -80,6 +80,7 @@ export interface BranchRecord {
   id: string;
   name: string;
   address: string | null;
+  city: string | null;
   phone: string | null;
 }
 
@@ -338,6 +339,7 @@ export function fetchBranch(): Promise<BranchRecord> {
 export function updateBranch(patch: {
   name?: string;
   address?: string;
+  city?: string;
   phone?: string;
 }): Promise<BranchRecord> {
   return request<BranchRecord>("/tenant/me/branch", {

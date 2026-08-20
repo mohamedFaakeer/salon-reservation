@@ -23,7 +23,12 @@ export interface SalonListItem {
   slug: string;
   name: string;
   address: string | null;
+  city: string | null;
   servicesCount: number;
+  /** Cheapest active service, so a card can say what a visit starts at. */
+  priceFromCents: number | null;
+  /** The first three by name — enough for a card to show what the salon does. */
+  topServices: string[];
 }
 
 export interface SalonHoursEntry {
@@ -36,6 +41,7 @@ export interface SalonProfile {
   slug: string;
   name: string;
   address: string | null;
+  city: string | null;
   phone: string | null;
   services: Array<{ id: string; name: string; category: string | null; durationMin: number; priceCents: number }>;
   staff: Array<{ id: string; name: string }>;
@@ -58,23 +64,45 @@ export class SalonService {
     private readonly tenantService: TenantService,
   ) {}
 
-  async list(): Promise<SalonListItem[]> {
-    const activeTenants = await this.tenants.find({
-      where: { status: TenantStatus.ACTIVE },
-      order: { name: "ASC" },
-    });
+  /**
+   * Public salon list, optionally filtered by `q` against name and city
+   * (UX.md §3.2: "Search = name/city").
+   *
+   * The filter is applied in the database rather than over the assembled
+   * cards, so a search never pays to build cards it is about to discard.
+   */
+  async list(q?: string): Promise<SalonListItem[]> {
+    const query = this.tenants
+      .createQueryBuilder("t")
+      .leftJoin(Branch, "b", 'b."tenantId" = t.id AND b.active = true')
+      .where("t.status = :status", { status: TenantStatus.ACTIVE })
+      .orderBy("t.name", "ASC");
+
+    const term = q?.trim();
+    if (term) {
+      query.andWhere('(t.name ILIKE :q OR b.city ILIKE :q)', { q: `%${term}%` });
+    }
+
+    const activeTenants = await query.getMany();
 
     return Promise.all(
       activeTenants.map(async (tenant) => {
-        const [branch, servicesCount] = await Promise.all([
+        const [branch, services] = await Promise.all([
           this.branches.findOne({ where: { tenantId: tenant.id, active: true } }),
-          this.services.count({ where: { tenantId: tenant.id, active: true } }),
+          this.services.find({
+            where: { tenantId: tenant.id, active: true },
+            order: { name: "ASC" },
+          }),
         ]);
         return {
           slug: tenant.slug,
           name: tenant.name,
           address: branch?.address ?? null,
-          servicesCount,
+          city: branch?.city ?? null,
+          servicesCount: services.length,
+          priceFromCents:
+            services.length > 0 ? Math.min(...services.map((s) => s.priceCents)) : null,
+          topServices: services.slice(0, 3).map((s) => s.name),
         };
       }),
     );
@@ -99,6 +127,7 @@ export class SalonService {
       slug: tenant.slug,
       name: tenant.name,
       address: branch?.address ?? null,
+      city: branch?.city ?? null,
       phone: branch?.phone ?? null,
       services: services.map((s) => ({
         id: s.id,
