@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/auth-context";
 import { ApiRequestError } from "../../lib/api-client";
+import { isSuperAdmin } from "../../lib/permissions";
 import { BusyLabel } from "../../components/spinner";
 
 export default function LoginPage() {
@@ -19,8 +20,10 @@ export default function LoginPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await login(email, password);
-      router.replace("/today");
+      const user = await login(email, password);
+      // SUPER_ADMIN has no tenant permissions, so /today would render an
+      // empty shell and a failing dashboard request.
+      router.replace(isSuperAdmin(user.roles) ? "/platform" : "/today");
     } catch (err) {
       setError(
         err instanceof ApiRequestError ? err.message : "Could not sign in. Please try again.",

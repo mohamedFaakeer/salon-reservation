@@ -57,3 +57,13 @@ export function canViewAudit(roles: string[]): boolean {
 export function canViewDashboard(roles: string[]): boolean {
   return roles.some((r) => r === "OWNER" || r === "MANAGER" || r === "RECEPTIONIST");
 }
+
+/**
+ * SUPER_ADMIN holds PLATFORM_ADMIN and nothing else — it cannot read a single
+ * tenant route. It is therefore not "an admin with more rights" but a
+ * different application, which is why it gets its own shell rather than a
+ * hidden section of the salon sidebar.
+ */
+export function isSuperAdmin(roles: string[]): boolean {
+  return roles.includes("SUPER_ADMIN");
+}

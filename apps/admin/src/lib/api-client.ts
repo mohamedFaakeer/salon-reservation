@@ -843,3 +843,56 @@ export function fetchNotifications(status?: string): Promise<{ data: Notificatio
 export function retryNotification(id: string): Promise<NotificationRecord> {
   return request<NotificationRecord>(`/notifications/${id}/retry`, { method: "POST" });
 }
+
+export interface PlatformTenant {
+  id: string;
+  slug: string;
+  name: string;
+  status: string;
+  currency: string;
+  timezone: string;
+  createdAt: string;
+}
+
+export interface ProvisionTenantResult {
+  tenant: { id: string; slug: string; name: string; status: string };
+  owner: { id: string; email: string; name: string };
+}
+
+export interface DemoSeedResult {
+  /** false when the tenant already had demo data — the call was a safe no-op. */
+  seeded: boolean;
+  counts: { services: number; staff: number; customers: number; appointments: number };
+}
+
+export function fetchTenants(params: { limit?: number; offset?: number } = {}): Promise<{
+  data: PlatformTenant[];
+  meta: ListMeta;
+}> {
+  const qs = new URLSearchParams({
+    limit: String(params.limit ?? 25),
+    offset: String(params.offset ?? 0),
+  });
+  return request<{ data: PlatformTenant[]; meta: ListMeta }>(`/super-admin/tenants?${qs}`);
+}
+
+export function provisionTenant(input: {
+  salonName: string;
+  slug: string;
+  ownerName: string;
+  ownerEmail: string;
+  ownerPassword: string;
+}): Promise<ProvisionTenantResult> {
+  return request<ProvisionTenantResult>("/super-admin/tenants", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+/** Idempotent server-side: a second call reports `seeded: false` and changes nothing. */
+export function demoSeedTenant(tenantId: string): Promise<DemoSeedResult> {
+  return request<DemoSeedResult>(`/super-admin/tenants/${tenantId}/demo-seed`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}

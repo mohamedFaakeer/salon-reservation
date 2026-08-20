@@ -7,8 +7,11 @@ import { UserTenantRole } from "../entities/user-tenant-role.entity";
 import { AuthModule } from "../auth/auth.module";
 import { TenantModule } from "../tenant/tenant.module";
 import { AuditModule } from "../audit/audit.module";
+import { AvailabilityModule } from "../availability/availability.module";
+import { BookingModule } from "../booking/booking.module";
 import { SuperAdminController } from "./super-admin.controller";
 import { SuperAdminService } from "./super-admin.service";
+import { DemoSeedService } from "./demo-seed.service";
 
 @Module({
   imports: [
@@ -16,8 +19,11 @@ import { SuperAdminService } from "./super-admin.service";
     TenantModule,
     AuthModule,
     AuditModule,
+    AvailabilityModule,
+    BookingModule,
   ],
   controllers: [SuperAdminController],
-  providers: [SuperAdminService],
+  providers: [SuperAdminService, DemoSeedService],
+  exports: [DemoSeedService],
 })
 export class SuperAdminModule {}

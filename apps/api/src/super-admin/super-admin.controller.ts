@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 // DTOs must stay VALUE imports: ValidationPipe resolves them via
 // design:paramtypes metadata at runtime; `import type` would erase them.
@@ -12,13 +12,18 @@ import { Permission } from "../common/authorization/permission.enum";
 // erase it and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { SuperAdminService } from "./super-admin.service";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { DemoSeedService } from "./demo-seed.service";
 
 /** API.md §4 — platform routes, SUPER_ADMIN only. */
 @ApiTags("super-admin")
 @ApiBearerAuth()
 @Controller("super-admin/tenants")
 export class SuperAdminController {
-  constructor(private readonly superAdmin: SuperAdminService) {}
+  constructor(
+    private readonly superAdmin: SuperAdminService,
+    private readonly demoSeedService: DemoSeedService,
+  ) {}
 
   @Post()
   @Permissions(Permission.PLATFORM_ADMIN)
@@ -30,5 +35,16 @@ export class SuperAdminController {
   @Permissions(Permission.PLATFORM_ADMIN)
   list(@Query() query: PaginationQueryDto) {
     return this.superAdmin.listTenants(query);
+  }
+
+  /**
+   * DEPLOYMENT.md §7 — fills a freshly provisioned tenant with the demo
+   * catalogue, staff, schedules, customers and sample appointments. Idempotent:
+   * a second call reports `seeded: false` and changes nothing.
+   */
+  @Post(":tenantId/demo-seed")
+  @Permissions(Permission.PLATFORM_ADMIN)
+  demoSeed(@Req() req: AuthenticatedRequest, @Param("tenantId", ParseUUIDPipe) tenantId: string) {
+    return this.demoSeedService.seed(tenantId, req.user.sub);
   }
 }

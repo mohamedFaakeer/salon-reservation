@@ -15,7 +15,8 @@ interface StoredSession {
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  /** Resolves with the signed-in user so the caller can route by role. */
+  login: (email: string, password: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
 }
 
@@ -53,12 +54,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => api.setUnauthorizedHandler(null);
   }, [handleUnauthorized]);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string): Promise<AuthUser> => {
     const res = await api.login(email, password);
     const session: StoredSession = { accessToken: res.accessToken, user: res.user };
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
     api.setAuthToken(res.accessToken);
     setUser(res.user);
+    // Returned rather than read from state: setUser has not committed yet when
+    // the caller needs to decide where to send them.
+    return res.user;
   }, []);
 
   const logout = useCallback(async () => {
