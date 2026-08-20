@@ -177,6 +177,7 @@ export interface PaymentRecord {
 
 export interface DashboardToday {
   countsByStatus: Record<string, number>;
+  appointments: number;
   expectedRevenueCents: number;
   outstandingCents: number;
   checkedInNow: number;
@@ -184,6 +185,25 @@ export interface DashboardToday {
   waitingLate: number;
   cancellations: number;
   noShows: number;
+}
+
+/** Counts that describe *this moment* — only meaningful if the range covers today. */
+export interface DashboardLive {
+  checkedInNow: number;
+  inServiceNow: number;
+  waitingLate: number;
+}
+
+export interface DashboardSummary {
+  range: { from: string; to: string };
+  countsByStatus: Record<string, number>;
+  appointments: number;
+  expectedRevenueCents: number;
+  outstandingCents: number;
+  cancellations: number;
+  noShows: number;
+  /** Null when the range does not include today. */
+  live: DashboardLive | null;
 }
 
 export interface NotificationRecord {
@@ -828,6 +848,19 @@ export function refundPayment(
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+/** Totals for a date range. Omitting both bounds means today. */
+export function fetchDashboard(params: { from?: string; to?: string } = {}): Promise<DashboardSummary> {
+  const qs = new URLSearchParams();
+  if (params.from) {
+    qs.set("from", params.from);
+  }
+  if (params.to) {
+    qs.set("to", params.to);
+  }
+  const query = qs.toString();
+  return request<DashboardSummary>(`/dashboard${query ? `?${query}` : ""}`);
 }
 
 export function fetchDashboardToday(): Promise<DashboardToday> {

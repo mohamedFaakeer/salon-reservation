@@ -4,6 +4,7 @@ export * from "./dto/auth.dto";
 export * from "./dto/tenant.dto";
 export * from "./dto/common.dto";
 export * from "./dto/closure.dto";
+export * from "./dto/dashboard.dto";
 export * from "./dto/service.dto";
 export * from "./dto/audit.dto";
 export * from "./dto/staff.dto";

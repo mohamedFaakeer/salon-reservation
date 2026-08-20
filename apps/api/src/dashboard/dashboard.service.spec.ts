@@ -111,8 +111,92 @@ describe("DashboardService", () => {
   it("queries scoped to the tenant and today's Colombo-local appointmentDate", async () => {
     await service.today("tenant-1");
 
-    expect(appointments.find).toHaveBeenCalledWith({
-      where: { tenantId: "tenant-1", appointmentDate: TODAY },
+    // TypeORM types `where` as a union that does not overlap a plain object,
+    // so this goes through unknown rather than pretending they are compatible.
+    const where = vi.mocked(appointments.find).mock.calls[0][0]?.where as unknown as {
+      tenantId: string;
+      appointmentDate: { value: [string, string] };
+    };
+    expect(where.tenantId).toBe("tenant-1");
+    // A single day is still expressed as a range, so there is one code path.
+    expect(where.appointmentDate.value).toEqual([TODAY, TODAY]);
+  });
+
+  describe("summary", () => {
+    function whereOf() {
+      return vi.mocked(appointments.find).mock.calls[0][0]?.where as unknown as {
+        appointmentDate: { value: [string, string] };
+      };
+    }
+
+    it("defaults to today when no range is given", async () => {
+      const result = await service.summary("tenant-1");
+
+      expect(result.range).toEqual({ from: TODAY, to: TODAY });
+      expect(whereOf().appointmentDate.value).toEqual([TODAY, TODAY]);
+    });
+
+    it("treats a lone `from` as a single day", async () => {
+      const result = await service.summary("tenant-1", "2026-03-01");
+
+      expect(result.range).toEqual({ from: "2026-03-01", to: "2026-03-01" });
+    });
+
+    it("reports live counts when the range covers today", async () => {
+      vi.mocked(appointments.find).mockResolvedValue([
+        fakeAppointment({ status: AppointmentStatus.CHECKED_IN }),
+        fakeAppointment({ status: AppointmentStatus.IN_SERVICE }),
+      ]);
+
+      const result = await service.summary("tenant-1");
+
+      expect(result.live).toEqual({ checkedInNow: 1, inServiceNow: 1, waitingLate: 0 });
+    });
+
+    it("returns no live block for a range that ended before today", async () => {
+      // Zero would be a claim about right now; null says the question does not
+      // apply to a historical range.
+      const result = await service.summary("tenant-1", "2026-01-01", "2026-01-31");
+
+      expect(result.live).toBeNull();
+    });
+
+    it("ignores rows from other days when counting who is in the salon now", async () => {
+      vi.mocked(appointments.find).mockResolvedValue([
+        fakeAppointment({ status: AppointmentStatus.CHECKED_IN, appointmentDate: "2026-01-02" }),
+        fakeAppointment({ status: AppointmentStatus.CHECKED_IN }),
+      ]);
+
+      const result = await service.summary("tenant-1", "2026-01-01", TODAY);
+
+      expect(result.live?.checkedInNow).toBe(1);
+    });
+
+    it("counts revenue across the whole range, not just today", async () => {
+      vi.mocked(appointments.find).mockResolvedValue([
+        fakeAppointment({ appointmentDate: "2026-01-02", totalCents: 100000, balanceCents: 0 }),
+        fakeAppointment({ appointmentDate: "2026-01-03", totalCents: 250000, balanceCents: 50000 }),
+      ]);
+
+      const result = await service.summary("tenant-1", "2026-01-01", TODAY);
+
+      expect(result.appointments).toBe(2);
+      expect(result.expectedRevenueCents).toBe(350000);
+      expect(result.outstandingCents).toBe(50000);
+    });
+
+    it("rejects an end date before the start", async () => {
+      await expect(service.summary("tenant-1", "2026-03-10", "2026-03-01")).rejects.toMatchObject({
+        statusCode: 400,
+        code: "INVALID_DATE_RANGE",
+      });
+    });
+
+    it("rejects a range wider than a year", async () => {
+      await expect(service.summary("tenant-1", "2020-01-01", "2026-01-01")).rejects.toMatchObject({
+        statusCode: 400,
+        code: "DATE_RANGE_TOO_WIDE",
+      });
     });
   });
 });

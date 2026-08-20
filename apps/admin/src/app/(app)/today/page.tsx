@@ -4,13 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ApiRequestError,
   fetchAppointments,
-  fetchDashboardToday,
+  fetchDashboard,
   fetchStaff,
   type AppointmentRecord,
-  type DashboardToday,
+  type DashboardSummary,
   type StaffMember,
 } from "../../../lib/api-client";
-import { formatPriceCents, formatTime, todayLocalDate } from "../../../lib/format";
+import { formatDate, formatPriceCents, formatTime, todayLocalDate } from "../../../lib/format";
 import { canManageAppointments } from "../../../lib/permissions";
 import { useAuth } from "../../../context/auth-context";
 import { EmptyState } from "../../../components/empty-state";
@@ -24,34 +24,54 @@ import { AppointmentDetailDrawer } from "../../../components/appointment-detail-
 import { DashboardStats } from "../../../components/dashboard-stats";
 import { StatusBadge } from "../../../components/status-badge";
 import { DayCalendar } from "../../../components/day-calendar";
+import {
+  DateRangePicker,
+  presetRanges,
+  type DateRange,
+} from "../../../components/date-range-picker";
 
 export default function TodayPage() {
   const { user } = useAuth();
   const canBook = canManageAppointments(user?.roles ?? []);
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
-  const [stats, setStats] = useState<DashboardToday | null>(null);
+  const [stats, setStats] = useState<DashboardSummary | null>(null);
+  // Defaults to today, so the screen opens as the day board it replaces.
+  const [range, setRange] = useState<DateRange>(() => presetRanges()[0].range);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showBookingDrawer, setShowBookingDrawer] = useState(false);
   const [walkInDefault, setWalkInDefault] = useState(false);
   const [openAppointmentId, setOpenAppointmentId] = useState<string | null>(null);
 
+  const singleDay = range.from === range.to;
+
   const load = useCallback(() => {
+    if (range.to < range.from) {
+      return;
+    }
     setLoading(true);
     setError(null);
-    fetchAppointments({ date: todayLocalDate() })
-      .then((res) => setAppointments(res.data))
+    // The appointment list is only fetched for a single day. A month of
+    // bookings is the Appointments screen's job, and pulling them here to
+    // render a calendar that only understands one day would be work thrown
+    // away.
+    const listPromise = singleDay
+      ? fetchAppointments({ date: range.from }).then((res) => setAppointments(res.data))
+      : Promise.resolve(setAppointments([]));
+
+    listPromise
       .catch((err: unknown) => {
         setError(
-          err instanceof ApiRequestError ? err.message : "Could not load today's appointments.",
+          err instanceof ApiRequestError ? err.message : "Could not load these appointments.",
         );
       })
       .finally(() => setLoading(false));
-    void fetchDashboardToday()
+
+    void fetchDashboard(range)
       .then(setStats)
       .catch(() => setStats(null));
-  }, []);
+  }, [range, singleDay]);
 
   useEffect(() => {
     load();
@@ -79,8 +99,21 @@ export default function TodayPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">Today — {todayLocalDate()}</h1>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900">
+            {singleDay
+              ? range.from === todayLocalDate()
+                ? "Today"
+                : formatDate(range.from)
+              : `${formatDate(range.from)} – ${formatDate(range.to)}`}
+          </h1>
+          <p className="mt-0.5 text-sm text-slate-500">
+            {singleDay
+              ? "Every appointment on this day, and who is in the salon now."
+              : "Totals for the period. Open a single day to see its appointments."}
+          </p>
+        </div>
         {canBook ? (
           <div className="flex gap-2">
             <button
@@ -103,6 +136,8 @@ export default function TodayPage() {
         ) : null}
       </div>
 
+      <DateRangePicker value={range} onChange={setRange} />
+
       {stats ? <DashboardStats stats={stats} /> : loading ? <StatsSkeleton /> : null}
 
       {loading ? (
@@ -118,9 +153,20 @@ export default function TodayPage() {
         </>
       ) : error ? (
         <EmptyState title={error} action={{ label: "Retry", onClick: load }} />
+      ) : !singleDay ? (
+        // The calendar draws one day. Rather than invent a month view here,
+        // say so and point at the screen that does list a range.
+        <EmptyState
+          title={`${stats?.appointments ?? 0} appointments in this period. Pick a single day to see the diary, or open Appointments to list them all.`}
+          action={{ label: "Back to today", onClick: () => setRange(presetRanges()[0].range) }}
+        />
       ) : appointments.length === 0 ? (
         <EmptyState
-          title="No appointments today — here's what's next"
+          title={
+            range.from === todayLocalDate()
+              ? "Nothing booked today yet."
+              : `Nothing booked on ${formatDate(range.from)}.`
+          }
           action={canBook ? { label: "New booking", onClick: openNewBooking } : undefined}
         />
       ) : (
