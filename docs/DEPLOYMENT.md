@@ -48,12 +48,20 @@ Browser (any device)
 2. **Name:** `salon-api` → **Root Directory:** `apps/api` → **Runtime:** Node.
 3. **Build Command:**
    ```
-   npm install && npm run build
+   npm ci --include=dev && npm run build -w apps/api
    ```
    (Root workspaces: Render inherits the monorepo via the root `package-lock.json` when the root directory is `apps/api` — for workspaces, set root directory to the repo root is not supported per-subfolder; the documented approach:
    - Set **Root Directory:** leave empty (repo root), then
-   - **Build Command:** `npm ci && npm run build -w apps/api`
+   - **Build Command:** `npm ci --include=dev && npm run build -w apps/api`
    - **Start Command:** `npm run start -w apps/api`.)
+   > **`--include=dev` is required, not optional.** Render sets
+   > `NODE_ENV=production`, which makes `npm ci` omit devDependencies — and every
+   > build tool in this repo is one: `@nestjs/cli`, `typescript`, `ts-node`,
+   > `tailwindcss`, `@tailwindcss/postcss`. A plain `npm ci` drops 370 packages
+   > and the build dies with `sh: 1: nest: not found` (or, for the frontends,
+   > a Tailwind/TypeScript failure). They are build-time only; the running
+   > service still starts from `dist/` and the Next build output.
+
 4. **Environment variables (API):**
 
    **Required** — the API will not work correctly without these:
@@ -130,7 +138,7 @@ Browser (any device)
 
 1. **New + → Web Service →** same repo.
 2. **Name:** `salon-web` · Root Directory via workspaces — set **Root Directory** empty +:
-   - **Build Command:** `npm ci && npm run build -w apps/web`
+   - **Build Command:** `npm ci --include=dev && npm run build -w apps/web`
    - **Start Command:** `npm run start -w apps/web`
 3. **Env (web):**
 
@@ -146,7 +154,7 @@ Browser (any device)
 ## 6. Render: Create the Admin App (apps/admin)
 
 1. Same as web:
-   - **Build:** `npm ci && npm run build -w apps/admin`
+   - **Build:** `npm ci --include=dev && npm run build -w apps/admin`
    - **Start:** `npm run start -w apps/admin`
 2. **Env (admin):**
 
