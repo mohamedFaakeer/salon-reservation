@@ -5,7 +5,7 @@
  */
 
 function Bar({ className = "" }: { className?: string }) {
-  return <div className={`skeleton rounded-md ${className}`} />;
+  return <div className={`rounded-md bg-[rgba(18,48,44,0.09)] ${className}`} />;
 }
 
 /** Generic stacked rows — the fallback when a surface has no distinct shape. */
@@ -22,32 +22,28 @@ export function LoadingSkeleton({ rows = 3 }: { rows?: number }) {
 /** Mirrors SlotGrid's 2-up (3-up on sm) tile grid, including the tile's two text lines. */
 export function SlotsSkeleton({ count = 6 }: { count?: number }) {
   return (
-    <div
-      className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3"
-      role="status"
-      aria-label="Loading available times"
-    >
-      {Array.from({ length: count }).map((_, i) => (
-        <div
-          key={i}
-          className="flex min-h-11 flex-col items-center justify-center gap-1 rounded-lg border border-slate-200 p-2"
-        >
-          <Bar className="h-4 w-14" />
-          <Bar className="h-3 w-10" />
-        </div>
-      ))}
+    <div role="status" aria-label="Finding open times">
+      {/* Holds the lit panel's exact box, so nothing jumps when it lands. */}
+      <div className="h-[92px] rounded-[var(--radius)] bg-[rgba(18,48,44,0.07)]" />
+      <div className="mt-6 grid grid-cols-3 gap-2">
+        {Array.from({ length: count }).map((_, i) => (
+          <div
+            key={i}
+            className="h-[62px] rounded-[var(--radius-sm)] bg-[rgba(18,48,44,0.07)]"
+          />
+        ))}
+      </div>
     </div>
   );
 }
 
-/** Mirrors the service list rows on the salon page. */
 export function ServiceListSkeleton({ rows = 5 }: { rows?: number }) {
   return (
     <div className="flex flex-col gap-2" role="status" aria-label="Loading services">
       {Array.from({ length: rows }).map((_, i) => (
         <div
           key={i}
-          className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-3"
+          className="flex items-center justify-between rounded-[var(--radius-sm)] border border-[rgba(18,48,44,0.12)] p-3"
         >
           <div className="flex flex-col gap-1">
             <Bar className="h-4 w-36" />
@@ -64,7 +60,7 @@ export function ServiceListSkeleton({ rows = 5 }: { rows?: number }) {
 export function BookingDetailSkeleton() {
   return (
     <div
-      className="rounded-lg border border-slate-200 bg-white p-4"
+      className="rounded-[var(--radius)] border border-[rgba(18,48,44,0.12)] p-4"
       role="status"
       aria-label="Loading your booking"
     >

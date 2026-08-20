@@ -3,12 +3,12 @@ import { SalonList } from "../components/salon-list";
 import { SalonSearch } from "../components/salon-search";
 
 /**
- * Home (UX.md §3.2): search box over name and city, then the salon cards.
+ * Home.
  *
- * The search is a plain GET form with the term in the URL, so it stays
- * server-rendered — the spec asks for "SSR fast", and a customer opening this
- * on a phone over mobile data should get results in the first response rather
- * than a shell that then fetches.
+ * The masthead is one saturated dye field carrying the whole first viewport,
+ * with the search bar straddling the seam where the dye ends. Search stays a
+ * plain GET form so results are server-rendered — the spec asks for sixty
+ * seconds to a booking, and a shell that then fetches spends the first four.
  */
 export default async function HomePage({
   searchParams,
@@ -20,25 +20,48 @@ export default async function HomePage({
   const salons = await fetchSalons(query);
 
   return (
-    <main className="mx-auto max-w-lg p-4">
-      <h1 className="text-2xl font-bold text-slate-900">Book your salon visit</h1>
-      <p className="mt-1 text-sm text-slate-500">
-        Pick a salon to see services and available times.
-      </p>
+    <main className="mx-auto min-h-screen max-w-lg pb-16">
+      <header className="crackle relative overflow-hidden bg-[linear-gradient(168deg,var(--dye)_0%,var(--dye-press)_44%,var(--dye-deep)_100%)] px-5 pb-10 pt-6">
+        <div className="relative z-10 flex items-center justify-between">
+          <span className="display display-wide text-[15px] tracking-[0.02em] text-[#022B27]">
+            Salon
+          </span>
+          <a
+            href="/booking"
+            className="min-h-11 rounded-full border-[1.4px] border-[rgba(2,43,39,0.35)] px-4 py-2 text-[11px] font-semibold text-[#022B27] transition-colors duration-[var(--t-tap)] hover:bg-[rgba(2,43,39,0.1)]"
+          >
+            My booking
+          </a>
+        </div>
 
-      <div className="mt-5">
-        <SalonSearch defaultValue={query} />
-      </div>
+        <h1 className="display display-wide relative z-10 mt-9 text-[clamp(44px,13vw,56px)] text-[#022B27]">
+          Claim
+          <span className="block text-[var(--resist)]">the chair.</span>
+        </h1>
+        <p className="relative z-10 mt-3 max-w-[19rem] text-[13.5px] font-medium text-[var(--resist)]">
+          Every time you see is a time you can take. Nothing greyed out, no account, no phone call.
+        </p>
+      </header>
 
-      <div className="mt-5">
-        {query ? (
-          <p className="mb-3 text-sm text-slate-600">
-            {salons.length} {salons.length === 1 ? "salon" : "salons"} matching &ldquo;{query}
-            &rdquo;
-          </p>
-        ) : null}
-        <SalonList salons={salons} query={query} />
-      </div>
+      <SalonSearch defaultValue={query} />
+
+      <section className="mt-7 px-5">
+        <h2 className="display text-[26px] text-[var(--resist)]">
+          {query ? (
+            <>
+              {salons.length} {salons.length === 1 ? "match" : "matches"}
+            </>
+          ) : (
+            <>
+              Open
+              <span className="block">near you</span>
+            </>
+          )}
+        </h2>
+        <div className="mt-4">
+          <SalonList salons={salons} query={query} />
+        </div>
+      </section>
     </main>
   );
 }

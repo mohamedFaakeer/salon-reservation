@@ -44,3 +44,6 @@ Thumbs.db
 # Temporary
 tmp/
 .tmp/
+# Impeccable session artifacts (decision-page answers, mocks)
+.impeccable/questions/
+.impeccable/mocks/

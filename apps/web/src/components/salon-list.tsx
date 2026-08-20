@@ -1,15 +1,18 @@
 import Link from "next/link";
 import type { SalonListItem } from "../lib/api-client";
 import { formatPriceCents } from "../lib/format";
+import { sceneFor } from "../lib/imagery";
+import { DyedPhoto, Marker } from "./cloth";
 import { EmptyState } from "./empty-state";
 
 /**
- * Salon cards (UX.md §3.2): name, city, first three services, price-from.
+ * Salon cards.
  *
- * "From Rs. 900" is the cheapest active service, computed server-side. It is
- * the one number a customer can act on before opening the salon, and it must
- * never be guessed from the three names shown beside it — those are sorted
- * alphabetically, not by price.
+ * The whole card is one dyed field with the photograph underneath it rather
+ * than beside it — a thumbnail in a row would make this the same list every
+ * booking product ships. "From Rs. 600" is the cheapest active service,
+ * computed server-side; the three service names beside it are alphabetical and
+ * must never be read as the source of that price.
  */
 export function SalonList({ salons, query }: { salons: SalonListItem[]; query?: string }) {
   if (salons.length === 0) {
@@ -17,8 +20,8 @@ export function SalonList({ salons, query }: { salons: SalonListItem[]; query?: 
       <EmptyState
         title={
           query
-            ? `No salons match "${query}". Try a different name or city.`
-            : "No salons are open for booking right now — check back soon."
+            ? `Nothing open under "${query}". Try another name or city.`
+            : "No salons are taking bookings yet — check back soon."
         }
       />
     );
@@ -26,39 +29,39 @@ export function SalonList({ salons, query }: { salons: SalonListItem[]; query?: 
 
   return (
     <ul className="flex flex-col gap-3">
-      {salons.map((salon) => (
-        <li key={salon.slug}>
+      {salons.map((salon, i) => (
+        <li key={salon.slug} className="anim-rise" style={{ animationDelay: `${i * 70}ms` }}>
           <Link
             href={`/salon/${salon.slug}`}
-            className="block rounded-lg border border-slate-200 bg-white p-4 transition hover:border-teal-500 hover:shadow-sm"
+            data-testid={`salon-card-${salon.slug}`}
+            className="group relative flex min-h-[152px] items-end overflow-hidden rounded-[var(--radius)] bg-[var(--dye-mid)] transition-transform duration-[var(--t-state)] ease-[var(--ease)] hover:-translate-y-0.5"
           >
-            <div className="flex items-baseline justify-between gap-3">
-              <p className="text-base font-semibold text-slate-900">{salon.name}</p>
-              {salon.priceFromCents !== null ? (
-                <p className="shrink-0 text-sm font-medium text-teal-700">
-                  From {formatPriceCents(salon.priceFromCents)}
-                </p>
+            <DyedPhoto src={sceneFor(salon.slug)} alt="" />
+            <span className="relative w-full p-4">
+              {salon.city ? (
+                <Marker>{salon.city}</Marker>
+              ) : salon.address ? (
+                <Marker>{salon.address}</Marker>
               ) : null}
-            </div>
-
-            {/* City is the thing a customer scans for; the full address is
-                detail they only need once they have chosen. */}
-            {salon.city ? (
-              <p className="mt-0.5 text-sm text-slate-600">{salon.city}</p>
-            ) : salon.address ? (
-              <p className="mt-0.5 text-sm text-slate-500">{salon.address}</p>
-            ) : null}
-
-            {salon.topServices.length > 0 ? (
-              <p className="mt-2 text-sm text-slate-500">
-                {salon.topServices.join(" · ")}
-                {salon.servicesCount > salon.topServices.length
-                  ? ` + ${salon.servicesCount - salon.topServices.length} more`
-                  : ""}
-              </p>
-            ) : (
-              <p className="mt-2 text-sm text-slate-400">No services listed yet</p>
-            )}
+              <span className="display mt-1 block text-[26px] text-[var(--resist)]">
+                {salon.name}
+              </span>
+              <span className="mt-2 flex items-end justify-between gap-3">
+                <span className="min-w-0 text-[11.5px] text-[var(--resist-dim)]">
+                  {salon.topServices.length > 0
+                    ? salon.topServices.join(" · ") +
+                      (salon.servicesCount > salon.topServices.length
+                        ? ` +${salon.servicesCount - salon.topServices.length}`
+                        : "")
+                    : "No services listed yet"}
+                </span>
+                {salon.priceFromCents !== null ? (
+                  <span className="display tabular shrink-0 text-[15px] text-[var(--dye)]">
+                    From {formatPriceCents(salon.priceFromCents)}
+                  </span>
+                ) : null}
+              </span>
+            </span>
           </Link>
         </li>
       ))}
