@@ -2,7 +2,7 @@
   "name": "salon-reservation",
   "version": "0.1.0",
   "private": true,
-  "description": "Salon Reservation SaaS MVP — NestJS + Next.js monorepo (npm workspaces)",
+  "description": "Salon Reservation SaaS MVP \u2014 NestJS + Next.js monorepo (npm workspaces)",
   "engines": {
     "node": ">=24.11.0",
     "npm": ">=10.0.0"
@@ -23,6 +23,8 @@
     "format:check": "prettier --check .",
     "test": "npm run test --workspaces --if-present",
     "test:e2e": "npm run test:e2e --workspaces --if-present",
+    "smoke": "node scripts/smoke.mjs https://salon-api-ncok.onrender.com https://salon-web-qmpb.onrender.com https://salon-admin-e7sf.onrender.com eagle",
+    "smoke:local": "node scripts/smoke.mjs",
     "db:up": "docker compose up -d db",
     "db:down": "docker compose down",
     "db:migrate": "npm run db:migrate -w apps/api",

@@ -7,8 +7,9 @@
 # actually working — not merely that the processes are up.
 #
 # Usage:
-#   scripts/smoke-demo.sh                                   # local dev defaults
-#   scripts/smoke-demo.sh https://api… https://web… https://admin…
+#   npm run smoke                                           # the live deployment
+#   npm run smoke:local                                     # local dev defaults
+#   scripts/smoke-demo.sh https://api… https://web… https://admin… [slug]
 #
 # Or via env vars: API_URL, WEB_URL, ADMIN_URL, DEMO_SLUG.
 #
@@ -20,7 +21,9 @@ set -uo pipefail
 API_URL="${1:-${API_URL:-http://localhost:3000}}"
 WEB_URL="${2:-${WEB_URL:-http://localhost:3001}}"
 ADMIN_URL="${3:-${ADMIN_URL:-http://localhost:3002}}"
-DEMO_SLUG="${DEMO_SLUG:-elegance}"
+# Slug is a 4th positional arg as well as an env var: npm scripts run through
+# cmd.exe on Windows, where `DEMO_SLUG=x cmd` is a syntax error.
+DEMO_SLUG="${4:-${DEMO_SLUG:-elegance}}"
 
 # Render cold starts can take a full minute; don't fail on a slow wake-up.
 CURL_TIMEOUT="${CURL_TIMEOUT:-90}"
