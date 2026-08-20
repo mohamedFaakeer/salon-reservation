@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { ApiRequestError, createStaff, updateStaff, type StaffMember } from "../lib/api-client";
+import { createStaff, updateStaff, type StaffMember } from "../lib/api-client";
 import { DrawerShell } from "./drawer-shell";
 import { BusyLabel } from "./spinner";
+import { useToast } from "./toast";
+import { errorCopy } from "../lib/error-copy";
 
 /**
  * Calendar colours, offered as a fixed palette rather than a free hex field.
@@ -45,6 +47,7 @@ export function StaffDrawer({
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const canSubmit = name.trim().length > 0;
 
@@ -66,7 +69,9 @@ export function StaffDrawer({
         : await createStaff(payload);
       onSaved(saved.id, !member);
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Could not save this stylist.");
+      const copy = errorCopy(err);
+      setError(copy.title);
+      toast.error(copy.title, copy.detail);
     } finally {
       setSubmitting(false);
     }

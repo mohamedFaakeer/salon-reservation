@@ -28,6 +28,8 @@ import {
 } from "../../../components/settings-fields";
 import { SettingsSkeleton } from "../../../components/loading-skeleton";
 import { BusyLabel } from "../../../components/spinner";
+import { useToast } from "../../../components/toast";
+import { errorCopy } from "../../../lib/error-copy";
 
 /**
  * Settings — the rules the booking engine runs on.
@@ -161,6 +163,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const toast = useToast();
 
   const load = useCallback(() => {
     setLoading(true);
@@ -280,14 +283,28 @@ export default function SettingsPage() {
         done.push(step.label);
       }
       setNotice("Settings saved.");
+      toast.success("Settings saved", "New bookings use these rules from now on.");
     } catch (err) {
       const reason =
         err instanceof ApiRequestError ? err.message : "The server rejected the change.";
       const failed = steps[done.length]?.label ?? "your changes";
-      setError(
+      const message =
         done.length > 0
           ? `Saved ${done.join(" and ")}, but could not save ${failed}: ${reason}`
-          : `Could not save ${failed}: ${reason}`,
+          : `Could not save ${failed}: ${reason}`;
+      setError(message);
+      // A partial save is the case that most needs announcing: some of the
+      // form went through and some did not, and the operator is about to
+      // navigate away believing all of it saved.
+      //
+      // The inline message stays precise about *which* step failed; the toast
+      // carries the recovery, which is the part the operator can act on.
+      const copy = errorCopy(err);
+      toast.error(
+        done.length > 0
+          ? `Only ${done.join(" and ")} saved`
+          : `${copy.title} — nothing saved`,
+        copy.detail || `Could not save ${failed}.`,
       );
     } finally {
       setSaving(false);

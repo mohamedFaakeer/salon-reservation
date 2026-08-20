@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { ApiRequestError, createService, updateService, type ServiceItem } from "../lib/api-client";
+import { createService, updateService, type ServiceItem } from "../lib/api-client";
 import { ConfirmDialog } from "./confirm-dialog";
 import { DrawerShell } from "./drawer-shell";
 import { BusyLabel } from "./spinner";
+import { useToast } from "./toast";
+import { errorCopy } from "../lib/error-copy";
 
 /**
  * Create/edit a service.
@@ -44,6 +46,7 @@ export function ServiceDrawer({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState(false);
+  const toast = useToast();
 
   const durationValid = /^\d+$/.test(durationMin) && Number(durationMin) >= 1;
   const priceValid = RUPEE_PATTERN.test(priceRupees);
@@ -76,9 +79,15 @@ export function ServiceDrawer({
       } else {
         await createService(payload);
       }
+      toast.success(
+        service ? `${payload.name} updated` : `${payload.name} added`,
+        service ? "Existing bookings keep the price they were booked at." : undefined,
+      );
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Could not save this service.");
+      const copy = errorCopy(err);
+      setError(copy.title);
+      toast.error(copy.title, copy.detail);
       setPendingConfirm(false);
     } finally {
       setSubmitting(false);

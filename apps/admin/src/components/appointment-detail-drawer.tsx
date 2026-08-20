@@ -38,6 +38,8 @@ import { DrawerShell } from "./drawer-shell";
 import { LoadingSkeleton } from "./loading-skeleton";
 import { BusyLabel } from "./spinner";
 import { StatusBadge } from "./status-badge";
+import { useToast } from "./toast";
+import { errorCopy } from "../lib/error-copy";
 
 const PAYMENT_METHODS: PaymentMethod[] = ["CASH", "BANK_TRANSFER", "CARD_CAPTURED"];
 const PAYMENT_TYPES: PaymentType[] = ["ADVANCE", "FULL", "BALANCE"];
@@ -72,6 +74,7 @@ export function AppointmentDetailDrawer({
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
+  const toast = useToast();
 
   const [showRecordForm, setShowRecordForm] = useState(false);
   const [recordAmount, setRecordAmount] = useState("");
@@ -127,17 +130,24 @@ export function AppointmentDetailDrawer({
     void fetchTenantMe().then((res) => setSlug(res.tenant.slug));
   }, [appointmentId]);
 
-  async function runAction(action: () => Promise<unknown>): Promise<void> {
+  /**
+   * Every status change goes through here, so the confirmation goes through
+   * here too. `done` names what actually happened — "Checked in", not "Saved" —
+   * because the operator is about to look away from this drawer and the toast
+   * is the only record that the tap landed.
+   */
+  async function runAction(action: () => Promise<unknown>, done: string): Promise<void> {
     setActing(true);
     setActionError(null);
     try {
       await action();
       load();
       onChanged();
+      toast.success(done);
     } catch (err) {
-      setActionError(
-        err instanceof ApiRequestError ? err.message : "Could not update this appointment.",
-      );
+      const copy = errorCopy(err);
+      setActionError(copy.title);
+      toast.error(copy.title, copy.detail);
     } finally {
       setActing(false);
     }
@@ -163,10 +173,11 @@ export function AppointmentDetailDrawer({
       setShowRecordForm(false);
       load();
       onChanged();
+      toast.success("Payment recorded", formatPriceCents(amountCents));
     } catch (err) {
-      setRecordError(
-        err instanceof ApiRequestError ? err.message : "Could not record this payment.",
-      );
+      const copy = errorCopy(err);
+      setRecordError(copy.title);
+      toast.error(copy.title, copy.detail);
     } finally {
       setRecordSubmitting(false);
     }
@@ -191,10 +202,11 @@ export function AppointmentDetailDrawer({
       setRefundReason("");
       load();
       onChanged();
+      toast.success("Refund recorded", formatPriceCents(amountCents));
     } catch (err) {
-      setRefundError(
-        err instanceof ApiRequestError ? err.message : "Could not record this refund.",
-      );
+      const copy = errorCopy(err);
+      setRefundError(copy.title);
+      toast.error(copy.title, copy.detail);
     } finally {
       setRefundSubmitting(false);
     }
@@ -809,7 +821,7 @@ export function AppointmentDetailDrawer({
                 type="button"
                 data-testid="action-check-in"
                 disabled={acting}
-                onClick={() => void runAction(() => checkIn(appointment.id))}
+                onClick={() => void runAction(() => checkIn(appointment.id), "Checked in")}
                 className="rounded bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
               >
                 Check in
@@ -821,7 +833,7 @@ export function AppointmentDetailDrawer({
                 type="button"
                 data-testid="action-in-service"
                 disabled={acting}
-                onClick={() => void runAction(() => inService(appointment.id))}
+                onClick={() => void runAction(() => inService(appointment.id), "Service started")}
                 className="rounded bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
               >
                 Start service
@@ -833,7 +845,7 @@ export function AppointmentDetailDrawer({
                 type="button"
                 data-testid="action-complete"
                 disabled={acting}
-                onClick={() => void runAction(() => complete(appointment.id))}
+                onClick={() => void runAction(() => complete(appointment.id), "Appointment completed")}
                 className="rounded bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
               >
                 Complete
@@ -844,7 +856,7 @@ export function AppointmentDetailDrawer({
                 type="button"
                 data-testid="action-no-show"
                 disabled={acting}
-                onClick={() => void runAction(() => markNoShow(appointment.id))}
+                onClick={() => void runAction(() => markNoShow(appointment.id), "Marked as no-show")}
                 className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
               >
                 Mark no-show

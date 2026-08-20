@@ -13,9 +13,12 @@ import {
   type ServiceItem,
   type StaffMember,
 } from "../lib/api-client";
-import { formatDurationMin, formatPriceCents, formatTime, todayLocalDate } from "../lib/format";
+import { formatPriceCents, formatTime, todayLocalDate } from "../lib/format";
 import { CustomerSearch } from "./customer-search";
 import { DrawerShell } from "./drawer-shell";
+import { ServiceCombobox } from "./service-combobox";
+import { useToast } from "./toast";
+import { errorCopy } from "../lib/error-copy";
 import { SlotsSkeleton } from "./loading-skeleton";
 import { BusyLabel } from "./spinner";
 
@@ -56,6 +59,7 @@ export function BookingDrawer({
   const [idempotencyKey] = useState(generateIdempotencyKey);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     void fetchTenantMe().then((res) => setSlug(res.tenant.slug));
@@ -126,13 +130,24 @@ export function BookingDrawer({
         },
         idempotencyKey,
       );
+      toast.success(
+        "Appointment booked",
+        `${customer.firstName} ${customer.lastName} — ${formatTime(selectedSlot.start)}`,
+      );
       onCreated();
     } catch (err) {
+      // The slot race is not really an error: the booking failed for a reason
+      // the operator can fix in one tap, so it stays inline next to the times
+      // and repeats as a warning rather than shouting.
       if (err instanceof ApiRequestError && err.code === "SLOT_UNAVAILABLE") {
         setSlotTakenNotice(true);
         setSelectedSlot(null);
+        const copy = errorCopy(err);
+        toast.warn(copy.title, copy.detail);
       } else {
-        setError(err instanceof ApiRequestError ? err.message : "Could not create the booking.");
+        const copy = errorCopy(err);
+        setError(copy.title);
+        toast.error(copy.title, copy.detail);
       }
     } finally {
       setSubmitting(false);
@@ -161,34 +176,11 @@ export function BookingDrawer({
         )}
 
         <div>
-          <p className="mb-2 text-sm font-medium text-slate-700">Services</p>
-          <ul className="flex flex-col gap-1">
-            {services.map((service) => {
-              const selected = selectedServiceIds.includes(service.id);
-              return (
-                <li key={service.id}>
-                  <button
-                    type="button"
-                    data-testid={`drawer-service-${service.id}`}
-                    onClick={() => toggleService(service.id)}
-                    className={`flex w-full items-center justify-between rounded border p-2 text-left text-sm ${
-                      selected
-                        ? "border-teal-600 bg-teal-50"
-                        : "border-slate-200 hover:border-slate-300"
-                    }`}
-                  >
-                    <span>
-                      {service.name}{" "}
-                      <span className="text-slate-500">
-                        ({formatDurationMin(service.durationMin)})
-                      </span>
-                    </span>
-                    <span className="font-medium">{formatPriceCents(service.priceCents)}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <ServiceCombobox
+            services={services}
+            selectedIds={selectedServiceIds}
+            onToggle={toggleService}
+          />
           {totalPriceCents > 0 ? (
             <p className="mt-1 text-xs text-slate-500">
               Total: {formatPriceCents(totalPriceCents)}
