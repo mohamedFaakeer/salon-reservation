@@ -523,3 +523,54 @@ choreography), so nothing below is decorative.
 Verification: typecheck, lint and build green across all workspaces; detector
 clean on both apps; drawer entrance, skeleton and Escape-to-close confirmed
 against the running app under a throttled API.
+
+---
+
+## 23. Demo seed & smoke script (P19) (2026-08-17)
+
+1. **The demo seed was never built.** `seed-demo.ts` shipped as an `export {}`
+   placeholder whose comment said "implemented in P19", and DEPLOYMENT.md §7
+   documented a `POST /super-admin/tenants/:id/demo-seed` route that did not
+   exist on the controller. Both are now real, backed by a single
+   `DemoSeedService` so the local script and the HTTP route cannot drift.
+
+2. **Sample appointments go through the booking engine, not direct inserts.**
+   CLAUDE.md rule §1 requires every booking source to use the same engine.
+   `DemoSeedService` asks `AvailabilityService.findSlots` for genuinely open
+   slots and books them via `BookingService.reserveAndConfirm`. Two benefits
+   beyond rule compliance: invented timestamps would fight the GiST exclusion
+   constraints, and seeding now doubles as a live proof that the availability
+   engine works on a freshly migrated database.
+
+3. **Idempotency is a coarse guard, deliberately.** The check is "does this
+   tenant have any service row?", not per-entity upserts. DEPLOYMENT.md §7
+   promises re-running is safe, and a demo is re-seeded far more often than it
+   is provisioned. A half-seeded tenant is a much worse failure mode than a
+   refused second run, so reference data is written in a single transaction and
+   the guard refuses wholesale rather than attempting partial repair.
+
+4. **Appointment seeding never fails the request.** Per-appointment booking
+   failures are logged and skipped rather than aborting. A demo salon whose
+   calendar happens to be full, or which is seeded late on a Saturday, should
+   still get its catalogue, staff and customers — the sample bookings are the
+   least important part of the payload. The e2e test therefore asserts
+   `appointments > 0` rather than an exact count.
+
+5. **Staff qualifications are derived from service category, not a name list.**
+   Adding a service to the catalogue automatically stays consistent with who
+   can perform it, instead of silently producing a service no staff member is
+   qualified for (which would render it unbookable and look like an engine bug
+   during a demo).
+
+6. **Migrations already own identity; the seed owns business data.** The
+   `1740000000000-InitialIdentity` migration creates the super-admin, the
+   `elegance` tenant and its owner. The seed script finds those rather than
+   recreating them, so credentials live in exactly one place. An earlier draft
+   of the script duplicated them and was rewritten.
+
+7. **The smoke script tests the path, not just liveness.** `scripts/smoke-demo.sh`
+   wakes all three Render services and then runs a real availability query
+   against the demo slug, scanning forward up to 7 days because an empty day is
+   legitimate (Sunday, or fully booked). Checking only that processes respond
+   would pass while the database was empty or the engine broken — which is
+   exactly the state a pre-demo check exists to catch.
