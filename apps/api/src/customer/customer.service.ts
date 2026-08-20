@@ -5,11 +5,16 @@ import type { EntityManager } from "typeorm";
 // injection via design:paramtypes metadata at runtime; `import type` would
 // erase it and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import { Like, Repository } from "typeorm";
-import { ApiError, type CreateCustomerDto } from "@salon/shared";
+import { ILike, Repository } from "typeorm";
+import { ApiError, type CreateCustomerDto, type CustomerQueryDto } from "@salon/shared";
 import { Customer } from "../entities/customer.entity";
 import { isUniqueViolation } from "../common/postgres-errors.util";
 import { normalizePhone } from "./phone.util";
+
+export interface CustomerListResult {
+  data: Customer[];
+  meta: { total: number; limit: number; offset: number };
+}
 
 export interface BookingCustomerInput {
   firstName: string;
@@ -102,19 +107,34 @@ export class CustomerService {
     }
   }
 
-  async search(tenantId: string, q?: string): Promise<Customer[]> {
-    if (!q?.trim()) {
-      return this.customers.find({ where: { tenantId }, order: { createdAt: "DESC" }, take: 50 });
-    }
-    const like = `%${q.trim()}%`;
-    return this.customers.find({
-      where: [
-        { tenantId, firstName: Like(like) },
-        { tenantId, lastName: Like(like) },
-        { tenantId, phone: Like(like) },
-      ],
-      take: 50,
+  /**
+   * GET /customers — newest first, or matches for `q`.
+   *
+   * This used to hardcode `take: 50` and drop the `limit`/`offset` its own DTO
+   * declares, so the documented pagination silently did nothing and a salon
+   * with more than fifty customers could not reach the rest. It also matched
+   * with `Like`, which is case-sensitive in Postgres: searching "ayesha" found
+   * nobody named "Ayesha". Both now behave like every other list endpoint
+   * (notifications, payments, audit) and like the appointment search, which
+   * has always used ILIKE.
+   */
+  async search(tenantId: string, query: CustomerQueryDto): Promise<CustomerListResult> {
+    const q = query.q?.trim();
+    const where = q
+      ? [
+          { tenantId, firstName: ILike(`%${q}%`) },
+          { tenantId, lastName: ILike(`%${q}%`) },
+          { tenantId, phone: ILike(`%${q}%`) },
+        ]
+      : { tenantId };
+
+    const [data, total] = await this.customers.findAndCount({
+      where,
+      order: { createdAt: "DESC" },
+      take: query.limit,
+      skip: query.offset,
     });
+    return { data, meta: { total, limit: query.limit, offset: query.offset } };
   }
 
   async findById(tenantId: string, id: string): Promise<Customer> {

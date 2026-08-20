@@ -293,8 +293,15 @@ export class PaymentService {
     if (query.customerId) {
       where.customerId = query.customerId;
     }
+    if (query.state) {
+      where.state = query.state;
+    }
     const [data, total] = await this.payments.findAndCount({
       where,
+      // A payment row on its own is an amount with no owner. The list screen
+      // has to say who paid and against which booking, so the names are loaded
+      // here rather than left to one lookup per row on the client.
+      relations: { customer: true, appointment: true },
       order: { createdAt: "DESC" },
       take: query.limit,
       skip: query.offset,

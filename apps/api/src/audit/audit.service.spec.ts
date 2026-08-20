@@ -62,12 +62,28 @@ describe("AuditService", () => {
     it("builds tenantId-only where clause with pagination", async () => {
       await service.query("tenant-1", { limit: 50, offset: 0 });
 
-      expect(logs.findAndCount).toHaveBeenCalledWith({
-        where: { tenantId: "tenant-1" },
-        order: { createdAt: "DESC" },
-        take: 50,
-        skip: 0,
-      });
+      expect(logs.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { tenantId: "tenant-1" },
+          order: { createdAt: "DESC" },
+          take: 50,
+          skip: 0,
+        }),
+      );
+    });
+
+    it("never selects the actor's password hash", async () => {
+      // The actor is joined so the log can name a person, but User carries
+      // `passwordHash` with no `select: false` — an unscoped join would
+      // serialise every actor's argon2 hash into this response. The select
+      // must stay an explicit allow-list.
+      await service.query("tenant-1", { limit: 50, offset: 0 });
+
+      const args = vi.mocked(logs.findAndCount).mock.calls[0][0];
+      const actorSelect = (args?.select as { actorUser?: Record<string, boolean> })?.actorUser;
+
+      expect(actorSelect).toBeDefined();
+      expect(Object.keys(actorSelect ?? {}).sort()).toEqual(["email", "id", "name"]);
     });
 
     it("adds entityType/entityId filters when provided", async () => {

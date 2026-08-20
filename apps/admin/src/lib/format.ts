@@ -11,6 +11,34 @@ export function formatDurationMin(min: number): string {
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
 }
 
+/** A date without a time, for things that happened on a day rather than at a moment. */
+export function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-LK", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+/**
+ * Sri Lankan numbers are stored normalized — digits only, optional leading "+"
+ * (see the API's phone.util.ts) — which is right for matching and unreadable
+ * on screen. This groups them the way they are spoken and written locally:
+ * 077 123 4567, or +94 77 123 4567 for the international form. Anything that
+ * does not fit either shape is returned untouched rather than mangled.
+ */
+export function formatPhone(phone: string): string {
+  const local = /^0(\d{2})(\d{3})(\d{4})$/.exec(phone);
+  if (local) {
+    return `0${local[1]} ${local[2]} ${local[3]}`;
+  }
+  const international = /^\+94(\d{2})(\d{3})(\d{4})$/.exec(phone);
+  if (international) {
+    return `+94 ${international[1]} ${international[2]} ${international[3]}`;
+  }
+  return phone;
+}
+
 export function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-LK", { hour: "numeric", minute: "2-digit" });
 }

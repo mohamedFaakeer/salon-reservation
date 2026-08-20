@@ -59,6 +59,14 @@ const NUMBERED_LABELS = [
 const FIXTURE_PATTERN =
   `^((${MARKER_PREFIXES.join("|")}) |(${NUMBERED_LABELS.join("|")}) [0-9])`;
 
+/**
+ * Walk-in specs type a customer name straight into the booking form, so those
+ * rows carry no space before their run number. The surname is the second half
+ * of the predicate, so nothing is deleted on a name prefix alone.
+ */
+const FIXTURE_SURNAME = "Tester";
+const FIXTURE_PATTERN_NO_SPACE = `^(${MARKER_PREFIXES.join("|")}|Walkin|ServicesPanel)[0-9]`;
+
 function connectionString(): string {
   return (
     process.env.E2E_DATABASE_URL ??
@@ -100,6 +108,16 @@ export default async function globalSetup(): Promise<void> {
       ]);
       counts.push(`${res.rowCount ?? 0} ${table}`);
     }
+
+    // Customers are named by the walk-in specs rather than by e2eName, since
+    // the name is typed into the booking form. Both halves must match: the
+    // surname alone would be a careless thing to delete on.
+    const customers = await client.query(
+      `delete from customer where "lastName" = $1 and "firstName" ~ $2`,
+      [FIXTURE_SURNAME, FIXTURE_PATTERN_NO_SPACE],
+    );
+    counts.push(`${customers.rowCount ?? 0} customer`);
+
     console.log(`[e2e] Cleared fixtures from earlier runs: ${counts.join(", ")}.`);
   } finally {
     await client.end();

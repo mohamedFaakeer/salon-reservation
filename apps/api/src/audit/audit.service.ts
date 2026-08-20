@@ -69,6 +69,27 @@ export class AuditService {
 
     const [data, total] = await this.logs.findAndCount({
       where,
+      // Without the actor joined, every row reads as a UUID doing something to
+      // another UUID — which answers none of the questions an audit log exists
+      // to answer.
+      //
+      // The select is explicit and must stay that way: User carries
+      // `passwordHash` with no `select: false`, so an unscoped join would
+      // serialise every actor's argon2 hash into this response.
+      relations: { actorUser: true },
+      select: {
+        id: true,
+        tenantId: true,
+        actorUserId: true,
+        action: true,
+        entityType: true,
+        entityId: true,
+        metadata: true,
+        ipAddress: true,
+        userAgent: true,
+        createdAt: true,
+        actorUser: { id: true, name: true, email: true },
+      },
       order: { createdAt: "DESC" },
       take: filters.limit,
       skip: filters.offset,

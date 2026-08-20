@@ -25,7 +25,7 @@ export class CustomerController {
   @Get()
   search(@Req() req: Request, @Query() query: CustomerQueryDto) {
     const ctx = getTenantContext(req);
-    return this.customers.search(ctx.tenantId, query.q);
+    return this.customers.search(ctx.tenantId, query);
   }
 
   @Post()

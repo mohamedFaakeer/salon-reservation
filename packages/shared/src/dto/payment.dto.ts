@@ -1,5 +1,5 @@
 import { IsEnum, IsInt, IsOptional, IsString, IsUUID, MaxLength, Min } from "class-validator";
-import { PaymentMethod, PaymentType } from "../enums";
+import { PaymentMethod, PaymentStatus, PaymentType } from "../enums";
 import { PaginationQueryDto } from "./common.dto";
 
 /** POST /appointments/:id/payments (API.md §3) — OWNER, MANAGER, RECEPTIONIST. */
@@ -35,5 +35,10 @@ export class PaymentQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsUUID("4")
   customerId?: string;
+
+  /** Filter by payment state, e.g. only what still needs reconciling. */
+  @IsOptional()
+  @IsEnum(PaymentStatus)
+  state?: PaymentStatus;
 }
 

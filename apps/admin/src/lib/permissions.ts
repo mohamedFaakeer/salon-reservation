@@ -43,6 +43,11 @@ export function canManageSettings(roles: string[]): boolean {
   return roles.some((r) => r === "OWNER" || r === "MANAGER");
 }
 
+/** Mirrors MANAGE_CUSTOMERS (OWNER, MANAGER, RECEPTIONIST). */
+export function canManageCustomers(roles: string[]): boolean {
+  return roles.some((r) => r === "OWNER" || r === "MANAGER" || r === "RECEPTIONIST");
+}
+
 /** Mirrors VIEW_AUDIT_LOG (OWNER, MANAGER only). */
 export function canViewAudit(roles: string[]): boolean {
   return roles.some((r) => r === "OWNER" || r === "MANAGER");

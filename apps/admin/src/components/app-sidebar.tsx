@@ -4,10 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import {
+  canManageAppointments,
+  canManageCustomers,
   canManageNotifications,
   canManageServices,
   canManageSettings,
   canManageStaff,
+  canViewAudit,
   canViewDashboard,
 } from "../lib/permissions";
 
@@ -67,6 +70,29 @@ const GROUPS: NavGroup[] = [
           </Icon>
         ),
       },
+      {
+        href: "/schedule",
+        label: "Schedule",
+        visible: canViewDashboard,
+        icon: (
+          <Icon>
+            <rect x="2" y="3.5" width="12" height="10" rx="1.8" {...stroke} />
+            <path d="M2 7h12" {...stroke} />
+            <path d="M6 10h4" {...stroke} />
+          </Icon>
+        ),
+      },
+      {
+        href: "/appointments",
+        label: "Appointments",
+        visible: canManageAppointments,
+        icon: (
+          <Icon>
+            <path d="M4 2.5v11M12 2.5v11M2.5 6h11" {...stroke} />
+            <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" {...stroke} />
+          </Icon>
+        ),
+      },
     ],
   },
   {
@@ -110,8 +136,47 @@ const GROUPS: NavGroup[] = [
     ],
   },
   {
+    label: "People",
+    items: [
+      {
+        href: "/customers",
+        label: "Customers",
+        visible: canManageCustomers,
+        icon: (
+          <Icon>
+            <circle cx="8" cy="5.6" r="2.4" {...stroke} />
+            <path d="M3.4 13c.8-2.1 2.6-3.2 4.6-3.2s3.8 1.1 4.6 3.2" {...stroke} />
+          </Icon>
+        ),
+      },
+    ],
+  },
+  {
     label: "System",
     items: [
+      {
+        href: "/payments",
+        label: "Payments",
+        visible: canManageAppointments,
+        icon: (
+          <Icon>
+            <rect x="2.5" y="4" width="11" height="9" rx="1.5" {...stroke} />
+            <path d="M2.5 7h11" {...stroke} />
+            <path d="M6 10h2" {...stroke} />
+          </Icon>
+        ),
+      },
+      {
+        href: "/audit",
+        label: "Audit",
+        visible: canViewAudit,
+        icon: (
+          <Icon>
+            <path d="M3 13V3M3 13h10" {...stroke} />
+            <path d="M6 10V7M9 10V5M12 10V8" {...stroke} />
+          </Icon>
+        ),
+      },
       {
         href: "/settings",
         label: "Settings",
@@ -140,19 +205,6 @@ const GROUPS: NavGroup[] = [
     ],
   },
 ];
-
-/**
- * Destinations specified in UX.md §4.1 that do not exist yet (FE5–FE7).
- * Listing them here rather than in the nav keeps the sidebar honest: a link
- * that 404s is worse than no link.
- */
-export const PLANNED_DESTINATIONS = [
-  "Schedule",
-  "Appointments",
-  "Customers",
-  "Payments",
-  "Audit",
-] as const;
 
 export function AppSidebar({
   roles,

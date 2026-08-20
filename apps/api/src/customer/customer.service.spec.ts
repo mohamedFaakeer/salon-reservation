@@ -7,6 +7,7 @@ function mockRepo<T extends ObjectLiteral>() {
     create: vi.fn((e: Partial<T>) => e as T),
     save: vi.fn(async (e: T) => ({ id: "generated-id", ...e }) as T),
     find: vi.fn(async () => [] as T[]),
+    findAndCount: vi.fn(async () => [[] as T[], 0] as [T[], number]),
     findOne: vi.fn(async () => null as T | null),
   } as unknown as Repository<T>;
 }
@@ -18,6 +19,50 @@ describe("CustomerService", () => {
   beforeEach(() => {
     customers = mockRepo<Customer>();
     service = new CustomerService(customers);
+  });
+
+  describe("search", () => {
+    it("honours the limit and offset its DTO declares", async () => {
+      // These used to be dropped for a hardcoded take: 50, so a salon with
+      // more than fifty customers could never reach the rest of them.
+      await service.search("tenant-1", { limit: 20, offset: 40 });
+
+      const args = vi.mocked(customers.findAndCount).mock.calls[0][0];
+      expect(args).toMatchObject({ take: 20, skip: 40 });
+    });
+
+    it("reports the unpaged total alongside the page", async () => {
+      vi.mocked(customers.findAndCount).mockResolvedValueOnce([
+        [{ id: "c1" } as Customer],
+        214,
+      ]);
+
+      const result = await service.search("tenant-1", { limit: 50, offset: 0 });
+
+      expect(result.data).toHaveLength(1);
+      expect(result.meta).toEqual({ total: 214, limit: 50, offset: 0 });
+    });
+
+    it("matches names regardless of case", async () => {
+      // Postgres LIKE is case-sensitive, so searching "ayesha" found nobody
+      // called "Ayesha" — every customer, in practice.
+      await service.search("tenant-1", { limit: 50, offset: 0, q: "ayesha" });
+
+      // TypeORM records the operator on the FindOperator itself; "like" here
+      // would mean the case-sensitive match is back.
+      const where = vi.mocked(customers.findAndCount).mock.calls[0][0]?.where;
+      const operators = (where as Array<Record<string, { type?: string }>>).map(
+        (clause) => Object.values(clause).find((v) => typeof v === "object")?.type,
+      );
+      expect(operators).toEqual(["ilike", "ilike", "ilike"]);
+    });
+
+    it("lists newest first when no query is given", async () => {
+      await service.search("tenant-1", { limit: 50, offset: 0 });
+
+      const args = vi.mocked(customers.findAndCount).mock.calls[0][0];
+      expect(args).toMatchObject({ order: { createdAt: "DESC" } });
+    });
   });
 
   describe("create", () => {

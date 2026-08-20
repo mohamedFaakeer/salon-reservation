@@ -2,14 +2,10 @@ import type { AppointmentRecord, StaffMember } from "../lib/api-client";
 import { formatPriceCents, formatTime, statusStyle } from "../lib/format";
 import { EmptyState } from "./empty-state";
 
-/** Fixed 08:00–20:00 window — a reasonable MVP default (typical salon hours), not derived per-day from staff schedules (P16 plan decision 3). */
-const DAY_START_MIN = 8 * 60;
-const DAY_END_MIN = 20 * 60;
+/** Default 08:00–20:00 window when there are no appointments to derive from. */
+const DEFAULT_START_MIN = 8 * 60;
+const DEFAULT_END_MIN = 20 * 60;
 const PX_PER_MIN = 1;
-const HOURS = Array.from(
-  { length: (DAY_END_MIN - DAY_START_MIN) / 60 },
-  (_, i) => DAY_START_MIN / 60 + i,
-);
 const FALLBACK_STAFF_COLOR = "#0D9488";
 
 function minutesOfDay(iso: string): number {
@@ -43,18 +39,29 @@ export function DayCalendar({
     return <EmptyState title="No staff scheduled on today's board yet." />;
   }
 
-  const gridHeight = (DAY_END_MIN - DAY_START_MIN) * PX_PER_MIN;
+  // Derive the visible window from the appointments themselves, so a booking
+  // at 07:00 or 21:00 is never hidden by a hardcoded 08:00–20:00 frame.
+  // Pad by 30 minutes so cards at the edges don't sit flush against the axis.
+  const allTimes = appointments.flatMap((a) => [minutesOfDay(a.startTime), minutesOfDay(a.endTime)]);
+  const dayStartMin = allTimes.length > 0 ? Math.max(0, Math.min(...allTimes) - 30) : DEFAULT_START_MIN;
+  const dayEndMin = allTimes.length > 0 ? Math.min(1439, Math.max(...allTimes) + 30) : DEFAULT_END_MIN;
+  const hours = Array.from(
+    { length: Math.ceil((dayEndMin - dayStartMin) / 60) },
+    (_, i) => Math.floor(dayStartMin / 60) + i,
+  );
+
+  const gridHeight = (dayEndMin - dayStartMin) * PX_PER_MIN;
 
   return (
     <div className="motion-fade flex overflow-x-auto rounded-lg border border-slate-200 bg-white">
       <div className="w-14 shrink-0 border-r border-slate-200">
         <div className="h-10 border-b border-slate-200" />
         <div style={{ height: gridHeight }} className="relative">
-          {HOURS.map((h) => (
+          {hours.map((h) => (
             <div
               key={h}
               className="absolute left-0 right-0 -translate-y-1/2 px-1 text-right text-xs text-slate-500"
-              style={{ top: (h * 60 - DAY_START_MIN) * PX_PER_MIN }}
+              style={{ top: (h * 60 - dayStartMin) * PX_PER_MIN }}
             >
               {h.toString().padStart(2, "0")}:00
             </div>
@@ -79,23 +86,17 @@ export function DayCalendar({
             {s.name}
           </div>
           <div className="relative" style={{ height: gridHeight }}>
-            {HOURS.map((h) => (
+            {hours.map((h) => (
               <div
                 key={h}
                 className="absolute left-0 right-0 border-b border-slate-100"
-                style={{ top: (h * 60 - DAY_START_MIN) * PX_PER_MIN }}
+                style={{ top: (h * 60 - dayStartMin) * PX_PER_MIN }}
               />
             ))}
             {(byStaff.get(s.id) ?? []).map((appt) => {
-              const startMin = Math.min(
-                Math.max(minutesOfDay(appt.startTime), DAY_START_MIN),
-                DAY_END_MIN,
-              );
-              const endMin = Math.min(
-                Math.max(minutesOfDay(appt.endTime), DAY_START_MIN),
-                DAY_END_MIN,
-              );
-              const top = (startMin - DAY_START_MIN) * PX_PER_MIN;
+              const startMin = Math.min(Math.max(minutesOfDay(appt.startTime), dayStartMin), dayEndMin);
+              const endMin = Math.min(Math.max(minutesOfDay(appt.endTime), dayStartMin), dayEndMin);
+              const top = (startMin - dayStartMin) * PX_PER_MIN;
               const height = Math.max((endMin - startMin) * PX_PER_MIN, 20);
               const status = statusStyle(appt.status);
               return (
@@ -105,11 +106,6 @@ export function DayCalendar({
                   data-testid={`calendar-card-${appt.id}`}
                   onClick={() => onSelect(appt.id)}
                   className="absolute left-1 right-1 overflow-hidden rounded p-1 text-left text-xs shadow-sm hover:shadow-md"
-                  // The column this card sits in already names the staff member,
-                  // so the card itself is free to encode status instead. Status
-                  // rides on three channels — fill, accent dot, and the written
-                  // label — so it survives both low-contrast displays and
-                  // colour-blindness (WCAG 1.4.1).
                   style={{ top, height, backgroundColor: status.fill, color: status.fg }}
                 >
                   <p className="truncate font-medium">

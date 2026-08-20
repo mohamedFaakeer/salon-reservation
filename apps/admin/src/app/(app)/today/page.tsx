@@ -40,7 +40,7 @@ export default function TodayPage() {
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    fetchAppointments(todayLocalDate())
+    fetchAppointments({ date: todayLocalDate() })
       .then((res) => setAppointments(res.data))
       .catch((err: unknown) => {
         setError(

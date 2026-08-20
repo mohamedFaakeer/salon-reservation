@@ -107,6 +107,8 @@ export interface CustomerRecord {
   lastName: string;
   phone: string;
   email: string | null;
+  /** Present on every customer response — the API returns whole rows. */
+  createdAt: string;
 }
 
 export interface AvailabilitySlot {
@@ -167,6 +169,9 @@ export interface PaymentRecord {
   type: PaymentType;
   recordedAt: string | null;
   createdAt: string;
+  /** Loaded by the list endpoint so a row can name who paid, and for what. */
+  customer?: { id: string; firstName: string; lastName: string; phone: string } | null;
+  appointment?: { id: string; bookingReference: string; startTime: string } | null;
 }
 
 export interface DashboardToday {
@@ -541,8 +546,60 @@ export function updateService(
   });
 }
 
+export interface ListMeta {
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface CustomerDetail extends CustomerRecord {
+  notes: string | null;
+  createdAt: string;
+}
+
+/**
+ * `GET /customers` — the same envelope every other list endpoint returns.
+ * `meta.total` is the unpaged count, which is what the pager reads.
+ */
+export function fetchCustomers(params: {
+  q?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ data: CustomerRecord[]; meta: ListMeta }> {
+  const qs = new URLSearchParams();
+  if (params.q?.trim()) {
+    qs.set("q", params.q.trim());
+  }
+  qs.set("limit", String(params.limit ?? 25));
+  qs.set("offset", String(params.offset ?? 0));
+  return request<{ data: CustomerRecord[]; meta: ListMeta }>(`/customers?${qs.toString()}`);
+}
+
+export function fetchCustomer(id: string): Promise<CustomerDetail> {
+  return request<CustomerDetail>(`/customers/${id}`);
+}
+
+/** The typeahead only ever shows a handful, so it asks for a handful. */
 export function searchCustomers(q: string): Promise<CustomerRecord[]> {
-  return request<CustomerRecord[]>(`/customers?q=${encodeURIComponent(q)}`);
+  return fetchCustomers({ q, limit: 10 }).then((res) => res.data);
+}
+
+/**
+ * A customer's bookings, newest first. This is the same appointment list every
+ * other screen reads, filtered server-side — no separate history query, so
+ * STAFF stay scoped to their own appointments here exactly as elsewhere.
+ */
+export function fetchCustomerAppointments(
+  customerId: string,
+  params: { status?: string; limit?: number; offset?: number } = {},
+): Promise<{ data: AppointmentRecord[]; meta: ListMeta }> {
+  const qs = new URLSearchParams({ customerId });
+  if (params.status) {
+    qs.set("status", params.status);
+  }
+  qs.set("limit", String(params.limit ?? 20));
+  qs.set("offset", String(params.offset ?? 0));
+  return request<{ data: AppointmentRecord[]; meta: ListMeta }>(`/appointments?${qs.toString()}`);
 }
 
 export function createCustomer(input: {
@@ -564,8 +621,38 @@ export function fetchAvailability(
   });
 }
 
-export function fetchAppointments(date: string): Promise<{ data: AppointmentRecord[] }> {
-  return request<{ data: AppointmentRecord[] }>(`/appointments?date=${date}&limit=100`);
+export interface AppointmentQuery {
+  date?: string;
+  status?: string;
+  staffId?: string;
+  customerId?: string;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export function fetchAppointments(
+  params: AppointmentQuery = {},
+): Promise<{ data: AppointmentRecord[]; meta: ListMeta }> {
+  const qs = new URLSearchParams();
+  if (params.date) {
+    qs.set("date", params.date);
+  }
+  if (params.status) {
+    qs.set("status", params.status);
+  }
+  if (params.staffId) {
+    qs.set("staffId", params.staffId);
+  }
+  if (params.customerId) {
+    qs.set("customerId", params.customerId);
+  }
+  if (params.q?.trim()) {
+    qs.set("q", params.q.trim());
+  }
+  qs.set("limit", String(params.limit ?? 100));
+  qs.set("offset", String(params.offset ?? 0));
+  return request<{ data: AppointmentRecord[]; meta: ListMeta }>(`/appointments?${qs.toString()}`);
 }
 
 export function fetchAppointment(id: string): Promise<AppointmentDetail> {
@@ -648,6 +735,75 @@ export function removeAppointmentService(
 
 export function fetchPayments(appointmentId: string): Promise<{ data: PaymentRecord[] }> {
   return request<{ data: PaymentRecord[] }>(`/payments?appointmentId=${appointmentId}`);
+}
+
+export interface PaymentQuery {
+  appointmentId?: string;
+  customerId?: string;
+  state?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export function fetchPaymentsList(
+  params: PaymentQuery = {},
+): Promise<{ data: PaymentRecord[]; meta: ListMeta }> {
+  const qs = new URLSearchParams();
+  if (params.appointmentId) {
+    qs.set("appointmentId", params.appointmentId);
+  }
+  if (params.customerId) {
+    qs.set("customerId", params.customerId);
+  }
+  if (params.state) {
+    qs.set("state", params.state);
+  }
+  qs.set("limit", String(params.limit ?? 25));
+  qs.set("offset", String(params.offset ?? 0));
+  return request<{ data: PaymentRecord[]; meta: ListMeta }>(`/payments?${qs.toString()}`);
+}
+
+export interface AuditRecord {
+  id: string;
+  tenantId: string;
+  /** Null for entries the system wrote itself, e.g. an expired hold. */
+  actorUserId: string | null;
+  actorUser: { id: string; name: string; email: string } | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface AuditQuery {
+  entityType?: string;
+  entityId?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export function fetchAudit(
+  params: AuditQuery = {},
+): Promise<{ data: AuditRecord[]; meta: ListMeta }> {
+  const qs = new URLSearchParams();
+  if (params.entityType) {
+    qs.set("entityType", params.entityType);
+  }
+  if (params.entityId) {
+    qs.set("entityId", params.entityId);
+  }
+  if (params.from) {
+    qs.set("from", params.from);
+  }
+  if (params.to) {
+    qs.set("to", params.to);
+  }
+  qs.set("limit", String(params.limit ?? 25));
+  qs.set("offset", String(params.offset ?? 0));
+  return request<{ data: AuditRecord[]; meta: ListMeta }>(`/audit?${qs.toString()}`);
 }
 
 export function recordPayment(
