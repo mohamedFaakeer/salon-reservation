@@ -2,7 +2,7 @@
   "name": "@salon/api",
   "version": "0.1.0",
   "private": true,
-  "description": "Salon Reservation API — NestJS 11 + TypeORM 1.x + PostgreSQL",
+  "description": "Salon Reservation API \u2014 NestJS 11 + TypeORM 1.x + PostgreSQL",
   "scripts": {
     "predev": "npm run build -w @salon/shared",
     "prebuild": "npm run build -w @salon/shared",
@@ -16,7 +16,8 @@
     "db:migrate": "typeorm-ts-node-commonjs migration:run -d src/infrastructure/database/data-source.ts",
     "db:migrate:prod": "cross-env NODE_ENV=production typeorm-ts-node-commonjs migration:run -d src/infrastructure/database/data-source.ts",
     "db:rollback": "typeorm-ts-node-commonjs migration:revert -d src/infrastructure/database/data-source.ts",
-    "db:seed:demo": "ts-node src/infrastructure/database/seed-demo.ts"
+    "db:seed:demo": "ts-node src/infrastructure/database/seed-demo.ts",
+    "user:set-password": "ts-node src/infrastructure/database/set-password.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",

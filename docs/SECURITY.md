@@ -172,7 +172,10 @@ Audited actions (spec §36): appointment created/cancelled/rescheduled; payment 
 
 ## 13. Operational Checklist (Pre-Demo)
 
-- [ ] JWT secret ≥ 32 random bytes from env
+- [ ] JWT secret ≥ 32 random bytes from env, and **not** the value in `.env.example`
+- [ ] `SUPER_ADMIN_PASSWORD` set to something not published in this repository
+- [ ] Demo logins (`*@demo.salon`) absent from production, or `DEMO_OWNER_PASSWORD` deliberately set
+- [ ] API boots with `NODE_ENV=production` — `assertProductionSecrets` refuses known-public values
 - [ ] PG connection SSL required (prod)
 - [ ] CORS allow-list set to actual frontend origins
 - [ ] HTTPS on all Render services

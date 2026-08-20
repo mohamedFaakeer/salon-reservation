@@ -9,8 +9,13 @@ import { AppModule } from "./app.module";
 import { ApiExceptionFilter } from "./common/filters/api-exception.filter";
 import { CsrfOriginGuard } from "./common/guards/csrf-origin.guard";
 import { RateLimitGuard } from "./common/guards/rate-limit.guard";
+import { assertProductionSecrets } from "./common/security/production-secrets";
 
 async function bootstrap(): Promise<void> {
+  // Before Nest builds anything: a production process must never start
+  // holding a secret that is published in this repository.
+  assertProductionSecrets(process.env);
+
   const app = await NestFactory.create(AppModule);
   const config = app.get(ConfigService);
 

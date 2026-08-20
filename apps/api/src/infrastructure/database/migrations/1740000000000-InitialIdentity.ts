@@ -125,15 +125,32 @@ export class InitialIdentity1700000000000 implements MigrationInterface {
     );
 
     // ─── seed: SUPER_ADMIN platform user ───────────────────────
-    const superAdminHash = await argon2.hash("super-admin-demo-password-2026");
+    //
+    // The password comes from the environment. It used to be a literal in this
+    // file, which meant every deployment of this repository shipped with the
+    // same publicly-known platform administrator. `seedPassword` refuses to
+    // fall back to the dev default when NODE_ENV is production, so a real
+    // deployment either sets SUPER_ADMIN_PASSWORD or fails the migration
+    // rather than quietly creating an account anyone can sign into.
+    const superAdminEmail = process.env.SUPER_ADMIN_EMAIL?.trim() || "super.admin@salon.local";
+    const superAdminHash = await argon2.hash(
+      seedPassword("SUPER_ADMIN_PASSWORD", "super-admin-demo-password-2026"),
+    );
     await queryRunner.query(
       `INSERT INTO "user" ("email", "passwordHash", "name", "status") VALUES
-        ('super.admin@salon.local', $1, 'Platform Admin', 'ACTIVE')`,
-      [superAdminHash],
+        ($1, $2, 'Platform Admin', 'ACTIVE')`,
+      [superAdminEmail, superAdminHash],
     );
 
     // ─── seed: demo tenant + owner ─────────────────────────────
-    const demoOwnerHash = await argon2.hash("demo1234");
+    //
+    // Demo data, so it is skipped in production unless DEMO_OWNER_PASSWORD is
+    // set deliberately. A live deployment gets its first real salon from the
+    // platform screen instead, which is what that screen is for.
+    if (!shouldSeedDemoTenant()) {
+      return;
+    }
+    const demoOwnerHash = await argon2.hash(seedPassword("DEMO_OWNER_PASSWORD", "demo1234"));
     await queryRunner.query(
       `INSERT INTO "tenant" ("slug", "name") VALUES ('elegance', 'Elegance Salon')`,
     );
@@ -166,4 +183,31 @@ export class InitialIdentity1700000000000 implements MigrationInterface {
     await queryRunner.query(`DROP TABLE IF EXISTS "tenant"`);
     await queryRunner.query(`DROP EXTENSION IF EXISTS btree_gist`);
   }
+}
+
+/** Production must supply the secret; development keeps working unconfigured. */
+function seedPassword(envVar: string, developmentDefault: string): string {
+  const fromEnv = process.env[envVar]?.trim();
+  if (fromEnv) {
+    return fromEnv;
+  }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      `${envVar} must be set in production. This migration will not seed the ` +
+        `publicly-known development password. Generate one with: openssl rand -base64 24`,
+    );
+  }
+  return developmentDefault;
+}
+
+/**
+ * The demo salon exists so a developer has something to look at. In production
+ * it is an account with a known name on a public URL, so it only appears when
+ * somebody asks for it by setting a password for it.
+ */
+function shouldSeedDemoTenant(): boolean {
+  if (process.env.NODE_ENV !== "production") {
+    return true;
+  }
+  return Boolean(process.env.DEMO_OWNER_PASSWORD?.trim());
 }
