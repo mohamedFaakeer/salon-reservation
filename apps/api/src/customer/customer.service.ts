@@ -31,6 +31,18 @@ export interface CustomerStats {
   visits: number;
   cancellations: number;
   noShows: number;
+  /**
+   * Bookings that are on the books but have not happened yet.
+   *
+   * Reported separately from `totalBookings` so a screen can tell "never been
+   * here" apart from "coming in on Thursday". Both have zero visits, and
+   * showing them the same way makes a working salon look like an empty one.
+   *
+   * PENDING_PAYMENT is excluded: it is an unpaid attempt that expires on its
+   * own, not a booking anyone is expecting. EXPIRED and RESCHEDULED are
+   * likewise neither upcoming nor concluded — they are bookkeeping.
+   */
+  upcoming: number;
   /** Percent of concluded appointments missed. Null when there is nothing to judge. */
   noShowRate: number | null;
   totalSpentCents: number;
@@ -41,6 +53,17 @@ export interface CustomerStats {
   averageRating: number | null;
   ratingCount: number;
 }
+
+/**
+ * On the books and still to happen. Deliberately not "everything that is not
+ * concluded": PENDING_PAYMENT expires by itself and nobody is expecting that
+ * customer, so counting it would promise a visit that was never booked.
+ */
+const UPCOMING_STATUSES = [
+  AppointmentStatus.CONFIRMED,
+  AppointmentStatus.CHECKED_IN,
+  AppointmentStatus.IN_SERVICE,
+] as const;
 
 export interface CustomerListResult {
   data: Customer[];
@@ -256,12 +279,14 @@ export class CustomerService {
     const visits = counts.get(AppointmentStatus.COMPLETED) ?? 0;
     const cancellations = counts.get(AppointmentStatus.CANCELLED) ?? 0;
     const noShows = counts.get(AppointmentStatus.NO_SHOW) ?? 0;
+    const upcoming = UPCOMING_STATUSES.reduce((sum, s) => sum + (counts.get(s) ?? 0), 0);
 
     return {
       totalBookings: total,
       visits,
       cancellations,
       noShows,
+      upcoming,
       // Of the appointments that reached a conclusion. Bookings still in the
       // future are not evidence either way, so they stay out of the ratio.
       noShowRate: visits + noShows === 0 ? null : Math.round((noShows / (visits + noShows)) * 100),

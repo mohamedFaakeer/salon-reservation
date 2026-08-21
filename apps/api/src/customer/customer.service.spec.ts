@@ -259,6 +259,50 @@ describe("CustomerService", () => {
       expect(result.noShowRate).toBeNull();
     });
 
+    it("counts bookings that are on the books but have not happened yet", async () => {
+      // The screen uses this to tell "never been in" apart from "coming in on
+      // Thursday". Both have zero visits; only one is an empty record.
+      seed({
+        statuses: [
+          { status: AppointmentStatus.CONFIRMED, count: 2 },
+          { status: AppointmentStatus.CHECKED_IN, count: 1 },
+          { status: AppointmentStatus.IN_SERVICE, count: 1 },
+        ],
+      });
+
+      const result = await service.stats("t1", "c1");
+
+      expect(result.upcoming).toBe(4);
+      expect(result.visits).toBe(0);
+    });
+
+    it("does not count an unpaid or abandoned attempt as upcoming", async () => {
+      // PENDING_PAYMENT expires on its own and EXPIRED already has; neither is
+      // a booking anyone at the salon is expecting to see walk in.
+      seed({
+        statuses: [
+          { status: AppointmentStatus.PENDING_PAYMENT, count: 3 },
+          { status: AppointmentStatus.EXPIRED, count: 2 },
+          { status: AppointmentStatus.RESCHEDULED, count: 1 },
+        ],
+      });
+
+      const result = await service.stats("t1", "c1");
+
+      expect(result.upcoming).toBe(0);
+      // Still part of the raw total — the rows exist, they are just not a promise.
+      expect(result.totalBookings).toBe(6);
+    });
+
+    it("reports nothing upcoming for a customer with no bookings at all", async () => {
+      seed({});
+
+      const result = await service.stats("t1", "c1");
+
+      expect(result.upcoming).toBe(0);
+      expect(result.totalBookings).toBe(0);
+    });
+
     it("reports money received, not money billed", async () => {
       seed({ spent: 412500 });
 

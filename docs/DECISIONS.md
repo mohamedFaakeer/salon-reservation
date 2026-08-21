@@ -574,3 +574,36 @@ against the running app under a throttled API.
    legitimate (Sunday, or fully booked). Checking only that processes respond
    would pass while the database was empty or the engine broken — which is
    exactly the state a pre-demo check exists to catch.
+
+## 24. Customer history — an empty record must say so (2026-08-21)
+
+Reported from the live site as "I cannot see any customer history." The
+feature was deployed and working; the screen was the problem.
+
+1. **Zeros are not an empty state.** Every figure in "History at this salon" is
+   earned at the *end* of an appointment — a visit is a completed one, spend is
+   money actually received, a rating is left afterwards. A salon whose bookings
+   are all still ahead therefore rendered `Visits 0`, `LKR 0.00`, `Not rated`,
+   `Cancelled 0`, `No-shows 0`. That is indistinguishable from a broken screen,
+   and it reads as a verdict on a customer whose first appointment simply has
+   not happened yet. The figures are now shown only once something has
+   concluded (`visits + cancellations + noShows > 0`); otherwise the panel says
+   what is actually true.
+
+2. **"Never been in" and "coming in on Thursday" are different customers.**
+   Both have zero visits, so the old `totalBookings === 0` check could not tell
+   them apart. `CustomerStats` gained an `upcoming` count and the panel now
+   distinguishes a blank record from a normal customer whose history starts
+   later this week.
+
+3. **`upcoming` excludes PENDING_PAYMENT, EXPIRED and RESCHEDULED.** It counts
+   `CONFIRMED`, `CHECKED_IN` and `IN_SERVICE` only. PENDING_PAYMENT is an
+   unpaid attempt that expires by itself and nobody at the salon is expecting
+   that person to walk in; counting it would promise a visit that was never
+   booked. EXPIRED and RESCHEDULED are bookkeeping rows — neither upcoming nor
+   concluded. They remain inside `totalBookings`, which stays the raw count.
+
+4. **A deposit is reported before the visit.** `totalSpentCents` is the one
+   figure that can legitimately be non-zero before anyone walks in, because an
+   advance is money the salon already holds. It is called out in the
+   nothing-concluded state rather than suppressed with the rest.

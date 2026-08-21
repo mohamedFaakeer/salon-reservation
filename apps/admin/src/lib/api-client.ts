@@ -602,6 +602,8 @@ export interface CustomerStats {
   visits: number;
   cancellations: number;
   noShows: number;
+  /** On the books but not yet happened — how "never been in" is told apart from "coming Thursday". */
+  upcoming: number;
   /** Percent of concluded appointments missed. Null when there is nothing to judge. */
   noShowRate: number | null;
   totalSpentCents: number;

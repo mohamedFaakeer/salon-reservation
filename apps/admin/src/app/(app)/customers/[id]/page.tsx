@@ -211,42 +211,51 @@ export default function CustomerDetailPage() {
  */
 function CustomerHistory({ stats }: { stats: CustomerStats }) {
   const risky = stats.noShowRate !== null && stats.noShowRate >= 25;
+  /*
+   * Every figure below is earned at the *end* of an appointment: a visit is a
+   * completed one, spend is money actually received, a rating is left after
+   * the fact. Until something has concluded there is nothing to report, and a
+   * row of zeros does not read as "nothing to report" — it reads as a broken
+   * screen, or as a judgement on a customer whose first appointment simply
+   * has not happened yet.
+   */
+  const concluded = stats.visits + stats.cancellations + stats.noShows;
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-4">
       <h2 className="text-sm font-semibold text-slate-900">History at this salon</h2>
 
-      <dl className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <Fact label="Visits" value={String(stats.visits)} tabular />
-        <Fact label="Total spent" value={formatPriceCents(stats.totalSpentCents)} tabular />
-        <Fact
-          label="Their rating"
-          value={stats.averageRating === null ? "Not rated" : `${stats.averageRating} / 5`}
-          tabular={stats.averageRating !== null}
-          note={
-            stats.ratingCount > 0
-              ? `from ${stats.ratingCount} visit${stats.ratingCount === 1 ? "" : "s"}`
-              : undefined
-          }
-        />
-        <Fact
-          label="Cancelled"
-          value={String(stats.cancellations)}
-          tabular
-        />
-        <Fact
-          label="No-shows"
-          value={String(stats.noShows)}
-          tabular
-          noteTone="warn"
-          note={
-            /* A rate only means something once something has concluded, and
-               only worth flagging when it is bad enough to change how you
-               treat the booking. */
-            risky ? `${stats.noShowRate}% of concluded bookings` : undefined
-          }
-        />
-      </dl>
+      {concluded === 0 ? (
+        <NothingConcludedYet stats={stats} />
+      ) : (
+        <dl className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <Fact label="Visits" value={String(stats.visits)} tabular />
+          <Fact label="Total spent" value={formatPriceCents(stats.totalSpentCents)} tabular />
+          <Fact
+            label="Their rating"
+            value={stats.averageRating === null ? "Not rated" : `${stats.averageRating} / 5`}
+            tabular={stats.averageRating !== null}
+            note={
+              stats.ratingCount > 0
+                ? `from ${stats.ratingCount} visit${stats.ratingCount === 1 ? "" : "s"}`
+                : undefined
+            }
+          />
+          <Fact label="Cancelled" value={String(stats.cancellations)} tabular />
+          <Fact
+            label="No-shows"
+            value={String(stats.noShows)}
+            tabular
+            noteTone="warn"
+            note={
+              /* A rate only means something once something has concluded, and
+                 only worth flagging when it is bad enough to change how you
+                 treat the booking. */
+              risky ? `${stats.noShowRate}% of concluded bookings` : undefined
+            }
+          />
+        </dl>
+      )}
 
       {stats.services.length > 0 ? (
         <div className="mt-4 border-t border-slate-100 pt-3">
@@ -266,13 +275,48 @@ function CustomerHistory({ stats }: { stats: CustomerStats }) {
           </ul>
         </div>
       ) : null}
+    </section>
+  );
+}
 
-      {stats.totalBookings === 0 ? (
-        <p className="mt-3 text-sm text-slate-500">
-          No bookings yet — this customer was added but has never been in.
+/**
+ * Said instead of the figures, never alongside them.
+ *
+ * There are two genuinely different empty cases here and they need different
+ * words. Someone added at the desk who has never booked is a blank record.
+ * Someone booked in for Thursday is a perfectly normal customer whose history
+ * starts after Thursday — telling them apart is the whole point of the
+ * server's `upcoming` count.
+ *
+ * A deposit is called out because it is real money the salon already holds,
+ * and it is the one figure that can be non-zero before anyone walks in.
+ */
+function NothingConcludedYet({ stats }: { stats: CustomerStats }) {
+  if (stats.totalBookings === 0) {
+    return (
+      <p data-testid="history-never-booked" className="mt-2 text-sm text-slate-600">
+        No bookings yet — this customer was added but has never been in.
+      </p>
+    );
+  }
+
+  return (
+    <div data-testid="history-nothing-concluded" className="mt-2 flex flex-col gap-1">
+      <p className="text-sm text-slate-800">
+        {stats.upcoming > 0
+          ? `${stats.upcoming} booking${stats.upcoming === 1 ? "" : "s"} on the books, none finished yet.`
+          : "No upcoming bookings, and nothing finished yet."}
+      </p>
+      <p className="text-sm text-slate-500">
+        Visits, spend and ratings appear here after their first completed appointment.
+      </p>
+      {stats.totalSpentCents > 0 ? (
+        <p className="text-sm text-slate-800">
+          <span className="font-medium tabular">{formatPriceCents(stats.totalSpentCents)}</span>{" "}
+          already paid in advance.
         </p>
       ) : null}
-    </section>
+    </div>
   );
 }
 
