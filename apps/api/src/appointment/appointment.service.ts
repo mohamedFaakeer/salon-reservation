@@ -95,11 +95,25 @@ export class AppointmentService {
     if (staffId) {
       qb.andWhere("a.staffId = :staffId", { staffId });
     }
-    if (query.q?.trim()) {
-      qb.andWhere(
-        '(a."bookingReference" ILIKE :q OR customer."firstName" ILIKE :q OR customer."lastName" ILIKE :q)',
-        { q: `%${query.q.trim()}%` },
-      );
+    const term = query.q?.trim();
+    if (term) {
+      const clauses = [
+        'a."bookingReference" ILIKE :term',
+        'customer."firstName" ILIKE :term',
+        'customer."lastName" ILIKE :term',
+        // Whoever types "Nimali Perera" gets nothing from the two clauses
+        // above, because neither column holds the space.
+        `(customer."firstName" || ' ' || customer."lastName") ILIKE :term`,
+      ];
+      const params: Record<string, string> = { term: `%${term}%` };
+
+      const digits = localPhoneDigits(term);
+      if (digits.length >= 3) {
+        clauses.push(`${LOCAL_PHONE_SQL} LIKE :phone`);
+        params.phone = `%${digits}%`;
+      }
+
+      qb.andWhere(`(${clauses.join(" OR ")})`, params);
     }
     qb.orderBy("a.startTime", "ASC").take(query.limit).skip(query.offset);
 
@@ -299,3 +313,29 @@ export class AppointmentService {
     }
   }
 }
+
+/**
+ * Phone search has to survive the two shapes the same Sri Lankan number takes.
+ *
+ * `normalizePhone` keeps digits and an optional leading "+", so the receptionist
+ * who typed `077 123 4567` and the website that sent `+94771234567` produce two
+ * different stored strings for one person. Searching either literal misses the
+ * other, which is exactly the case a search box exists for.
+ *
+ * Both converge once the non-digits go and a leading `0` or country code `94`
+ * is dropped: `0771234567` and `94771234567` both become `771234567`. The same
+ * reduction is applied to the stored column in SQL below, so the two meet.
+ */
+function localPhoneDigits(raw: string): string {
+  return raw.replace(/[^0-9]/g, "").replace(/^(0|94)/, "");
+}
+
+/**
+ * The column-side half of `localPhoneDigits`.
+ *
+ * Not indexable, deliberately: this runs only inside an already tenant-scoped
+ * and usually date-scoped query, over one salon's appointments, and an
+ * expression index for a search box nobody has complained about would be
+ * optimising ahead of evidence.
+ */
+const LOCAL_PHONE_SQL = `regexp_replace(regexp_replace(customer."phone", '[^0-9]', '', 'g'), '^(0|94)', '')`;

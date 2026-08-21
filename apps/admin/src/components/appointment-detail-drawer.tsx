@@ -351,6 +351,8 @@ export function AppointmentDetailDrawer({
         <LoadingSkeleton rows={4} />
       ) : (
         <div className="flex flex-col gap-4">
+          <BookingReference reference={appointment.bookingReference} />
+
           <div className="rounded border border-slate-200 p-3 text-sm">
             <p className="font-medium text-slate-900">
               {appointment.customer.firstName} {appointment.customer.lastName}
@@ -892,5 +894,66 @@ export function AppointmentDetailDrawer({
         </div>
       )}
     </DrawerShell>
+  );
+}
+
+/**
+ * The reference, first thing in the drawer.
+ *
+ * This is the number the receptionist reads down the phone or texts to the
+ * customer, and it is what the customer quotes back to look their booking up.
+ * So it gets a copy button rather than only being selectable: transcribing a
+ * code by eye is how the wrong booking gets cancelled.
+ *
+ * The confirmation replaces the label in place rather than firing a toast —
+ * a toast for "copied" is louder than the action deserves — and is announced
+ * politely for anyone not watching the button.
+ */
+function BookingReference({ reference }: { reference: string }) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) {
+      return;
+    }
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  async function copy(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(reference);
+      setCopied(true);
+    } catch {
+      // Clipboard is blocked without a secure context or permission. The code
+      // is on screen and selectable, so there is nothing to report here.
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded border border-teal-200 bg-teal-50 px-3 py-2">
+      <div className="min-w-0">
+        <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-teal-700">
+          Booking reference
+        </p>
+        <p
+          data-testid="detail-booking-reference"
+          className="truncate text-lg font-semibold text-teal-950 tabular"
+        >
+          {reference}
+        </p>
+      </div>
+      <button
+        type="button"
+        data-testid="copy-booking-reference"
+        onClick={() => void copy()}
+        className="min-h-11 shrink-0 rounded border border-teal-600 px-3 text-xs font-medium text-teal-800 hover:bg-teal-100"
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+      <span role="status" aria-live="polite" className="sr-only">
+        {copied ? `Booking reference ${reference} copied` : ""}
+      </span>
+    </div>
   );
 }

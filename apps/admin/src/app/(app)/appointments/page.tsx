@@ -46,6 +46,8 @@ export default function AppointmentsPage() {
   const { user } = useAuth();
   const canManage = canManageAppointments(user?.roles ?? []);
   const [tab, setTab] = useState<Tab>("BOOKINGS");
+  const [query, setQuery] = useState("");
+  const [debounced, setDebounced] = useState("");
   const [date, setDate] = useState("");
   const [status, setStatus] = useState("");
   const [staffId, setStaffId] = useState("");
@@ -57,10 +59,24 @@ export default function AppointmentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [openAppointmentId, setOpenAppointmentId] = useState<string | null>(null);
 
+  // Debounced for the same reason the customer list is: a receptionist looking
+  // up "0771…" while somebody waits at the desk types it one digit at a time,
+  // and a request per keystroke helps nobody. Changing the search resets to the
+  // first page — keeping the offset would show "51-75 of 3", an empty table for
+  // a query that has matches.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebounced(query.trim());
+      setOffset(0);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
     fetchAppointments({
+      q: debounced || undefined,
       date: date || undefined,
       status: status || undefined,
       staffId: staffId || undefined,
@@ -75,7 +91,7 @@ export default function AppointmentsPage() {
         setError(err instanceof ApiRequestError ? err.message : "Could not load appointments.");
       })
       .finally(() => setLoading(false));
-  }, [date, status, staffId, offset]);
+  }, [debounced, date, status, staffId, offset]);
 
   useEffect(load, [load]);
   useEffect(() => {
@@ -145,6 +161,15 @@ export default function AppointmentsPage() {
         <InquiriesPanel />
       ) : (
         <>
+      <input
+        data-testid="appointment-search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Reference, name or phone…"
+        aria-label="Search appointments"
+        className="min-h-11 w-full max-w-md rounded border border-slate-300 px-3 text-sm"
+      />
+
       <div className="flex flex-wrap gap-2">
         <input
           data-testid="appointment-date-filter"
@@ -194,11 +219,12 @@ export default function AppointmentsPage() {
             </option>
           ))}
         </select>
-        {date || status || staffId ? (
+        {query || date || status || staffId ? (
           <button
             type="button"
             data-testid="appointment-clear-filters"
             onClick={() => {
+              setQuery("");
               setDate("");
               setStatus("");
               setStaffId("");
@@ -222,9 +248,11 @@ export default function AppointmentsPage() {
       ) : appointments.length === 0 ? (
         <EmptyState
           title={
-            date || status || staffId
-              ? "No appointments match those filters."
-              : "No appointments yet — they appear here the moment someone books."
+            debounced
+              ? `Nothing matches "${debounced}".`
+              : date || status || staffId
+                ? "No appointments match those filters."
+                : "No appointments yet — they appear here the moment someone books."
           }
         />
       ) : (

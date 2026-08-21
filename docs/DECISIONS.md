@@ -658,3 +658,37 @@ inventing a stylist and a time to hang it on.
 7. **`MANAGE_APPOINTMENTS` is reused rather than adding a permission.** Anyone
    who may take a booking may take the question preceding it; a new capability
    would have had exactly the same holders.
+
+## 26. Appointment search and the booking reference (RP1) (2026-08-21)
+
+1. **Phone search reduces both sides to a common form.** `normalizePhone`
+   keeps digits and an optional leading `+`, so one person is stored as
+   `0771234567` when the receptionist typed it and `+94771234567` when the
+   website sent it. A literal `ILIKE` on either misses the other — precisely
+   the case a search box exists for. Both the search term and the stored column
+   now drop non-digits and a leading `0` or country code `94`, so both converge
+   on `771234567`. The column-side reduction is a SQL expression and therefore
+   not indexable; that is accepted deliberately, because the query is already
+   scoped to one tenant and usually one day, and an expression index for a
+   search box nobody has complained about would be optimising ahead of evidence.
+
+2. **A phone clause needs at least three digits.** Otherwise searching a
+   booking reference like `A2` would turn into a phone substring search
+   matching most of the salon's customers.
+
+3. **Full names get their own clause.** Neither `firstName` nor `lastName`
+   contains a space, so `"Nimali Perera"` matched nothing before. The columns
+   are concatenated for that comparison rather than asking the operator to
+   search half a name.
+
+4. **The empty state names the search.** A zero-result search previously read
+   "No appointments match those filters", which is indistinguishable from an
+   empty salon. It now quotes the term back.
+
+5. **The booking reference gets a copy button, not just larger type.** It is
+   the number a receptionist reads down the phone or texts to a customer, and
+   the one a customer quotes back. Transcribing a code by eye is how the wrong
+   booking gets cancelled. The confirmation replaces the button label in place
+   and is announced politely — a toast for "copied" is louder than the action
+   deserves. A blocked clipboard fails silently on purpose: the code is on
+   screen and selectable, so there is nothing to report.

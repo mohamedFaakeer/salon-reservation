@@ -201,5 +201,102 @@ describe("AppointmentService", () => {
         expect.objectContaining({ staffId: expect.any(String) }),
       );
     });
+
+    /**
+     * The search clause is assembled as SQL text, so these assert on the
+     * fragment and parameters handed to the query builder. That is the only
+     * seam a unit test has here; the phone reduction itself is the part worth
+     * pinning, because it is the bit that silently returns nothing when wrong.
+     */
+    describe("search", () => {
+      function listWith(q: string) {
+        const qb = {
+          leftJoinAndSelect: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          andWhere: vi.fn().mockReturnThis(),
+          orderBy: vi.fn().mockReturnThis(),
+          take: vi.fn().mockReturnThis(),
+          skip: vi.fn().mockReturnThis(),
+          getManyAndCount: vi.fn(async () => [[], 0]),
+        };
+        vi.mocked(
+          appointments as unknown as { createQueryBuilder: () => typeof qb },
+        ).createQueryBuilder = vi.fn(() => qb) as never;
+        return {
+          qb,
+          run: () => service.list("tenant-1", { q, limit: 50, offset: 0 } as never, elevatedCtx()),
+        };
+      }
+
+      /** The last andWhere call is the search clause; earlier ones are filters. */
+      function searchCall(qb: { andWhere: ReturnType<typeof vi.fn> }) {
+        const calls = qb.andWhere.mock.calls;
+        return calls[calls.length - 1] as [string, Record<string, string>];
+      }
+
+      it("searches the booking reference, both names and the full name", async () => {
+        const { qb, run } = listWith("Nimali Perera");
+        await run();
+
+        const [sql, params] = searchCall(qb);
+        expect(sql).toContain('a."bookingReference" ILIKE :term');
+        expect(sql).toContain('customer."firstName" ILIKE :term');
+        expect(sql).toContain('customer."lastName" ILIKE :term');
+        // Neither name column holds the space, so a full name needs its own clause.
+        expect(sql).toContain(`(customer."firstName" || ' ' || customer."lastName") ILIKE :term`);
+        expect(params.term).toBe("%Nimali Perera%");
+      });
+
+      it("reduces a local number so it matches one stored in international form", async () => {
+        const { qb, run } = listWith("077 123 4567");
+        await run();
+
+        const [sql, params] = searchCall(qb);
+        expect(sql).toContain("LIKE :phone");
+        // 0771234567 -> 771234567, which is also what +94771234567 reduces to.
+        expect(params.phone).toBe("%771234567%");
+      });
+
+      it("reduces an international number to the same thing", async () => {
+        const { qb, run } = listWith("+94771234567");
+        await run();
+
+        expect(searchCall(qb)[1].phone).toBe("%771234567%");
+      });
+
+      it("leaves a bare subscriber number alone", async () => {
+        const { qb, run } = listWith("771234567");
+        await run();
+
+        expect(searchCall(qb)[1].phone).toBe("%771234567%");
+      });
+
+      it("does not add a phone clause for a name", async () => {
+        const { qb, run } = listWith("Nimali");
+        await run();
+
+        const [sql, params] = searchCall(qb);
+        expect(sql).not.toContain("LIKE :phone");
+        expect(params.phone).toBeUndefined();
+      });
+
+      it("does not add a phone clause for one or two stray digits", async () => {
+        // "A2" in a booking reference must not turn into a phone search that
+        // matches most of the salon's customers.
+        const { qb, run } = listWith("A2");
+        await run();
+
+        expect(searchCall(qb)[0]).not.toContain("LIKE :phone");
+      });
+
+      it("ignores a whitespace-only search rather than matching everything", async () => {
+        const { qb, run } = listWith("   ");
+        await run();
+
+        for (const [sql] of qb.andWhere.mock.calls as Array<[string]>) {
+          expect(sql).not.toContain(":term");
+        }
+      });
+    });
   });
 });
