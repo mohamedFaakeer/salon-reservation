@@ -70,6 +70,83 @@
 
 **audit_log** — `id (uuid PK)`, `tenantId (FK, nullable for platform-level)`, `actorUserId (FK, nullable)`, `action`, `entityType`, `entityId`, `metadata (JSONB)`, `ipAddress`, `userAgent`, `createdAt`.
 
+### 2.7 Offers & discounts
+
+**service_discount** — `id (uuid PK)`, `tenantId (FK)`, `serviceId (FK)`, `type`
+(`FIXED|PERCENT`), `value` (cents when FIXED, whole percent when PERCENT),
+`startDate (date)`, `endDate (date)`, `label (nullable)`, `active`, `createdAt`,
+`updatedAt`. **Unique `(serviceId)`** — at most one standing offer per service;
+overlapping offers would need precedence rules nobody asked for, and "which one
+applied?" is not a question a receipt should answer ambiguously.
+`CHK_service_discount_value` caps a percentage at 100;
+`CHK_service_discount_dates` keeps the range the right way round.
+
+**service_discount_window** — `id (uuid PK)`, `discountId (FK, CASCADE)`,
+`dayOfWeek (0=Mon..6=Sun)`, `startMin`, `endMin`. No rows at all means "all day,
+every day inside the date range" — the common case, and therefore the one that
+needs no configuration. `endMin` is exclusive and may be 1440, unlike
+`working_schedule`'s: "until midnight" is a real thing to say about an offer.
+
+An offer is evaluated against the **appointment's start time**, never the moment
+of booking (see `ServiceDiscountService`). Both halves of the check are made in
+Colombo local time.
+
+The desk's own discount lives on the appointment rather than in its own table:
+`billDiscountType`, `billDiscountValue`, `billDiscountCents`,
+`billDiscountReason`. `appointment.discountCents` is the sum of the service
+offers and this. `CHK_appointment_bill_discount` caps it at the subtotal and
+forbids a recorded type without its amount (half a discount is not a state
+anything can render); `CHK_appointment_total_not_negative` is the backstop that
+stops any combination producing a bill that owes the customer money.
+
+### 2.8 Inquiries
+
+**inquiry** — `id (uuid PK)`, `tenantId (FK)`, `customerId (FK)`, `source`
+(`WALK_IN|PHONE|WHATSAPP`), `status` (`OPEN|CONVERTED|CLOSED`), `notes`,
+`appointmentId (FK, nullable, ON DELETE SET NULL)`, `createdByUserId (FK,
+nullable)`, `createdAt`, `updatedAt`.
+
+Deliberately **not** an appointment. `appointment` requires `staffId`,
+`appointmentDate`, `startTime` and `endTime` NOT NULL and carries the GiST
+exclusion constraint; an inquiry has none of those four, so storing it there
+would mean relaxing the constraint's own columns for rows that never occupy a
+slot. `CHK_inquiry_converted_has_appointment` enforces that CONVERTED carries a
+booking and nothing else does.
+
+**inquiry_service** — `id (uuid PK)`, `inquiryId (FK, CASCADE)`, `serviceId (FK,
+nullable, SET NULL)`, `nameSnapshot`. Optional: "do you do balayage?" is a real
+question about a service the salon may not even offer.
+
+### 2.9 Ratings
+
+**rating** — `id (uuid PK)`, `tenantId (FK)`, `appointmentId (FK)`, `customerId
+(FK)`, `staffId (FK, nullable)`, `score (smallint)`, `comment (nullable)`,
+`createdAt`. **Unique `(appointmentId)`** — one rating per visit, decided by the
+index rather than a check-then-insert, so two taps on a slow connection cannot
+produce two rows. `CHK_rating_score` enforces 1–5 in the database.
+
+### 2.10 Invoices
+
+**invoice** — `id (uuid PK)`, `tenantId (FK)`, `appointmentId (FK)`, `customerId
+(FK)`, `number (varchar 40)`, `version`, `supersedesInvoiceId (FK, nullable, SET
+NULL)`, `status` (`ISSUED|SUPERSEDED`), `subtotalCents`, `serviceDiscountCents`,
+`billDiscountCents`, `totalCents`, `paidCents`, `balanceCents`, `currency`,
+`snapshot (JSONB)`, `lastSentAt`, `lastSentTo`, `issuedAt`.
+
+A document, not a view. The frozen `snapshot` holds both parties, every line
+with its list price and what came off it, the desk discount and its reason, and
+the payments received — so a year-old invoice resent today reproduces exactly
+what was sent then. The money columns are duplicated out of the snapshot because
+those are what a report filters on.
+
+- **Unique `(tenantId, number)`** — numbers read `EAGL-2026-0001` and are
+  serialised by locking the tenant row; the index is what makes that a
+  guarantee rather than an assumption.
+- **Partial unique `(appointmentId) WHERE status = 'ISSUED'`** — one live
+  invoice per appointment. Corrections supersede rather than accumulate.
+- `CHK_invoice_amounts` requires the arithmetic to hold:
+  `totalCents = subtotalCents - serviceDiscountCents - billDiscountCents`.
+
 ---
 
 ## 3. Concurrency Model — Double-Booking Protection

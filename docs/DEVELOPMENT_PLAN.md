@@ -178,3 +178,39 @@ For each feature:
 - [ ] Live demo on Render + Neon: customer books <60 s; receptionist manages day
 - [ ] All docs current
 - [ ] Pre-deployment security checklist (SECURITY.md §13) done
+
+---
+
+## 9. After P19 — work built on top of the MVP
+
+P1–P19 defined the MVP. Everything below was requested after it shipped and is
+recorded here so the build order stays readable to anyone arriving cold. Each
+carries a `docs/DECISIONS.md` entry.
+
+| Phase | What | Decisions |
+|---|---|---|
+| **FE1–FE9** | The admin screens `docs/UX.md` §4.1 specifies but P1–P19 never built — sidebar shell, services, staff & skills, availability, settings, customers, appointments & schedule, payments & audit — plus the customer-app gaps and the super-admin provisioning UI. | §21–23 |
+| **Wax-Resist** | Visual world for `apps/web`. See `apps/web/DESIGN.md`; the direction contract ships as an HTML comment on every page (grep the running site for `9ab4fc5d`). | — |
+| **F1–F6** | Dashboard date range, searchable service picker, customer history, meaningful toasts, staff logins with module access, password show/hide. | §24 |
+| **Inquiries** | A question that holds no slot: its own entity, not an appointment status. | §25 |
+| **RP1** | Appointment search by reference, name or phone; the booking reference on the detail drawer. | §26 |
+| **RP2–RP3** | The Reports module — one endpoint, one range, twelve panels; OWNER and MANAGER only via `VIEW_REPORTS`. | §27–28 |
+| **D1–D2** | Scheduled service offers, priced at the appointment's slot, shown in both apps. | §29 |
+| **D3** | The desk discount and its cap. | §30 |
+| **D4–D5** | Invoices as frozen documents, with corrections that supersede. | §31–32 |
+
+### Still open
+
+- **Nothing in FE/RP/D has been exercised against production data.** Every
+  phase is verified by typecheck, unit tests, lint, build and — where a
+  migration was involved — by executing the DDL and its constraints against a
+  real database inside a rolled-back transaction. None of it has been watched
+  rendering real numbers, because that needs a salon **owner** login.
+- **`SMTP_HOST` is unset on Render**, so invoices are generated and logged
+  rather than delivered. Set the four SMTP variables to change that.
+- **The Playwright e2e suite** passes test-by-test but not in one run. The
+  cause is machine contention rather than app logic (see §20 notes); by
+  standing agreement the cheap verifications above are used instead.
+- **Credential rotation** is owed before the app meets a real salon: the Neon
+  connection string and the platform-admin password were shared in a working
+  transcript. Neither has ever been committed.

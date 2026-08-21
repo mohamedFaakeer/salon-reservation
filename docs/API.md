@@ -137,6 +137,57 @@ All auth routes are unauthenticated in the sense that they need no bearer token;
 
 ---
 
+### Inquiries
+
+A question somebody asked, holding no slot. Never reaches the availability
+engine — see DECISIONS.md §25.
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| GET | `/inquiries?status&customerId&limit&offset` | OWNER, MANAGER, RECEPTIONIST | Newest first. Defaults to no status filter; the UI opens on `OPEN`. |
+| POST | `/inquiries` | OWNER, MANAGER, RECEPTIONIST | `{ customerId \| newCustomer, serviceIds?, source, notes? }`. Services are optional. |
+| PATCH | `/inquiries/:id` | OWNER, MANAGER, RECEPTIONIST | `{ status, appointmentId? }`. CONVERTED requires the booking it became, re-checked server-side for tenant **and** customer. |
+
+### Discounts
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| PUT | `/services/:id/discount` | OWNER, MANAGER | Replace the offer whole: `{ type, value, startDate, endDate, label?, windows? }`. Empty `windows` = all day. |
+| DELETE | `/services/:id/discount` | OWNER, MANAGER | End the offer. Bookings keep the price they were quoted. |
+| PATCH | `/appointments/:id/discount` | OWNER, MANAGER, RECEPTIONIST | `{ type, value, reason? }`; `value: 0` removes it. Capped by `settings.discountCapPercent`, measured as a share of the bill after the salon's own offers. Exceeding it needs OWNER or MANAGER. |
+
+### Invoices
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| GET | `/appointments/:id/invoices` | OWNER, MANAGER, RECEPTIONIST | Every version, newest first. Exactly one is `ISSUED`. |
+| POST | `/appointments/:id/invoices` | OWNER, MANAGER, RECEPTIONIST | Issue, or supersede the live one if the figures have moved. Idempotent on the money — an unchanged bill returns the existing invoice. |
+| GET | `/invoices/:id` | OWNER, MANAGER, RECEPTIONIST | The frozen document. |
+| POST | `/invoices/:id/send` | OWNER, MANAGER, RECEPTIONIST | `{ email }` — required, not defaulted: the commonest reason to resend is that the first address was wrong. |
+
+Issued automatically when an appointment completes, and emailed only if the
+customer has an address. Failure there never undoes the completion.
+
+### Reports
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| GET | `/reports?from&to` | OWNER, MANAGER | Every panel in one response, for one range. `VIEW_REPORTS`, deliberately narrower than `VIEW_DASHBOARD` — these figures include revenue, a per-stylist league table and named customer spend. |
+
+### Staff logins
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| GET | `/team` | OWNER | Everyone who can sign in to this salon. |
+| POST | `/team` | OWNER | `{ name, email, password, role }`. An existing global account is reused with a new grant rather than refused. |
+| PATCH | `/team/:userId` | OWNER | `{ role?, status? }`. Cannot change the owner or yourself; disables rather than deletes. |
+
+### Ratings (public)
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| POST | `/bookings/:reference/rating` | none (customer) | `{ score, comment? }` on a COMPLETED appointment. One per visit, enforced by a unique index. |
+
 ## 4. Super-Admin (platform)
 
 | Method | Path | Roles | Description |
@@ -187,11 +238,11 @@ All checks enforced server-side (`RolesGuard` + `@Permissions`). Frontend hiding
 
 | HTTP | Codes | Meaning |
 |---|---|---|
-| 400 | `VALIDATION_ERROR`, `BAD_STATE`, `PAST_SLOT`, `OUTSIDE_BOOKING_WINDOW`, `BELOW_LEAD_TIME` | Client error — actionable message |
+| 400 | `VALIDATION_ERROR`, `BAD_STATE`, `PAST_SLOT`, `OUTSIDE_BOOKING_WINDOW`, `BELOW_LEAD_TIME`, `INVALID_DATE_RANGE`, `DATE_RANGE_TOO_WIDE`, `DISCOUNT_TOO_LARGE`, `INVALID_TIME_RANGE` | Client error — actionable message |
 | 401 | `UNAUTHENTICATED`, `TOKEN_EXPIRED` | Login/refresh |
-| 403 | `FORBIDDEN` | Role lacks permission |
+| 403 | `FORBIDDEN`, `DISCOUNT_CAP_EXCEEDED` | Role lacks permission; the cap message names what the caller may approve and who to ask |
 | 404 | `NOT_FOUND` | Salon/appointment/customer missing (also used for cross-tenant access — indistinguishable from 403) |
-| 409 | `SLOT_UNAVAILABLE`, `HOLD_EXPIRED`, `DUPLICATE_CUSTOMER`, `VERSION_CONFLICT`, `APPOINTMENT_NOT_CANCELLABLE` | Business conflict — always states what happened + how to proceed |
+| 409 | `SLOT_UNAVAILABLE`, `HOLD_EXPIRED`, `DUPLICATE_CUSTOMER`, `VERSION_CONFLICT`, `APPOINTMENT_NOT_CANCELLABLE`, `DISCOUNT_BELOW_PAID`, `TEAM_MEMBER_EXISTS`, `CANNOT_MODIFY_OWNER`, `CANNOT_MODIFY_SELF`, `INQUIRY_CUSTOMER_MISMATCH` | Business conflict — always states what happened + how to proceed |
 | 422 | `PAYMENT_CONFLICT` | Payment state machine rejected (e.g. duplicate callback with different data) |
 | 429 | `RATE_LIMITED` | Rate limit on auth/booking/payment endpoints |
 | 500 | `INTERNAL` | Unexpected — logged with `requestId`; message is generic, never stack traces |
