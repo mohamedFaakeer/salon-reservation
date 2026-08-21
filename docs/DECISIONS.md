@@ -753,3 +753,63 @@ inventing a stylist and a time to hang it on.
 11. **Every empty-denominator rate is null, never 0.** Zero is a claim: "0%
     no-shows" reads as a perfect record when it should read "nothing has
     concluded yet". Same rule the customer no-show rate already follows.
+
+## 28. Reports screen (RP3) (2026-08-21)
+
+Designed with the impeccable skill as **refinement inside the admin's
+committed world**, not a new one. `apps/admin` already has a settled visual
+language — teal-600 brand, slate neutrals, system-ui, themed `::selection` and
+focus rings, a named motion vocabulary with reduced-motion handling — and
+inventing a look for one screen would have made it read as a different product.
+
+1. **The panels are ordered as the questions get asked**, not by importance
+   ranking: how did we do, who did it, what sold, when are we busy, who should
+   we call, what is leaking. That order is the page's structure. Twelve
+   equally-weighted cards would have been the lazy alternative and would have
+   said nothing about which panel to read first.
+
+2. **The range bar is sticky.** The screen is a dozen panels tall, and being
+   unsure which period you are reading is the single thing that makes a report
+   worthless.
+
+3. **Changing the range dims rather than blanks.** The previous response is
+   held while the next loads, because this is a surface people compare periods
+   on and replacing everything with skeletons loses their place. The dim, plus
+   a small spinner in the range bar, is the only motion on the screen —
+   Operate mode users are in flow and do not want choreography.
+
+4. **Takings is a figures strip, not four cards.** The four numbers are read
+   as one sentence about the period; four containers would imply four
+   questions. The method split is one proportional bar rather than four more
+   numbers, because "how much of it was cash" is a proportion.
+
+5. **Utilisation is drawn as a bar and null is spelled out.** "Not rostered"
+   and "rostered but idle" look identical as an empty bar, and only one of
+   them is anybody's fault.
+
+6. **The two service lists sit side by side.** Their disagreeing is the
+   finding — a cheap fringe trim can top the popularity list while earning
+   almost nothing. Stacked or tabbed, that comparison never gets made.
+
+7. **Insights are conditional, not decorative.** The stylist callout is
+   written only when the diary genuinely contradicts the job count, and the
+   service callout only when the two lists disagree by a wide enough margin. A
+   takeaway that appears every time is wallpaper.
+
+8. **The deposit panel refuses to conclude on thin evidence.** It requires
+   both sides to have concluded at least five bookings before it recommends
+   anything. Two no-shows out of three is not evidence, and a report that
+   changes policy on three bookings deserves to be ignored.
+
+9. **"Worth a call" is a task, not a fact.** It leads the customer section,
+   carries phone numbers and what each person used to book, and links to their
+   record. Every other panel tells the owner how the salon did; this one tells
+   them who to ring.
+
+10. **The heatmap spans only the hours that saw work.** A fixed 00–23 grid
+    would be three-quarters empty and squeeze the busy block into an
+    unreadable strip.
+
+11. **Audit moved from System to a new Insight group** beside Reports. It
+    answers "what happened" at a different resolution to the same question,
+    and was only ever under System by default.

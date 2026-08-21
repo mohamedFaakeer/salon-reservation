@@ -13,6 +13,7 @@ import {
   canManageTeam,
   canViewAudit,
   canViewDashboard,
+  canViewReports,
 } from "../lib/permissions";
 
 /**
@@ -91,6 +92,33 @@ const GROUPS: NavGroup[] = [
           <Icon>
             <path d="M4 2.5v11M12 2.5v11M2.5 6h11" {...stroke} />
             <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" {...stroke} />
+          </Icon>
+        ),
+      },
+    ],
+  },
+  {
+    label: "Insight",
+    items: [
+      {
+        href: "/reports",
+        label: "Reports",
+        visible: canViewReports,
+        icon: (
+          <Icon>
+            <path d="M2.5 13.5V2.5M2.5 13.5h11" {...stroke} />
+            <path d="M5.5 11V8M8.5 11V4.5M11.5 11V6.5" {...stroke} />
+          </Icon>
+        ),
+      },
+      {
+        href: "/audit",
+        label: "Audit",
+        visible: canViewAudit,
+        icon: (
+          <Icon>
+            <path d="M3 13V3M3 13h10" {...stroke} />
+            <path d="M6 10V7M9 10V5M12 10V8" {...stroke} />
           </Icon>
         ),
       },
@@ -177,17 +205,6 @@ const GROUPS: NavGroup[] = [
             <rect x="2.5" y="4" width="11" height="9" rx="1.5" {...stroke} />
             <path d="M2.5 7h11" {...stroke} />
             <path d="M6 10h2" {...stroke} />
-          </Icon>
-        ),
-      },
-      {
-        href: "/audit",
-        label: "Audit",
-        visible: canViewAudit,
-        icon: (
-          <Icon>
-            <path d="M3 13V3M3 13h10" {...stroke} />
-            <path d="M6 10V7M9 10V5M12 10V8" {...stroke} />
           </Icon>
         ),
       },

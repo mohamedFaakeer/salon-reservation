@@ -1,0 +1,128 @@
+import type { ReactNode } from "react";
+
+/**
+ * The pieces every report panel is built from.
+ *
+ * Twelve identically-weighted cards would be the lazy structure here, so
+ * these are deliberately plain: a titled region and a bordered surface. What
+ * distinguishes one panel from the next is its content, not its chrome.
+ */
+
+export function Panel({
+  title,
+  note,
+  children,
+}: {
+  title: string;
+  /** Sits beside the heading rather than above it — this app has no eyebrows. */
+  note?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="mt-8 first:mt-0">
+      <h2 className="mb-2.5 text-[13px] font-semibold text-slate-900">
+        {title}
+        {note ? <span className="ml-2 font-normal text-slate-500">{note}</span> : null}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={`rounded-lg border border-slate-200 bg-white ${className}`}>{children}</div>
+  );
+}
+
+/** One figure in the takings strip. Label above, number below, context under it. */
+export function Figure({
+  label,
+  value,
+  detail,
+  tone = "plain",
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+  /** `warn` is for money lost — semantic, kept clear of the teal accent. */
+  tone?: "plain" | "warn";
+}) {
+  return (
+    <div className="border-r border-slate-200 px-4 py-3.5 last:border-r-0">
+      <p className="text-[11px] font-medium uppercase tracking-[0.07em] text-slate-500">{label}</p>
+      <p
+        className={`mt-0.5 text-[22px] font-semibold tracking-[-0.02em] tabular ${
+          tone === "warn" ? "text-amber-700" : "text-slate-900"
+        }`}
+      >
+        {value}
+      </p>
+      {detail ? <p className="text-xs text-slate-500">{detail}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * What a panel says when the range holds nothing.
+ *
+ * Named per panel rather than a shared "No data": a quiet week and a salon
+ * that has never rated anybody are different facts, and one sentence for both
+ * teaches the reader nothing.
+ */
+export function Quiet({ children }: { children: ReactNode }) {
+  return <p className="px-4 py-5 text-sm text-slate-500">{children}</p>;
+}
+
+/**
+ * The takeaway under a panel, in the reader's own terms.
+ *
+ * Only written where the numbers alone would be read wrong — a stylist with
+ * few jobs but a full diary, or a top-booked service that earns least.
+ */
+export function Insight({ children }: { children: ReactNode }) {
+  return (
+    <p className="mt-3 rounded-md border border-teal-100 bg-teal-50 px-3 py-2.5 text-[13px] text-teal-900">
+      {children}
+    </p>
+  );
+}
+
+export function Th({
+  children,
+  align = "left",
+}: {
+  children: ReactNode;
+  align?: "left" | "right";
+}) {
+  return (
+    <th
+      scope="col"
+      className={`border-b border-slate-200 bg-slate-50/60 px-4 py-2.5 text-[11px] font-medium uppercase tracking-[0.06em] text-slate-500 ${
+        align === "right" ? "text-right" : "text-left"
+      }`}
+    >
+      {children}
+    </th>
+  );
+}
+
+export function Td({
+  children,
+  align = "left",
+  className = "",
+}: {
+  children: ReactNode;
+  align?: "left" | "right";
+  className?: string;
+}) {
+  return (
+    <td
+      className={`border-b border-slate-100 px-4 py-2.5 align-middle last:border-b-0 ${
+        align === "right" ? "text-right" : ""
+      } ${className}`}
+    >
+      {children}
+    </td>
+  );
+}

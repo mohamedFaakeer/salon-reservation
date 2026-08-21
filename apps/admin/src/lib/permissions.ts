@@ -59,6 +59,16 @@ export function canViewDashboard(roles: string[]): boolean {
 }
 
 /**
+ * Mirrors VIEW_REPORTS (OWNER, MANAGER). Deliberately narrower than
+ * canViewDashboard: reports carry salon revenue, a per-stylist league table
+ * and named customer spend, which a receptionist working the desk has no
+ * business seeing by default.
+ */
+export function canViewReports(roles: string[]): boolean {
+  return roles.some((r) => r === "OWNER" || r === "MANAGER");
+}
+
+/**
  * SUPER_ADMIN holds PLATFORM_ADMIN and nothing else — it cannot read a single
  * tenant route. It is therefore not "an admin with more rights" but a
  * different application, which is why it gets its own shell rather than a
@@ -88,6 +98,7 @@ export const MODULES: Array<{ label: string; can: (roles: string[]) => boolean }
   { label: "Services", can: canManageServices },
   { label: "Staff & availability", can: canManageStaff },
   { label: "Settings", can: canManageSettings },
+  { label: "Reports", can: canViewReports },
   { label: "Audit", can: canViewAudit },
   { label: "Staff logins", can: canManageTeam },
 ];

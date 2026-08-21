@@ -1055,3 +1055,110 @@ export function updateInquiry(
     body: JSON.stringify(patch),
   });
 }
+
+/* ------------------------------------------------------------------ *
+ * Reports
+ *
+ * One request returns every panel, so all of them describe the same
+ * period. Owner and manager only — the server enforces it.
+ * ------------------------------------------------------------------ */
+
+export interface StaffReportRow {
+  staffId: string;
+  name: string;
+  completed: number;
+  bookedMinutes: number;
+  rosteredMinutes: number;
+  /** Null when they were not rostered at all — not 0%, which reads as idle. */
+  utilisationPercent: number | null;
+  averageRating: number | null;
+  ratingCount: number;
+}
+
+export interface ServiceCount {
+  name: string;
+  count: number;
+  revenueCents: number;
+}
+
+export interface CollectionReport {
+  totalCents: number;
+  byMethod: Array<{ method: PaymentMethod; amountCents: number; count: number }>;
+  refundedCents: number;
+  netCents: number;
+}
+
+export interface CustomerSpendRow {
+  customerId: string;
+  name: string;
+  phone: string;
+  totalCents: number;
+  visits: number;
+}
+
+export interface LapsedCustomerRow {
+  customerId: string;
+  name: string;
+  phone: string;
+  lastVisitDate: string;
+  daysSince: number;
+  usualServices: string[];
+}
+
+/** `dayOfWeek` is Mon=0..Sun=6, matching the rota's own numbering. */
+export interface BusyHourCell {
+  dayOfWeek: number;
+  hour: number;
+  count: number;
+}
+
+export interface FunnelReport {
+  bookingsCreated: number;
+  inquiriesLogged: number;
+  inquiriesConverted: number;
+  inquiriesClosed: number;
+  inquiriesOpen: number;
+  conversionPercent: number | null;
+  medianDaysToResolve: number | null;
+}
+
+export interface DepositBucket {
+  concluded: number;
+  noShows: number;
+  noShowPercent: number | null;
+}
+
+export interface LossReport {
+  noShows: number;
+  cancellations: number;
+  lostRevenueCents: number;
+  byStaff: Array<{
+    staffId: string;
+    name: string;
+    noShows: number;
+    cancellations: number;
+    lostCents: number;
+  }>;
+  byHour: Array<{ hour: number; noShows: number; cancellations: number }>;
+  depositEffect: { withDeposit: DepositBucket; withoutDeposit: DepositBucket };
+}
+
+export interface ReportsSummary {
+  range: { from: string; to: string; days: number };
+  staff: StaffReportRow[];
+  services: { popular: ServiceCount[]; byRevenue: ServiceCount[] };
+  collection: CollectionReport;
+  customers: {
+    topSpenders: CustomerSpendRow[];
+    frequent: CustomerSpendRow[];
+    lapsed: LapsedCustomerRow[];
+  };
+  busyHours: BusyHourCell[];
+  funnel: FunnelReport;
+  losses: LossReport;
+}
+
+export function fetchReports(range: { from: string; to: string }): Promise<ReportsSummary> {
+  const qs = new URLSearchParams({ from: range.from, to: range.to });
+  return request<ReportsSummary>(`/reports?${qs.toString()}`);
+}
