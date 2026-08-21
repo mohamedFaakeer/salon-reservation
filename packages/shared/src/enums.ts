@@ -168,3 +168,19 @@ export enum AttendanceDayStatus {
   /** Rostered, the day is over, and nothing was ever recorded. */
   ABSENT = "ABSENT",
 }
+
+/**
+ * The state of a request to change a recorded punch.
+ *
+ * There is no EDITED status: approving a request applies the new times to
+ * the attendance row and the request itself simply becomes the record of
+ * that having happened, same as an invoice version rather than a ticket that
+ * gets closed and forgotten.
+ */
+export enum AttendanceEditRequestStatus {
+  PENDING = "PENDING",
+  APPROVED = "APPROVED",
+  REJECTED = "REJECTED",
+  /** Withdrawn by whoever filed it, before anyone decided. */
+  WITHDRAWN = "WITHDRAWN",
+}
