@@ -4,6 +4,7 @@ import type { Staff } from "../entities/staff.entity";
 import type { StaffServiceAssignment } from "../entities/staff-service.entity";
 import type { Service } from "../entities/service.entity";
 import type { User } from "../entities/user.entity";
+import type { IncentivePlan } from "../entities/incentive-plan.entity";
 
 function mockRepo<T extends ObjectLiteral>() {
   const repo = {
@@ -35,6 +36,7 @@ describe("StaffService", () => {
   let assignments: Repository<StaffServiceAssignment>;
   let services: Repository<Service>;
   let users: Repository<User>;
+  let incentivePlans: Repository<IncentivePlan>;
   let dataSource: DataSource;
   let service: StaffService;
 
@@ -43,13 +45,14 @@ describe("StaffService", () => {
     assignments = mockRepo<StaffServiceAssignment>();
     services = mockRepo<Service>();
     users = mockRepo<User>();
+    incentivePlans = mockRepo<IncentivePlan>();
     dataSource = {
       transaction: vi.fn(async (cb: (manager: unknown) => Promise<void>) => {
         const manager = { getRepository: () => assignments };
         return cb(manager);
       }),
     } as unknown as DataSource;
-    service = new StaffService(staff, assignments, services, users, dataSource);
+    service = new StaffService(staff, assignments, services, users, incentivePlans, dataSource);
   });
 
   describe("create", () => {
@@ -97,6 +100,35 @@ describe("StaffService", () => {
 
       // Only the initial findOwned lookup happened, not a second linkage check.
       expect(staff.findOne).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects an incentive plan id that belongs to another tenant", async () => {
+      vi.mocked(staff.findOne).mockResolvedValueOnce(baseStaff());
+      vi.mocked(incentivePlans.findOne).mockResolvedValueOnce(null);
+
+      await expect(
+        service.update("tenant-1", "staff-1", { incentivePlanId: "plan-from-elsewhere" }),
+      ).rejects.toMatchObject({ statusCode: 404, code: "INCENTIVE_PLAN_NOT_FOUND" });
+    });
+
+    it("assigns an incentive plan confirmed to belong to the tenant", async () => {
+      vi.mocked(staff.findOne).mockResolvedValueOnce(baseStaff());
+      vi.mocked(incentivePlans.findOne).mockResolvedValueOnce({ id: "plan-1" } as IncentivePlan);
+
+      await service.update("tenant-1", "staff-1", { incentivePlanId: "plan-1" });
+
+      const saved = vi.mocked(staff.save).mock.calls[0][0] as Staff;
+      expect(saved.incentivePlanId).toBe("plan-1");
+    });
+
+    it("unassigns a plan when incentivePlanId is set to null, with no ownership lookup needed", async () => {
+      vi.mocked(staff.findOne).mockResolvedValueOnce({ ...baseStaff(), incentivePlanId: "plan-1" });
+
+      await service.update("tenant-1", "staff-1", { incentivePlanId: null });
+
+      expect(incentivePlans.findOne).not.toHaveBeenCalled();
+      const saved = vi.mocked(staff.save).mock.calls[0][0] as Staff;
+      expect(saved.incentivePlanId).toBeNull();
     });
   });
 

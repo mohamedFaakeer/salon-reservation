@@ -9,6 +9,7 @@ import {
   UpdateDateColumn,
 } from "typeorm";
 import { Branch } from "./branch.entity";
+import { IncentivePlan } from "./incentive-plan.entity";
 import { Tenant } from "./tenant.entity";
 import { User } from "./user.entity";
 
@@ -58,6 +59,14 @@ export class Staff {
   /** Hex color for calendar display (e.g. "#4F46E5"). */
   @Column({ type: "varchar", length: 7, nullable: true })
   color!: string | null;
+
+  /** The commission/incentive plan this stylist earns under, if any. */
+  @Column({ type: "uuid", nullable: true })
+  incentivePlanId!: string | null;
+
+  @ManyToOne(() => IncentivePlan, { onDelete: "SET NULL", nullable: true })
+  @JoinColumn({ name: "incentivePlanId" })
+  incentivePlan!: IncentivePlan | null;
 
   @CreateDateColumn({ type: "timestamptz" })
   createdAt!: Date;

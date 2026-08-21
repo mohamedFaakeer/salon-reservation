@@ -184,3 +184,11 @@ export enum AttendanceEditRequestStatus {
   /** Withdrawn by whoever filed it, before anyone decided. */
   WITHDRAWN = "WITHDRAWN",
 }
+
+/** How the plan's monthly-target tier bonus, if any, has been finalised for a period. */
+export enum IncentivePayoutStatus {
+  FINALISED = "FINALISED",
+  PAID = "PAID",
+  /** Corrected by a later payout for the same staff and period. */
+  VOID = "VOID",
+}

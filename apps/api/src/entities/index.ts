@@ -24,3 +24,4 @@ export * from "./service-discount.entity";
 export * from "./invoice.entity";
 export * from "./attendance-day.entity";
 export * from "./attendance-edit-request.entity";
+export * from "./incentive-plan.entity";

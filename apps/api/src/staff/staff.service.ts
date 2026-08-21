@@ -16,6 +16,7 @@ import { Staff } from "../entities/staff.entity";
 import { StaffServiceAssignment } from "../entities/staff-service.entity";
 import { Service } from "../entities/service.entity";
 import { User } from "../entities/user.entity";
+import { IncentivePlan } from "../entities/incentive-plan.entity";
 
 @Injectable()
 export class StaffService {
@@ -25,6 +26,7 @@ export class StaffService {
     private readonly assignments: Repository<StaffServiceAssignment>,
     @InjectRepository(Service) private readonly services: Repository<Service>,
     @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectRepository(IncentivePlan) private readonly incentivePlans: Repository<IncentivePlan>,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
@@ -63,6 +65,24 @@ export class StaffService {
     if (dto.color !== undefined) staff.color = dto.color;
     if (dto.userId !== undefined) staff.userId = dto.userId;
     if (dto.active !== undefined) staff.active = dto.active;
+
+    if (dto.incentivePlanId !== undefined) {
+      if (dto.incentivePlanId !== null) {
+        // Never trust the id: it must be a plan this salon actually owns,
+        // never one guessed or copied from another tenant.
+        const owned = await this.incentivePlans.findOne({
+          where: { id: dto.incentivePlanId, tenantId },
+        });
+        if (!owned) {
+          throw new ApiError({
+            statusCode: 404,
+            code: "INCENTIVE_PLAN_NOT_FOUND",
+            message: "That incentive plan does not belong to this salon.",
+          });
+        }
+      }
+      staff.incentivePlanId = dto.incentivePlanId;
+    }
 
     return this.staff.save(staff);
   }

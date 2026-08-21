@@ -24,6 +24,7 @@ import { BookingModule } from "./booking/booking.module";
 import { AppointmentModule } from "./appointment/appointment.module";
 import { InquiryModule } from "./inquiry/inquiry.module";
 import { AttendanceModule } from "./attendance/attendance.module";
+import { IncentiveModule } from "./incentive/incentive.module";
 import { ReportsModule } from "./reports/reports.module";
 import { InvoiceModule } from "./invoice/invoice.module";
 import { SalonModule } from "./salon/salon.module";
@@ -84,6 +85,7 @@ import { RequestLoggingMiddleware } from "./common/middleware/request-logging.mi
     AppointmentModule,
     InquiryModule,
     AttendanceModule,
+    IncentiveModule,
     ReportsModule,
     InvoiceModule,
     SalonModule,

@@ -64,4 +64,9 @@ export class UpdateStaffDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  /** The commission/incentive plan this stylist earns under. `null` unassigns. */
+  @IsOptional()
+  @IsUUID()
+  incentivePlanId?: string | null;
 }

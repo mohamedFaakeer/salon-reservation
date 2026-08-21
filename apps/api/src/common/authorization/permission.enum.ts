@@ -48,6 +48,8 @@ export enum Permission {
   VIEW_ATTENDANCE = "VIEW_ATTENDANCE",
   /** Decide an attendance correction. OWNER and MANAGER. */
   APPROVE_ATTENDANCE_EDIT = "APPROVE_ATTENDANCE_EDIT",
+  /** Configure commission plans, assign them, and run payouts. OWNER and MANAGER only — this is payroll. */
+  MANAGE_INCENTIVES = "MANAGE_INCENTIVES",
   VIEW_OWN_SCHEDULE = "VIEW_OWN_SCHEDULE",
   VIEW_AUDIT_LOG = "VIEW_AUDIT_LOG",
   VIEW_NOTIFICATIONS = "VIEW_NOTIFICATIONS",
