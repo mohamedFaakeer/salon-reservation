@@ -1250,3 +1250,71 @@ export function setAppointmentDiscount(
     body: JSON.stringify(input),
   });
 }
+
+/* ------------------------------------------------------------------ *
+ * Invoices
+ *
+ * Frozen documents. A correction issues a new version rather than
+ * editing the old one, so an appointment can have several and exactly
+ * one of them is live.
+ * ------------------------------------------------------------------ */
+
+export interface InvoiceSnapshotLine {
+  name: string;
+  durationMin: number;
+  listPriceCents: number;
+  discountCents: number;
+  discountLabel: string | null;
+  chargedCents: number;
+}
+
+export interface InvoiceSnapshot {
+  salon: {
+    name: string;
+    address: string | null;
+    city: string | null;
+    phone: string | null;
+    businessRegNo: string | null;
+  };
+  customer: { name: string; phone: string; email: string | null };
+  appointment: { bookingReference: string; startTime: string; staffName: string };
+  lines: InvoiceSnapshotLine[];
+  billDiscount: { type: string; value: number; cents: number; reason: string | null } | null;
+  payments: Array<{ method: string; amountCents: number; recordedAt: string | null }>;
+}
+
+export interface InvoiceRecord {
+  id: string;
+  number: string;
+  version: number;
+  supersedesInvoiceId: string | null;
+  status: "ISSUED" | "SUPERSEDED";
+  subtotalCents: number;
+  serviceDiscountCents: number;
+  billDiscountCents: number;
+  totalCents: number;
+  paidCents: number;
+  balanceCents: number;
+  currency: string;
+  snapshot: InvoiceSnapshot;
+  lastSentAt: string | null;
+  lastSentTo: string | null;
+  issuedAt: string;
+}
+
+/** Newest version first. */
+export function fetchInvoices(appointmentId: string): Promise<InvoiceRecord[]> {
+  return request<InvoiceRecord[]>(`/appointments/${appointmentId}/invoices`);
+}
+
+/** Issues, or supersedes the live one if the bill has moved since. */
+export function issueInvoice(appointmentId: string): Promise<InvoiceRecord> {
+  return request<InvoiceRecord>(`/appointments/${appointmentId}/invoices`, { method: "POST" });
+}
+
+export function sendInvoice(invoiceId: string, email: string): Promise<InvoiceRecord> {
+  return request<InvoiceRecord>(`/invoices/${invoiceId}/send`, {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}

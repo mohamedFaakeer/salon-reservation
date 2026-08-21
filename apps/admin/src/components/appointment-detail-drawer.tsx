@@ -39,6 +39,7 @@ import { LoadingSkeleton } from "./loading-skeleton";
 import { BusyLabel } from "./spinner";
 import { StatusBadge } from "./status-badge";
 import { BillDiscount } from "./bill-discount";
+import { InvoicePanel } from "./invoice-panel";
 import { useToast } from "./toast";
 import { errorCopy } from "../lib/error-copy";
 
@@ -750,6 +751,8 @@ export function AppointmentDetailDrawer({
               )
             ) : null}
           </div>
+
+          {canRecordPayment(roles) ? <InvoicePanel appointment={appointment} /> : null}
 
           <div>
             <p className="mb-1 text-sm font-medium text-slate-700">Timeline</p>

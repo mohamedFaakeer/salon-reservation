@@ -983,3 +983,44 @@ inventing a look for one screen would have made it read as a different product.
 12. **Still no tax line.** No tax field exists in the schema and multi-country
     tax is explicitly out of MVP scope (CLAUDE.md 1.11). An invoice here is a
     receipt for one appointment, not accounting.
+
+## 32. The invoice document and its panel (D5) (2026-08-21)
+
+1. **The invoice deliberately does not look like the admin.** Every other
+   screen is a tool the operator works inside; an invoice is a thing that gets
+   printed, filed and argued over, so it looks like one - white paper,
+   generous margins, the salon's name at the top and the number where an eye
+   goes looking for it. This is the one surface in the app that is a document
+   rather than an interface.
+
+2. **PDF is the browser's job.** `print:` utilities strip the chrome so Ctrl-P
+   produces a clean page. Adding a headless renderer to generate the same
+   document server-side would be a heavyweight dependency earning nothing that
+   the browser's own PDF engine does not already do well.
+
+3. **Rendered entirely from the frozen snapshot.** A year-old invoice opened
+   today shows the salon as it was, not as it is. That is the whole reason the
+   snapshot exists, and reading a single live row here would quietly undo D4.
+
+4. **"Not sent - no email on file for this customer"** is stated outright.
+   The alternative is an invoice that exists, was never emailed, and says
+   nothing about why - which is a silent failure wearing a success's clothes.
+
+5. **Offers and the desk discount stay named separately on the document.** One
+   is a price the salon published, the other a decision somebody made. A single
+   merged figure would hide which, and the invoice is exactly where a customer
+   might ask.
+
+6. **Older versions are listed but folded away.** They matter when somebody
+   asks "what did you actually send me in September?", and clutter every other
+   day. A superseded invoice opens with a plain note saying it has been
+   replaced and is kept as a record of what was sent.
+
+7. **The reissue button reports what actually happened.** Issuing is idempotent
+   server-side, so clicking it on an unchanged bill says "Invoice is already up
+   to date" rather than claiming to have issued something. The message is
+   chosen from the response, not from the click.
+
+8. **The panel sits outside the Payments card, not inside it.** An invoice is
+   its own record rather than a detail of the payment block, and a card nested
+   in a card is a structure nobody chose.
