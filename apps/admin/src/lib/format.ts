@@ -173,3 +173,43 @@ function humanizeStatus(status: string): string {
   const lower = status.replace(/_/g, " ").toLowerCase();
   return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
+
+/**
+ * Attendance's own status chip, deliberately drawn from the same hue
+ * families as `STATUS_STYLES` above rather than a second invented palette —
+ * green still means "the good outcome happened", orange still means
+ * "incomplete", dark still means "did not happen". A stylist reading both
+ * screens should never have to learn what a new colour means.
+ */
+const ATTENDANCE_STATUS_STYLES: Record<string, StatusStyle> = {
+  PRESENT: { fill: "#D1FAE5", fg: "#065F46", accent: "#059669", label: "Present" },
+  MISSING_CHECK_OUT: { fill: "#FED7AA", fg: "#9A3412", accent: "#EA580C", label: "Missing check-out" },
+  ABSENT: { fill: "#334155", fg: "#FFFFFF", accent: "#334155", label: "Absent" },
+  ON_LEAVE: { fill: "#CFFAFE", fg: "#155E75", accent: "#0891B2", label: "On leave" },
+  CLOSED: { fill: "#E2E8F0", fg: "#475569", accent: "#64748B", label: "Closed" },
+  DAY_OFF: { fill: "#E2E8F0", fg: "#64748B", accent: "#94A3B8", label: "Day off" },
+  EXPECTED: { fill: "#E2E8F0", fg: "#64748B", accent: "#94A3B8", label: "Not in yet" },
+};
+
+export function attendanceStatusStyle(status: string): StatusStyle {
+  return ATTENDANCE_STATUS_STYLES[status] ?? { ...FALLBACK_STATUS, label: humanizeStatus(status) };
+}
+
+/** `9:00 AM` from minutes-since-midnight, for a rostered shift's start/end. */
+export function formatClockFromMinutes(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  const period = h < 12 ? "AM" : "PM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+/** `2h 18m` — durations short enough that a stylist reads them at a glance. */
+export function formatMinutesDuration(totalMin: number): string {
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h === 0) {
+    return `${m}m`;
+  }
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}

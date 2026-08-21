@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/auth-context";
 import { fetchTenantMe, setTenantProfileListener, ApiRequestError } from "../../lib/api-client";
 import { AppSidebar } from "../../components/app-sidebar";
+import { isStaffOnly } from "../../lib/permissions";
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -17,6 +18,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     }
     if (!user) {
       router.replace("/login");
+    } else if (isStaffOnly(user.roles)) {
+      // Every item in this sidebar is hidden from STAFF and every request it
+      // makes would 403 — the same reason SUPER_ADMIN gets its own shell.
+      router.replace("/floor");
     }
   }, [loading, user, router]);
 
@@ -40,7 +45,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     return () => setTenantProfileListener(null);
   }, []);
 
-  if (loading || !user) {
+  if (loading || !user || isStaffOnly(user.roles)) {
     return null;
   }
 

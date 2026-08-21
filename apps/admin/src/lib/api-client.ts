@@ -1318,3 +1318,159 @@ export function sendInvoice(invoiceId: string, email: string): Promise<InvoiceRe
     body: JSON.stringify({ email }),
   });
 }
+
+/* ------------------------------------------------------------ attendance */
+
+export type AttendanceDayStatus =
+  | "PRESENT"
+  | "MISSING_CHECK_OUT"
+  | "CLOSED"
+  | "ON_LEAVE"
+  | "DAY_OFF"
+  | "EXPECTED"
+  | "ABSENT";
+
+export interface AttendanceDayView {
+  id: string | null;
+  staffId: string;
+  staffName: string;
+  workDate: string;
+  status: AttendanceDayStatus;
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  expectedStartMin: number | null;
+  expectedEndMin: number | null;
+  lateMinutes: number;
+  earlyMinutes: number;
+  workedMinutes: number | null;
+  selfRecorded: boolean;
+  recordedByName: string | null;
+}
+
+export interface AttendanceStaffSummary {
+  staffId: string;
+  staffName: string;
+  presentDays: number;
+  lateDays: number;
+  lateMinutes: number;
+  earlyDays: number;
+  earlyMinutes: number;
+  absentDays: number;
+  missingCheckOutDays: number;
+  leaveDays: number;
+  workedMinutes: number;
+  rosteredDays: number;
+}
+
+export interface AttendanceReport {
+  range: { from: string; to: string; days: number };
+  summary: AttendanceStaffSummary[];
+  days: AttendanceDayView[];
+}
+
+/** Omitting `staffId` punches the caller's own login. */
+export function attendanceCheckIn(staffId?: string): Promise<AttendanceDayView> {
+  return request<AttendanceDayView>("/attendance/check-in", {
+    method: "POST",
+    body: JSON.stringify(staffId ? { staffId } : {}),
+  });
+}
+
+export function attendanceCheckOut(staffId?: string): Promise<AttendanceDayView> {
+  return request<AttendanceDayView>("/attendance/check-out", {
+    method: "POST",
+    body: JSON.stringify(staffId ? { staffId } : {}),
+  });
+}
+
+/** Everyone, for one day — the front desk's board. Defaults to today. */
+export function fetchAttendanceBoard(date?: string): Promise<{ date: string; rows: AttendanceDayView[] }> {
+  const qs = date ? `?date=${date}` : "";
+  return request(`/attendance/board${qs}`);
+}
+
+/** A range across every staff member — OWNER/MANAGER only. */
+export function fetchAttendanceReport(query: { from?: string; to?: string; staffId?: string }): Promise<AttendanceReport> {
+  const params = new URLSearchParams(
+    Object.entries(query).filter((e): e is [string, string] => Boolean(e[1])),
+  );
+  const qs = params.toString();
+  return request(`/attendance${qs ? `?${qs}` : ""}`);
+}
+
+/** The caller's own attendance — any staff login. */
+export function fetchMyAttendance(query: { from?: string; to?: string } = {}): Promise<AttendanceReport> {
+  const params = new URLSearchParams(
+    Object.entries(query).filter((e): e is [string, string] => Boolean(e[1])),
+  );
+  const qs = params.toString();
+  return request(`/attendance/me${qs ? `?${qs}` : ""}`);
+}
+
+export type AttendanceEditRequestStatus = "PENDING" | "APPROVED" | "REJECTED" | "WITHDRAWN";
+
+export interface AttendanceEditRequestView {
+  id: string;
+  staffId: string;
+  staffName: string;
+  workDate: string;
+  previousCheckInAt: string | null;
+  previousCheckOutAt: string | null;
+  requestedCheckInAt: string | null;
+  requestedCheckOutAt: string | null;
+  reason: string;
+  status: AttendanceEditRequestStatus;
+  requestedByName: string;
+  decidedByName: string | null;
+  decidedAt: string | null;
+  decisionNote: string | null;
+  createdAt: string;
+}
+
+export interface CreateAttendanceEditRequestInput {
+  staffId?: string;
+  workDate: string;
+  requestedCheckInAt?: string;
+  requestedCheckOutAt?: string;
+  reason: string;
+}
+
+export function requestAttendanceEdit(
+  input: CreateAttendanceEditRequestInput,
+): Promise<AttendanceEditRequestView> {
+  return request<AttendanceEditRequestView>("/attendance/edit-requests", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+/** The manager's queue — APPROVE_ATTENDANCE_EDIT only. */
+export function fetchAttendanceEditRequests(query: {
+  status?: AttendanceEditRequestStatus;
+  staffId?: string;
+} = {}): Promise<AttendanceEditRequestView[]> {
+  const params = new URLSearchParams(
+    Object.entries(query).filter((e): e is [string, string] => Boolean(e[1])),
+  );
+  const qs = params.toString();
+  return request(`/attendance/edit-requests${qs ? `?${qs}` : ""}`);
+}
+
+/** The caller's own filed requests, and their outcomes. */
+export function fetchMyAttendanceEditRequests(): Promise<AttendanceEditRequestView[]> {
+  return request<AttendanceEditRequestView[]>("/attendance/edit-requests/me");
+}
+
+export function decideAttendanceEditRequest(
+  id: string,
+  decision: { status: "APPROVED" | "REJECTED"; note?: string },
+): Promise<AttendanceEditRequestView> {
+  return request<AttendanceEditRequestView>(`/attendance/edit-requests/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(decision),
+  });
+}
+
+export function withdrawAttendanceEditRequest(id: string): Promise<{ withdrawn: true }> {
+  return request<{ withdrawn: true }>(`/attendance/edit-requests/${id}`, { method: "DELETE" });
+}

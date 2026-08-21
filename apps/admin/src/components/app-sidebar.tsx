@@ -11,6 +11,7 @@ import {
   canManageSettings,
   canManageStaff,
   canManageTeam,
+  canRecordAttendance,
   canViewAudit,
   canViewDashboard,
   canViewReports,
@@ -92,6 +93,17 @@ const GROUPS: NavGroup[] = [
           <Icon>
             <path d="M4 2.5v11M12 2.5v11M2.5 6h11" {...stroke} />
             <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" {...stroke} />
+          </Icon>
+        ),
+      },
+      {
+        href: "/attendance",
+        label: "Attendance",
+        visible: canRecordAttendance,
+        icon: (
+          <Icon>
+            <circle cx="8" cy="8" r="6" {...stroke} />
+            <path d="M8 4.6V8l2.6 1.6" {...stroke} />
           </Icon>
         ),
       },

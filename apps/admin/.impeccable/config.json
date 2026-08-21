@@ -1,0 +1,16 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "gray-on-color",
+        "value": "text-slate-600",
+        "files": [
+          "src/app/(app)/attendance/requests/page.tsx"
+        ],
+        "createdAt": "2026-08-21T18:45:26.027Z"
+      }
+    ]
+  }
+}

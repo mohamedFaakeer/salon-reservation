@@ -83,6 +83,32 @@ export function canManageTeam(roles: string[]): boolean {
   return roles.includes("OWNER");
 }
 
+/** Mirrors RECORD_ATTENDANCE (OWNER, MANAGER, RECEPTIONIST) — the front-desk punch. */
+export function canRecordAttendance(roles: string[]): boolean {
+  return roles.some((r) => r === "OWNER" || r === "MANAGER" || r === "RECEPTIONIST");
+}
+
+/** Mirrors VIEW_ATTENDANCE (OWNER, MANAGER only). */
+export function canViewAttendance(roles: string[]): boolean {
+  return roles.some((r) => r === "OWNER" || r === "MANAGER");
+}
+
+/** Mirrors APPROVE_ATTENDANCE_EDIT (OWNER, MANAGER only). */
+export function canApproveAttendanceEdit(roles: string[]): boolean {
+  return roles.some((r) => r === "OWNER" || r === "MANAGER");
+}
+
+/**
+ * STAFF holding only that one role — a stylist with no elevated grant at this
+ * salon. Used to route a login toward the floor kiosk instead of the desk
+ * shell: someone who is STAFF *and* something else (rare, but the data model
+ * allows one user one role per tenant, so this is really "is STAFF the only
+ * role") still belongs at the desk.
+ */
+export function isStaffOnly(roles: string[]): boolean {
+  return roles.includes("STAFF") && !roles.some((r) => r !== "STAFF");
+}
+
 /**
  * What each assignable role can reach, derived from the same predicates the
  * sidebar uses rather than a hand-written table. A table would drift the first

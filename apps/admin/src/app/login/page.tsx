@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/auth-context";
 import { ApiRequestError } from "../../lib/api-client";
-import { isSuperAdmin } from "../../lib/permissions";
+import { isStaffOnly, isSuperAdmin } from "../../lib/permissions";
 import { BusyLabel } from "../../components/spinner";
 
 export default function LoginPage() {
@@ -24,8 +24,15 @@ export default function LoginPage() {
     try {
       const user = await login(email, password);
       // SUPER_ADMIN has no tenant permissions, so /today would render an
-      // empty shell and a failing dashboard request.
-      router.replace(isSuperAdmin(user.roles) ? "/platform" : "/today");
+      // empty shell and a failing dashboard request. A STAFF-only login has
+      // no dashboard permission either, and belongs on the floor, not the desk.
+      if (isSuperAdmin(user.roles)) {
+        router.replace("/platform");
+      } else if (isStaffOnly(user.roles)) {
+        router.replace("/floor");
+      } else {
+        router.replace("/today");
+      }
     } catch (err) {
       setError(
         err instanceof ApiRequestError ? err.message : "Could not sign in. Please try again.",
