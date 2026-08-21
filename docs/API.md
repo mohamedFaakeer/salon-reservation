@@ -182,6 +182,52 @@ customer has an address. Failure there never undoes the completion.
 | POST | `/team` | OWNER | `{ name, email, password, role }`. An existing global account is reused with a new grant rather than refused. |
 | PATCH | `/team/:userId` | OWNER | `{ role?, status? }`. Cannot change the owner or yourself; disables rather than deletes. |
 
+### Attendance
+
+Two audiences share these routes: the front desk punching whoever walks in
+with no login of their own, and a stylist punching themselves from their own
+phone. Both call the same engine (DECISIONS.md §33.1); the service decides
+what a caller may actually name — omitting `staffId` always means "me".
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| POST | `/attendance/check-in` | RECORD_ATTENDANCE, RECORD_OWN_ATTENDANCE | `{ staffId? }` — server clock, never the client's. `409 ALREADY_CHECKED_IN` on a duplicate tap. |
+| POST | `/attendance/check-out` | RECORD_ATTENDANCE, RECORD_OWN_ATTENDANCE | `{ staffId? }` — closes the most recent open check-in. `409 STALE_CHECK_IN` past 18 hours open, pointing at the correction flow instead. |
+| GET | `/attendance/board?date` | RECORD_ATTENDANCE, VIEW_ATTENDANCE | One day, everyone — the front desk's board. Defaults to today. |
+| GET | `/attendance?from&to&staffId` | VIEW_ATTENDANCE | A range, for one person or everyone — OWNER/MANAGER only. |
+| GET | `/attendance/me?from&to` | VIEW_OWN_SCHEDULE, VIEW_ATTENDANCE | The caller's own history. |
+| GET | `/attendance/staff/:staffId?from&to` | VIEW_ATTENDANCE | One person's history, for a manager drilling into a stylist's card. |
+| POST | `/attendance/edit-requests` | RECORD_ATTENDANCE, RECORD_OWN_ATTENDANCE | File a correction: `{ staffId?, workDate, requestedCheckInAt?, requestedCheckOutAt?, reason }`. A reason is required — a correction with none is a guess. |
+| GET | `/attendance/edit-requests?status&staffId` | APPROVE_ATTENDANCE_EDIT | The manager's queue. |
+| GET | `/attendance/edit-requests/me` | RECORD_OWN_ATTENDANCE | The caller's own filed requests and their outcomes. |
+| PATCH | `/attendance/edit-requests/:id` | APPROVE_ATTENDANCE_EDIT | `{ status: APPROVED\|REJECTED, note? }`. Approving creates the `AttendanceDay` if none existed, or updates it, recomputing lateness against the *current* rota. |
+| DELETE | `/attendance/edit-requests/:id` | RECORD_OWN_ATTENDANCE | Withdraw a still-pending request. |
+
+### Incentives
+
+Configuring plans and running payouts is payroll — `MANAGE_INCENTIVES`,
+OWNER/MANAGER only. A stylist reading their own figure is not, and always
+resolves against their own linked `staff` row server-side; any `staffId` on a
+`me` route is ignored (DECISIONS.md §33.9).
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| GET | `/incentive-plans` | MANAGE_INCENTIVES | Every plan configured for this salon. |
+| GET | `/incentive-plans/preview?from&to&staffId?` | MANAGE_INCENTIVES | The live, unsaved figure a payout would total right now. |
+| GET | `/incentive-plans/me/preview?from&to` | VIEW_OWN_INCENTIVE_EARNINGS | The caller's own live estimate for the range, or `null` with no plan assigned. |
+| GET | `/incentive-plans/:id` | MANAGE_INCENTIVES | One plan, with its service-rate overrides. |
+| POST | `/incentive-plans` | MANAGE_INCENTIVES | `{ name, baseCommissionPercent?, perJobAmountCents?, monthlyTargetCents?, tierBonusPercent?, serviceRates? }`. At least one component required. |
+| PUT | `/incentive-plans/:id` | MANAGE_INCENTIVES | Replaces the plan whole — a partial patch would invite states like "target set, bonus rate silently cleared" that the database's own pairing check would then have to catch. |
+| GET | `/incentive-payouts?staffId&status` | MANAGE_INCENTIVES | Payout history, any staff member. |
+| GET | `/incentive-payouts/me` | VIEW_OWN_INCENTIVE_EARNINGS | The caller's own payouts — FINALISED and PAID, never a voided correction. |
+| GET | `/incentive-payouts/:id` | MANAGE_INCENTIVES | One payout, with its frozen `snapshot`. |
+| POST | `/incentive-payouts` | MANAGE_INCENTIVES | `{ staffId, periodStart, periodEnd }`. Idempotent on the money (DECISIONS.md §33.8): unchanged figure returns the existing payout; a moved figure voids the old row and inserts a new one. |
+| PATCH | `/incentive-payouts/:id/paid` | MANAGE_INCENTIVES | Stamps `paidAt`/`paidBy`. `409 PAYOUT_VOID` / `409 PAYOUT_ALREADY_PAID` guard invalid transitions. |
+| PATCH | `/incentive-payouts/:id/void` | MANAGE_INCENTIVES | `{ reason }` — a manual correction, without reissuing. |
+
+`staff.incentivePlanId` (nullable, `SET NULL` on plan deletion) assigns a plan
+via `PATCH /staff/:id`, validated against the caller's own tenant.
+
 ### Ratings (public)
 
 | Method | Path | Roles | Description |
@@ -211,6 +257,10 @@ customer has an address. Failure there never undoes the completion.
 | Customer management | — | ✅ | ✅ | ✅ | view own checked-in customer info |
 | Dashboard / day schedule | — | ✅ | ✅ | ✅ | own schedule only |
 | Audit log | — | ✅ | ✅ | — | — |
+| Punch attendance | — | ✅ | ✅ | ✅ (record only) | own only |
+| View attendance / decide corrections | — | ✅ | ✅ | — | own history only |
+| Configure incentive plans / run payouts | — | ✅ | ✅ | — | — |
+| View own incentive earnings | — | — | — | — | ✅ |
 
 All checks enforced server-side (`RolesGuard` + `@Permissions`). Frontend hiding is not security.
 

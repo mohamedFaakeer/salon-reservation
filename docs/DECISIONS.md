@@ -1024,3 +1024,86 @@ inventing a look for one screen would have made it read as a different product.
 8. **The panel sits outside the Payments card, not inside it.** An invoice is
    its own record rather than a detail of the payment block, and a card nested
    in a card is a structure nobody chose.
+
+## 33. Attendance & incentives (A1-A7) (2026-08-22)
+
+1. **One check-in engine, two audiences.** A stylist punches themselves; the
+   front desk punches whoever has no login of their own. Both paths call the
+   same `AttendanceService.checkIn`/`checkOut`, and the caller's role only
+   decides *whose* attendance they may name (`resolveTarget`) — never a second
+   way of recording the fact, the same reasoning CLAUDE.md rule 1 already
+   states for bookings.
+
+2. **Absence is derived, never stored.** A row exists only once somebody has
+   punched; a day with no row is worked out at read time against the rota,
+   leave and closures. The alternative — a nightly job writing `ABSENT` rows
+   for everyone who did not turn up — is a cron that can silently stop running
+   and leave a month looking perfect. Nothing here depends on a job staying
+   alive.
+
+3. **The rostered shift is snapshotted onto the row, not looked up live.**
+   `expectedStartMin`/`expectedEndMin` and the tenant's grace minutes are
+   copied onto `AttendanceDay` at check-in. Lateness is a comparison against a
+   rostered start, so computing it live would mean that editing somebody's
+   rota next March silently rewrites whether they were late last August — the
+   same immutable-history rule (CLAUDE.md rule 5) applied to a punch instead of
+   a booking.
+
+4. **A missed or wrong punch is corrected by request, never by editing the
+   row directly.** `AttendanceEditRequest` carries the reason, the previous
+   value (frozen when filed, not inferred later from whatever the row says by
+   then), and a manager's decision. Approving a request for a day with no row
+   creates one; approving a request against an existing row updates it — either
+   way, the request is the record of *why*, which is the entire reason the
+   flow exists rather than a bare PATCH.
+
+5. **Attendance and incentives are two systems, not one**, decided with the
+   product owner up front. A stylist can be tracked for punctuality without
+   ever earning commission, and a plan can pay someone whose hours are never
+   punched (e.g. a chair-rental arrangement). Coupling them would have forced
+   every incentive payout to first justify itself against a time clock it has
+   no actual dependency on.
+
+6. **One incentive plan, three composable components**, also decided with the
+   product owner rather than picked unilaterally: a base commission (with
+   optional per-service overrides), a flat amount per completed job, and a
+   monthly-target tier bonus. They are independent toggles that can combine on
+   one plan — `CHK_incentive_plan_has_component` refuses a plan with none of
+   them set, and `CHK_incentive_plan_tier_paired` refuses a target with no
+   bonus rate or the reverse. A configuration mistake is caught in the
+   database, not discovered in a payout nobody double-checked.
+
+7. **Commission is computed on money actually received, not money billed.**
+   `AppointmentServiceLine` is scored only from `SUCCESS` payments, and a
+   partial payment is split across an appointment's service lines in
+   proportion to each line's charged amount (`allocateReceivedByLine`). A
+   completed appointment with an unpaid balance pays no commission on the
+   unpaid part — commission tracks the till, the same principle §Collection
+   report already applies to revenue.
+
+8. **A payout is a frozen document, the same shape as an invoice (§31).**
+   `IncentivePayout.snapshot` holds the plan's components *as applied* and
+   every contributing line, so a payout opened next year still explains itself
+   even if the plan has since changed. Running it twice with nothing changed
+   returns the existing payout unchanged (idempotent on the money, §31.6); a
+   changed figure voids the old row and inserts a new one pointing back at it
+   — corrections supersede, never edit in place, enforced by
+   `UQ_incentive_payout_live_period`'s partial index on non-`VOID` rows.
+
+9. **A stylist reading their own figures is not payroll access.** The
+   plan/payout routes are OWNER/MANAGER-only (`MANAGE_INCENTIVES`) because
+   running and voiding payouts is payroll; but a stylist checking "what have I
+   earned this month" is a different, much narrower thing. `VIEW_OWN_INCENTIVE_
+   EARNINGS` plus `GET /incentive-plans/me/preview` and `GET
+   /incentive-payouts/me` resolve the caller's own `staff` row server-side —
+   any `staffId` the client sends is ignored — mirroring how attendance's own
+   `GET /attendance/me` already works. No client-supplied id is ever trusted
+   for "whose record is this" (CLAUDE.md rule 7).
+
+10. **The staff report gets one honest column, not a second attendance
+    screen.** Reports already answers "how full was the diary, how was the
+    work rated" per stylist; late-arrival days sits beside those as the same
+    kind of fact, sourced from `AttendanceDay.lateMinutes > 0` in the chosen
+    range. A full punctuality breakdown already exists on the dedicated
+    Attendance screen — duplicating it here would be two places that could
+    quietly disagree about the same number.

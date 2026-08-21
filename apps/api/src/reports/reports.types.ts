@@ -24,6 +24,8 @@ export interface StaffReportRow {
   /** Mean score of work done in this range. Null when nothing was rated. */
   averageRating: number | null;
   ratingCount: number;
+  /** Days in the range they checked in later than their grace period allowed. */
+  lateArrivals: number;
 }
 
 export interface ServiceCount {

@@ -147,6 +147,82 @@ those are what a report filters on.
 - `CHK_invoice_amounts` requires the arithmetic to hold:
   `totalCents = subtotalCents - serviceDiscountCents - billDiscountCents`.
 
+### 2.11 Attendance
+
+**attendance_day** — `id (uuid PK)`, `tenantId (FK)`, `staffId (FK)`,
+`workDate (date)`, `checkInAt (timestamptz, NOT NULL)`, `checkOutAt
+(timestamptz, nullable)`, `checkInBy`/`checkOutBy (FK user, nullable, SET
+NULL — who pressed it, not necessarily who it was for)`, `expectedStartMin`/
+`expectedEndMin (int, nullable — the rostered shift as it stood that day,
+snapshotted, never looked up live)`, `graceMinutes`/`earlyGraceMinutes (int —
+the tenant's grace settings as they stood that day)`, `lateMinutes`/
+`earlyMinutes (int, derived but stored so a report can sum a month in SQL)`,
+`workedMinutes (int, nullable until check-out)`, `createdAt`, `updatedAt`.
+
+A row exists only once somebody has punched — absence is worked out at read
+time against the rota, never written by a nightly job (DECISIONS.md §33.2).
+**Unique `(staffId, workDate)`** — one shift per person per day.
+`CHK_attendance_out_after_in` requires `checkOutAt > checkInAt` when set;
+`CHK_attendance_minutes` keeps both derived minute columns non-negative.
+
+**attendance_edit_request** — `id (uuid PK)`, `tenantId (FK)`, `staffId (FK)`,
+`attendanceId (FK, nullable, SET NULL — null means "no row exists yet", the
+commoner case)`, `workDate (date)`, `previousCheckInAt`/`previousCheckOutAt
+(timestamptz, nullable — frozen at filing, not inferred later)`,
+`requestedCheckInAt`/`requestedCheckOutAt (timestamptz, nullable — missing
+means "leave this end alone")`, `reason (varchar 500, NOT NULL)`, `status`
+(`PENDING|APPROVED|REJECTED|WITHDRAWN`), `requestedBy (FK user)`, `decidedBy
+(FK user, nullable, SET NULL)`, `decidedAt (timestamptz, nullable)`,
+`decisionNote (varchar 500, nullable)`, `createdAt`.
+
+**Partial unique `(staffId, workDate) WHERE status = 'PENDING'`** — at most
+one open request per person per day; file a second only after the first is
+decided. `CHK_attendance_edit_has_request` requires at least one of the two
+requested timestamps to be set. `CHK_attendance_edit_requested_order` requires
+`requestedCheckOutAt > requestedCheckInAt` when both are given.
+`CHK_attendance_edit_decided` requires `decidedBy`/`decidedAt` exactly when
+status is `APPROVED`/`REJECTED`, and exactly absent otherwise — a decision
+cannot be half-made.
+
+### 2.12 Incentives
+
+**incentive_plan** — `id (uuid PK)`, `tenantId (FK)`, `name (varchar 80)`,
+`baseCommissionPercent (int, nullable, 0-100)`, `perJobAmountCents (int,
+nullable)`, `monthlyTargetCents (int, nullable)`, `tierBonusPercent (int,
+nullable, 0-100)`, `active (bool, default true)`, `createdAt`, `updatedAt`.
+Three components, each independently optional, that compose rather than
+replace one another (DECISIONS.md §33.6). `CHK_incentive_plan_has_component`
+refuses a plan with none of the three set; `CHK_incentive_plan_tier_paired`
+requires the target and its bonus rate together or neither.
+
+**incentive_plan_service_rate** — `id (uuid PK)`, `planId (FK, CASCADE)`,
+`serviceId (FK, CASCADE)`, `ratePercent (int, 0-100)`. Replaces the plan's
+base commission for one named service — a richer rate on colouring than on a
+trim. **Unique `(planId, serviceId)`** — a service names at most one rate per
+plan.
+
+**incentive_payout** — `id (uuid PK)`, `tenantId (FK)`, `staffId (FK)`,
+`planId (FK, nullable, SET NULL — kept for reference; the deletable plan must
+never be able to erase what it once paid)`, `periodStart`/`periodEnd (date)`,
+`status` (`FINALISED|PAID|VOID`), `revenueCents`, `commissionCents`,
+`jobsCompleted`, `perJobCents`, `tierBonusCents`, `totalCents`, `snapshot
+(jsonb — the plan's components as applied and every contributing line)`,
+`supersedesPayoutId (uuid, nullable)`, `finalisedBy (FK user)`, `paidAt`/
+`paidBy (nullable)`, `voidedAt`/`voidedBy`/`voidReason (nullable)`,
+`createdAt`.
+
+Frozen the same way an invoice is frozen (DECISIONS.md §31, §33.8): the live
+preview can move as later data changes, but the moment someone finalises it
+this row stops moving. **Partial unique `(staffId, periodStart, periodEnd)
+WHERE status <> 'VOID'`** — one live payout per person per period;
+corrections void the old row and insert a new one rather than editing in
+place, and this index is what makes room for the replacement rather than an
+implementation detail. `CHK_incentive_payout_total` requires
+`totalCents = commissionCents + perJobCents + tierBonusCents`.
+`CHK_incentive_payout_paid_has_timestamp` and
+`CHK_incentive_payout_void_has_reason` require their respective actor +
+timestamp (+ reason, for void) columns exactly when the status says so.
+
 ---
 
 ## 3. Concurrency Model — Double-Booking Protection
@@ -234,6 +310,11 @@ Reschedule and cancel touch multiple rows (original appointment + new appointmen
 | `payment_attempt` | `(provider, provider_event_id)` unique | callback dedupe |
 | `audit_log` | `(tenant_id, created_at)` | audit queries |
 | `working_schedule` | `(staff_id, day_of_week)` unique | availability |
+| `attendance_day` | `(staff_id, work_date)` unique | one shift per person per day |
+| `attendance_day` | `(tenant_id, work_date)` | the day board, and the staff-report late-arrivals query |
+| `attendance_edit_request` | `(staff_id, work_date)` partial unique `WHERE status='PENDING'` | at most one open request per day |
+| `incentive_plan_service_rate` | `(plan_id, service_id)` unique | one rate per service per plan |
+| `incentive_payout` | `(staff_id, period_start, period_end)` partial unique `WHERE status<>'VOID'` | one live payout per period |
 
 ---
 
@@ -262,3 +343,7 @@ Reschedule and cancel touch multiple rows (original appointment + new appointmen
 4. `appointment.totalCents = subtotalCents − discountCents` (service-layer pricing; single PricingService).
 5. Unique `bookingReference` — generated `ELN-XXXXXX` from tenant slug prefix + random base32.
 6. No hard deletes on `appointment`, `appointment_service`, `payment`, `service`, `staff` (soft/inactive statuses only).
+7. `attendance_day.checkOutAt > checkInAt` when set (CHECK); the rostered shift and grace minutes are snapshotted onto the row at check-in, never looked up live against a rota that may have since changed.
+8. `incentive_plan` requires at least one of its three components set, and the monthly target + its bonus rate together or neither (CHECK, DECISIONS.md §33.6).
+9. `incentive_payout` is idempotent on the money and supersedes rather than edits: an unchanged figure is returned as-is; a moved one voids the old row (partial unique index excludes `VOID`) and inserts a new one pointing back at it via `supersedesPayoutId`.
+10. No hard deletes on `attendance_day`, `attendance_edit_request`, `incentive_plan`, `incentive_payout` — statuses (`WITHDRAWN`, `VOID`) and nullable `SET NULL` foreign keys preserve history the same way rule 6 does for the appointment lifecycle.

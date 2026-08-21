@@ -13,7 +13,7 @@ export function StaffPanel({ staff }: { staff: StaffReportRow[] }) {
   const active = staff.filter((s) => s.rosteredMinutes > 0 || s.completed > 0);
 
   return (
-    <Panel title="Stylists" note="jobs finished, how full the diary was, and how it was rated">
+    <Panel title="Stylists" note="jobs finished, how full the diary was, how it was rated, and late arrivals">
       <Card>
         {active.length === 0 ? (
           <Quiet>Nobody was rostered or finished a job in this period.</Quiet>
@@ -28,6 +28,7 @@ export function StaffPanel({ staff }: { staff: StaffReportRow[] }) {
                   <Th>Diary filled</Th>
                   <Th align="right">Booked</Th>
                   <Th align="right">Rating</Th>
+                  <Th align="right">Late</Th>
                 </tr>
               </thead>
               <tbody>
@@ -55,6 +56,13 @@ export function StaffPanel({ staff }: { staff: StaffReportRow[] }) {
                             </span>{" "}
                             <span className="text-slate-500 tabular">({row.ratingCount})</span>
                           </>
+                        )}
+                      </Td>
+                      <Td align="right" className="tabular">
+                        {row.lateArrivals > 0 ? (
+                          <span className="font-medium text-amber-700">{row.lateArrivals}</span>
+                        ) : (
+                          <span className="text-slate-400">0</span>
                         )}
                       </Td>
                     </tr>

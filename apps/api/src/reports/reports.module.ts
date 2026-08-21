@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { Appointment } from "../entities/appointment.entity";
 import { AppointmentServiceLine } from "../entities/appointment-service.entity";
+import { AttendanceDay } from "../entities/attendance-day.entity";
 import { Closure } from "../entities/closure.entity";
 import { Customer } from "../entities/customer.entity";
 import { Inquiry } from "../entities/inquiry.entity";
@@ -24,6 +25,7 @@ import { ReportsService } from "./reports.service";
     TypeOrmModule.forFeature([
       Appointment,
       AppointmentServiceLine,
+      AttendanceDay,
       Closure,
       Customer,
       Inquiry,

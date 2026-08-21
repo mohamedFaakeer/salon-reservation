@@ -7,6 +7,7 @@ import { Repository } from "typeorm";
 import { AppointmentStatus, InquiryStatus, PaymentStatus, RefundStatus } from "@salon/shared";
 import { Appointment } from "../entities/appointment.entity";
 import { AppointmentServiceLine } from "../entities/appointment-service.entity";
+import { AttendanceDay } from "../entities/attendance-day.entity";
 import { Customer } from "../entities/customer.entity";
 import { Closure } from "../entities/closure.entity";
 import { Inquiry } from "../entities/inquiry.entity";
@@ -82,6 +83,7 @@ export class ReportsService {
   constructor(
     @InjectRepository(Appointment) private readonly appointments: Repository<Appointment>,
     @InjectRepository(AppointmentServiceLine) private readonly lines: Repository<AppointmentServiceLine>,
+    @InjectRepository(AttendanceDay) private readonly attendanceDays: Repository<AttendanceDay>,
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
     @InjectRepository(Refund) private readonly refunds: Repository<Refund>,
     @InjectRepository(Rating) private readonly ratings: Repository<Rating>,
@@ -129,7 +131,7 @@ export class ReportsService {
    * league table that does that is worse than no league table.
    */
   private async staffRows(tenantId: string, range: Range): Promise<StaffReportRow[]> {
-    const [staffRows, worked, rated, rostered] = await Promise.all([
+    const [staffRows, worked, rated, rostered, late] = await Promise.all([
       this.staff.find({ where: { tenantId }, order: { name: "ASC" } }),
 
       this.appointments
@@ -161,10 +163,21 @@ export class ReportsService {
         .getRawMany<{ staffId: string; average: string; count: number }>(),
 
       this.rosteredMinutes(tenantId, range),
+
+      this.attendanceDays
+        .createQueryBuilder("d")
+        .select('d."staffId"', "staffId")
+        .addSelect("COUNT(*)::int", "count")
+        .where('d."tenantId" = :tenantId', { tenantId })
+        .andWhere('d."workDate" BETWEEN :from AND :to', range)
+        .andWhere('d."lateMinutes" > 0')
+        .groupBy('d."staffId"')
+        .getRawMany<{ staffId: string; count: number }>(),
     ]);
 
     const workedBy = new Map(worked.map((r) => [r.staffId, r]));
     const ratedBy = new Map(rated.map((r) => [r.staffId, r]));
+    const lateBy = new Map(late.map((r) => [r.staffId, Number(r.count)]));
 
     return staffRows.map((s) => {
       const w = workedBy.get(s.id);
@@ -183,6 +196,7 @@ export class ReportsService {
           rosteredMinutes === 0 ? null : Math.round((bookedMinutes / rosteredMinutes) * 100),
         averageRating: ratingCount === 0 ? null : round1(Number(r?.average)),
         ratingCount,
+        lateArrivals: lateBy.get(s.id) ?? 0,
       };
     });
   }

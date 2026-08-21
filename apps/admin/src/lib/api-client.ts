@@ -1091,6 +1091,8 @@ export interface StaffReportRow {
   utilisationPercent: number | null;
   averageRating: number | null;
   ratingCount: number;
+  /** Days in the range they checked in later than their grace period allowed. */
+  lateArrivals: number;
 }
 
 export interface ServiceCount {
