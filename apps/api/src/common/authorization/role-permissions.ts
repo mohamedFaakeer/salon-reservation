@@ -47,5 +47,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.VIEW_OWN_CUSTOMER_INFO,
     Permission.VIEW_OWN_SCHEDULE,
     Permission.RECORD_OWN_ATTENDANCE,
+    Permission.VIEW_OWN_INCENTIVE_EARNINGS,
   ],
 };

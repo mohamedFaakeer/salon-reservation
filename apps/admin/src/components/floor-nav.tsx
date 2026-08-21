@@ -52,6 +52,22 @@ const ITEMS: Array<{ href: string; label: string; icon: ReactNode }> = [
       </svg>
     ),
   },
+  {
+    href: "/floor/earnings",
+    label: "Earnings",
+    icon: (
+      <svg viewBox="0 0 16 16" width="20" height="20" fill="none" aria-hidden="true">
+        <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" />
+        <path
+          d="M8 4.6v6.8M6 6.4c0-.9.9-1.6 2-1.6s2 .7 2 1.6-.9 1.4-2 1.6c-1.1.2-2 .7-2 1.6s.9 1.6 2 1.6 2-.7 2-1.6"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    ),
+  },
 ];
 
 export function FloorNav() {

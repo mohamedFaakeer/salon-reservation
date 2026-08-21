@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import {
   canManageAppointments,
   canManageCustomers,
+  canManageIncentives,
   canManageNotifications,
   canManageServices,
   canManageSettings,
@@ -179,6 +180,17 @@ const GROUPS: NavGroup[] = [
   {
     label: "People",
     items: [
+      {
+        href: "/incentives",
+        label: "Incentives",
+        visible: canManageIncentives,
+        icon: (
+          <Icon>
+            <circle cx="8" cy="8" r="6" {...stroke} />
+            <path d="M8 4.6v6.8M6 6.4c0-.9.9-1.6 2-1.6s2 .7 2 1.6-.9 1.4-2 1.6c-1.1.2-2 .7-2 1.6s.9 1.6 2 1.6 2-.7 2-1.6" {...stroke} />
+          </Icon>
+        ),
+      },
       {
         href: "/team",
         label: "Staff logins",

@@ -39,6 +39,21 @@ export class IncentiveController {
     return this.incentives.preview(ctx.tenantId, query);
   }
 
+  /**
+   * A stylist's own live estimate for the range they ask for. Any `staffId`
+   * on the query is ignored — the caller's own staff row is the only one this
+   * permission can ever name. VIEW_OWN_INCENTIVE_EARNINGS rather than
+   * MANAGE_INCENTIVES: reading your own running figure is not payroll access.
+   */
+  @Get("me/preview")
+  @Permissions(Permission.VIEW_OWN_INCENTIVE_EARNINGS)
+  async previewOwn(@Req() req: Request, @Query() query: IncentivePreviewQueryDto) {
+    const ctx = getTenantContext(req);
+    const staffId = await this.incentives.ownStaffId(ctx.tenantId, ctx.userId);
+    const rows = await this.incentives.preview(ctx.tenantId, { ...query, staffId });
+    return rows[0] ?? null;
+  }
+
   @Get(":id")
   @Permissions(Permission.MANAGE_INCENTIVES)
   get(@Req() req: Request, @Param("id") id: string) {

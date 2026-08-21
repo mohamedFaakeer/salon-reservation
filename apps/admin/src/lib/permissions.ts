@@ -98,6 +98,11 @@ export function canApproveAttendanceEdit(roles: string[]): boolean {
   return roles.some((r) => r === "OWNER" || r === "MANAGER");
 }
 
+/** Mirrors MANAGE_INCENTIVES (OWNER, MANAGER only) — commission plans and payouts are payroll. */
+export function canManageIncentives(roles: string[]): boolean {
+  return roles.some((r) => r === "OWNER" || r === "MANAGER");
+}
+
 /**
  * STAFF holding only that one role — a stylist with no elevated grant at this
  * salon. Used to route a login toward the floor kiosk instead of the desk
@@ -123,6 +128,7 @@ export const MODULES: Array<{ label: string; can: (roles: string[]) => boolean }
   { label: "Refunds", can: canIssueRefund },
   { label: "Services", can: canManageServices },
   { label: "Staff & availability", can: canManageStaff },
+  { label: "Incentives", can: canManageIncentives },
   { label: "Settings", can: canManageSettings },
   { label: "Reports", can: canViewReports },
   { label: "Audit", can: canViewAudit },

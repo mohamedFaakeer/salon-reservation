@@ -214,4 +214,16 @@ describe("IncentivePayoutService", () => {
       });
     });
   });
+
+  describe("own", () => {
+    it("lists a staff member's own payouts, excluding voided ones", async () => {
+      vi.mocked(payouts.find).mockResolvedValueOnce([reloaded("payout-1")]);
+
+      const result = await service.own("tenant-1", "s1");
+
+      expect(result).toHaveLength(1);
+      const whereArg = vi.mocked(payouts.find).mock.calls[0][0]?.where as Record<string, unknown>;
+      expect(whereArg.staffId).toBe("s1");
+    });
+  });
 });

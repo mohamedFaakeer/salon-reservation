@@ -119,6 +119,19 @@ export class IncentiveService {
     return earnings[0] ?? null;
   }
 
+  /** The staff row behind a login, for the "me" routes — mirrors AttendanceService.ownStaffId. */
+  async ownStaffId(tenantId: string, userId: string): Promise<string> {
+    const own = await this.staff.findOne({ where: { tenantId, userId } });
+    if (!own) {
+      throw new ApiError({
+        statusCode: 409,
+        code: "NO_STAFF_RECORD",
+        message: "This login is not linked to a staff member yet, so there are no earnings to show.",
+      });
+    }
+    return own.id;
+  }
+
   private async eligibleStaff(tenantId: string, staffId?: string): Promise<Staff[]> {
     return this.staff.find({
       where: staffId ? { tenantId, id: staffId } : { tenantId, active: true },

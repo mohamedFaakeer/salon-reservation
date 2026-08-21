@@ -4,7 +4,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 // injection via design:paramtypes metadata at runtime; `import type` would
 // erase them and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import { DataSource, Repository } from "typeorm";
+import { DataSource, Not, Repository } from "typeorm";
 import { ApiError, IncentivePayoutStatus, type IncentivePayoutQueryDto, type RunIncentivePayoutDto } from "@salon/shared";
 import { IncentivePayout } from "../entities/incentive-payout.entity";
 import { Staff } from "../entities/staff.entity";
@@ -40,6 +40,21 @@ export class IncentivePayoutService {
 
   async get(tenantId: string, id: string): Promise<IncentivePayoutView> {
     return toView(await this.findOwned(tenantId, id));
+  }
+
+  /**
+   * One stylist's own history — everything that ever became real money, past
+   * or pending. A voided payout is a correction made against the record, not
+   * something they were ever owed, so it's excluded here the same way it's
+   * excluded from what a stylist would be paid.
+   */
+  async own(tenantId: string, staffId: string): Promise<IncentivePayoutView[]> {
+    const rows = await this.payouts.find({
+      where: { tenantId, staffId, status: Not(IncentivePayoutStatus.VOID) },
+      relations: { staff: true, finalisedByUser: true, paidByUser: true, voidedByUser: true },
+      order: { createdAt: "DESC" },
+    });
+    return rows.map(toView);
   }
 
   /**

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { createStaff, updateStaff, type StaffMember } from "../lib/api-client";
+import { useEffect, useState } from "react";
+import { createStaff, fetchIncentivePlans, updateStaff, type IncentivePlanView, type StaffMember } from "../lib/api-client";
 import { DrawerShell } from "./drawer-shell";
 import { BusyLabel } from "./spinner";
 import { useToast } from "./toast";
@@ -45,9 +45,17 @@ export function StaffDrawer({
   const [color, setColor] = useState(
     member?.color ?? PALETTE[Math.floor(Math.random() * PALETTE.length)],
   );
+  const [incentivePlanId, setIncentivePlanId] = useState(member?.incentivePlanId ?? "");
+  const [plans, setPlans] = useState<IncentivePlanView[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const toast = useToast();
+
+  useEffect(() => {
+    fetchIncentivePlans()
+      .then(setPlans)
+      .catch(() => setPlans([]));
+  }, []);
 
   const canSubmit = name.trim().length > 0;
 
@@ -63,6 +71,7 @@ export function StaffDrawer({
         phone: phone.trim() || undefined,
         specialties: specialties.trim() || undefined,
         color,
+        ...(editing ? { incentivePlanId: incentivePlanId || null } : {}),
       };
       const saved = member
         ? await updateStaff(member.id, payload)
@@ -141,12 +150,30 @@ export function StaffDrawer({
           </div>
         </fieldset>
 
-        {!editing ? (
+        {editing ? (
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-slate-700">
+              Incentive plan <span className="font-normal text-slate-500">(optional)</span>
+            </span>
+            <select
+              value={incentivePlanId}
+              onChange={(e) => setIncentivePlanId(e.target.value)}
+              className="min-h-11 rounded border border-slate-300 px-3 text-sm"
+            >
+              <option value="">No plan — no commission earned</option>
+              {plans.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
           <p className="rounded border border-teal-200 bg-teal-50 p-3 text-xs text-teal-800">
             You&apos;ll pick which services {name.trim() || "this stylist"} performs next — until
             then they won&apos;t appear as bookable.
           </p>
-        ) : null}
+        )}
 
         {error ? (
           <p role="alert" className="text-sm text-red-600">

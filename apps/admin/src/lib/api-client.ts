@@ -94,6 +94,8 @@ export interface StaffMember {
   color: string | null;
   phone: string | null;
   specialties: string | null;
+  /** The commission/incentive plan this stylist earns under. Null = unassigned. */
+  incentivePlanId: string | null;
 }
 
 export interface ServiceItem {
@@ -401,7 +403,7 @@ export function createStaff(input: StaffInput): Promise<StaffMember> {
 
 export function updateStaff(
   id: string,
-  patch: Partial<StaffInput> & { active?: boolean },
+  patch: Partial<StaffInput> & { active?: boolean; incentivePlanId?: string | null },
 ): Promise<StaffMember> {
   return request<StaffMember>(`/staff/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
 }
@@ -1473,4 +1475,154 @@ export function decideAttendanceEditRequest(
 
 export function withdrawAttendanceEditRequest(id: string): Promise<{ withdrawn: true }> {
   return request<{ withdrawn: true }>(`/attendance/edit-requests/${id}`, { method: "DELETE" });
+}
+
+/* -------------------------------------------------------------- incentives */
+
+export interface IncentivePlanServiceRate {
+  serviceId: string;
+  serviceName: string;
+  ratePercent: number;
+}
+
+export interface IncentivePlanView {
+  id: string;
+  name: string;
+  baseCommissionPercent: number | null;
+  perJobAmountCents: number | null;
+  monthlyTargetCents: number | null;
+  tierBonusPercent: number | null;
+  active: boolean;
+  serviceRates: IncentivePlanServiceRate[];
+}
+
+export interface UpsertIncentivePlanInput {
+  name: string;
+  baseCommissionPercent?: number;
+  perJobAmountCents?: number;
+  monthlyTargetCents?: number;
+  tierBonusPercent?: number;
+  serviceRates?: Array<{ serviceId: string; ratePercent: number }>;
+}
+
+export function fetchIncentivePlans(): Promise<IncentivePlanView[]> {
+  return request<IncentivePlanView[]>("/incentive-plans");
+}
+
+export function createIncentivePlan(input: UpsertIncentivePlanInput): Promise<IncentivePlanView> {
+  return request<IncentivePlanView>("/incentive-plans", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateIncentivePlan(id: string, input: UpsertIncentivePlanInput): Promise<IncentivePlanView> {
+  return request<IncentivePlanView>(`/incentive-plans/${id}`, { method: "PUT", body: JSON.stringify(input) });
+}
+
+export interface IncentivePreviewRow {
+  staffId: string;
+  staffName: string;
+  planId: string;
+  planName: string;
+  revenueCents: number;
+  commissionCents: number;
+  jobsCompleted: number;
+  perJobCents: number;
+  tierBonusCents: number;
+  totalCents: number;
+}
+
+/** The live, unsaved figure for a range — what a payout would total if run right now. OWNER/MANAGER only. */
+export function fetchIncentivePreview(query: { from: string; to: string; staffId?: string }): Promise<IncentivePreviewRow[]> {
+  const params = new URLSearchParams(
+    Object.entries(query).filter((e): e is [string, string] => Boolean(e[1])),
+  );
+  return request(`/incentive-plans/preview?${params.toString()}`);
+}
+
+/** The caller's own live estimate for the range — any staff login with a plan assigned. */
+export function fetchMyIncentivePreview(query: { from: string; to: string }): Promise<IncentivePreviewRow | null> {
+  const params = new URLSearchParams(query);
+  return request(`/incentive-plans/me/preview?${params.toString()}`);
+}
+
+export type IncentivePayoutStatus = "FINALISED" | "PAID" | "VOID";
+
+export interface IncentivePayoutSnapshot {
+  plan: {
+    name: string;
+    baseCommissionPercent: number | null;
+    perJobAmountCents: number | null;
+    monthlyTargetCents: number | null;
+    tierBonusPercent: number | null;
+    serviceRates: IncentivePlanServiceRate[];
+  };
+  lines: Array<{
+    appointmentId: string;
+    bookingReference: string;
+    serviceId: string | null;
+    serviceName: string;
+    chargedCents: number;
+    receivedCents: number;
+  }>;
+}
+
+export interface IncentivePayoutView {
+  id: string;
+  staffId: string;
+  staffName: string;
+  planId: string | null;
+  planName: string;
+  periodStart: string;
+  periodEnd: string;
+  status: IncentivePayoutStatus;
+  revenueCents: number;
+  commissionCents: number;
+  jobsCompleted: number;
+  perJobCents: number;
+  tierBonusCents: number;
+  totalCents: number;
+  snapshot: IncentivePayoutSnapshot;
+  supersedesPayoutId: string | null;
+  finalisedByName: string;
+  paidAt: string | null;
+  paidByName: string | null;
+  voidedAt: string | null;
+  voidedByName: string | null;
+  voidReason: string | null;
+  createdAt: string;
+}
+
+export function fetchIncentivePayouts(query: {
+  staffId?: string;
+  status?: IncentivePayoutStatus;
+} = {}): Promise<IncentivePayoutView[]> {
+  const params = new URLSearchParams(
+    Object.entries(query).filter((e): e is [string, string] => Boolean(e[1])),
+  );
+  const qs = params.toString();
+  return request(`/incentive-payouts${qs ? `?${qs}` : ""}`);
+}
+
+/** The caller's own payout history — FINALISED and PAID, never a voided correction. */
+export function fetchMyIncentivePayouts(): Promise<IncentivePayoutView[]> {
+  return request<IncentivePayoutView[]>("/incentive-payouts/me");
+}
+
+/** Finalise one staff member's figure for a period. Idempotent if the figure hasn't moved since the last run. */
+export function runIncentivePayout(input: {
+  staffId: string;
+  periodStart: string;
+  periodEnd: string;
+}): Promise<IncentivePayoutView> {
+  return request<IncentivePayoutView>("/incentive-payouts", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function markIncentivePayoutPaid(id: string): Promise<IncentivePayoutView> {
+  return request<IncentivePayoutView>(`/incentive-payouts/${id}/paid`, { method: "PATCH" });
+}
+
+export function voidIncentivePayout(id: string, reason: string): Promise<IncentivePayoutView> {
+  return request<IncentivePayoutView>(`/incentive-payouts/${id}/void`, {
+    method: "PATCH",
+    body: JSON.stringify({ reason }),
+  });
 }

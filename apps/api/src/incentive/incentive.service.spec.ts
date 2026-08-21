@@ -174,4 +174,20 @@ describe("IncentiveService", () => {
       expect(result[0].commissionCents).toBe(1_000);
     });
   });
+
+  describe("ownStaffId", () => {
+    it("resolves the staff row linked to this login", async () => {
+      vi.mocked(staff.findOne).mockResolvedValueOnce({ id: "s1" } as Staff);
+
+      await expect(service.ownStaffId("tenant-1", "user-1")).resolves.toBe("s1");
+    });
+
+    it("refuses a login with no linked staff record", async () => {
+      vi.mocked(staff.findOne).mockResolvedValueOnce(null);
+
+      await expect(service.ownStaffId("tenant-1", "user-1")).rejects.toMatchObject({
+        code: "NO_STAFF_RECORD",
+      });
+    });
+  });
 });

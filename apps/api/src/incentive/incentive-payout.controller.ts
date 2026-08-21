@@ -13,19 +13,37 @@ import { Permission } from "../common/authorization/permission.enum";
 // `import type` would erase it and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { IncentivePayoutService } from "./incentive-payout.service";
+// IncentiveService must stay a VALUE import for the same DI reason.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { IncentiveService } from "./incentive.service";
 
 /** Finalised payouts. OWNER, MANAGER only — this is payroll. */
 @ApiTags("incentives")
 @ApiBearerAuth()
 @Controller("incentive-payouts")
 export class IncentivePayoutController {
-  constructor(private readonly payouts: IncentivePayoutService) {}
+  constructor(
+    private readonly payouts: IncentivePayoutService,
+    private readonly incentives: IncentiveService,
+  ) {}
 
   @Get()
   @Permissions(Permission.MANAGE_INCENTIVES)
   list(@Req() req: Request, @Query() query: IncentivePayoutQueryDto) {
     const ctx = getTenantContext(req);
     return this.payouts.list(ctx.tenantId, query);
+  }
+
+  /**
+   * A stylist's own payout history. Declared before `:id` so "me" is never
+   * captured as a payout id. VIEW_OWN_INCENTIVE_EARNINGS, not MANAGE_INCENTIVES.
+   */
+  @Get("me")
+  @Permissions(Permission.VIEW_OWN_INCENTIVE_EARNINGS)
+  async own(@Req() req: Request) {
+    const ctx = getTenantContext(req);
+    const staffId = await this.incentives.ownStaffId(ctx.tenantId, ctx.userId);
+    return this.payouts.own(ctx.tenantId, staffId);
   }
 
   @Get(":id")

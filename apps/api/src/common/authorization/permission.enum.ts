@@ -50,6 +50,8 @@ export enum Permission {
   APPROVE_ATTENDANCE_EDIT = "APPROVE_ATTENDANCE_EDIT",
   /** Configure commission plans, assign them, and run payouts. OWNER and MANAGER only — this is payroll. */
   MANAGE_INCENTIVES = "MANAGE_INCENTIVES",
+  /** Read your own live incentive estimate and your own payout history. STAFF — not payroll access, just your own figure. */
+  VIEW_OWN_INCENTIVE_EARNINGS = "VIEW_OWN_INCENTIVE_EARNINGS",
   VIEW_OWN_SCHEDULE = "VIEW_OWN_SCHEDULE",
   VIEW_AUDIT_LOG = "VIEW_AUDIT_LOG",
   VIEW_NOTIFICATIONS = "VIEW_NOTIFICATIONS",
