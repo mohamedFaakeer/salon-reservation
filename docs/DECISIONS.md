@@ -914,3 +914,72 @@ inventing a look for one screen would have made it read as a different product.
 11. **The default cap is 10%.** Enough for the everyday goodwill gesture, not
     enough to waive a bill. Zero is available and means only an owner or
     manager may discount.
+
+## 31. Invoices as documents, not views (D4) (2026-08-21)
+
+1. **An invoice is frozen at issue.** Once it has been emailed it exists in
+   somebody's inbox, and a record that quietly disagrees with that copy is
+   worse than no record. Nothing is ever edited: a correction issues a new
+   version pointing back at the old one, and both are kept. That is rule 5
+   applied to a document rather than a row.
+
+2. **The document lives in a `snapshot` jsonb column**, against this schema's
+   usual relational habit, and for the reason the feature exists: nothing may
+   drift. Nothing queries an individual invoice line, and a relational copy
+   would invite exactly the later edit this document must not permit.
+   `tenant.settings` sets the precedent. The money figures are duplicated into
+   real columns because those are what a report filters on, and reaching into
+   jsonb for "unpaid invoices this month" is the wrong shape of query.
+
+3. **Numbering is `EAGL-2026-0001`** - salon, year, then a counter that
+   restarts each January. Readable aloud over a phone, sortable as text, and it
+   says which salon and which year without anybody looking it up. The prefix is
+   padded to four characters so two short slugs cannot produce the same series.
+
+4. **Numbers are serialised by locking the tenant row**, so two receptionists
+   completing appointments in the same second queue rather than race. The
+   unique index on (tenantId, number) is the backstop that makes the lock's
+   guarantee real rather than assumed - the database is the arbiter, per rule 3.
+
+5. **One live invoice per appointment, by partial unique index** on
+   status = 'ISSUED'. Corrections supersede rather than accumulate, and "which
+   of these three is current?" is not a question anybody should answer by
+   reading timestamps. The old invoice is marked superseded *before* the new
+   one is inserted, which is what makes that index a guarantee rather than an
+   obstacle.
+
+6. **Issuing is idempotent on the figures.** Completion can be tapped twice,
+   and two invoice numbers for one visit is a mess somebody has to explain to a
+   customer. If the live invoice still matches the bill it is returned
+   unchanged. Only the money is compared - re-cutting because a stylist was
+   renamed would burn a number for no change to what is owed.
+
+7. **A failed invoice never undoes a completed service.** Issuing on
+   completion is fire-and-forget and logs on failure, the same rule
+   notifications already follow (PRD 3.10). The drawer can reissue.
+
+8. **Invoices get their own mailer rather than going through
+   NotificationService.** That pipeline records per-channel delivery attempts
+   against an *appointment* and retries them, and its rows carry no subject or
+   body. An invoice is a document with an HTML part and its own audit trail;
+   forcing it through a schema built for "reminder sent / failed" would have
+   meant bending both. Same SMTP config and the same honest fallback: with
+   `SMTP_HOST` unset the message is logged rather than dropped.
+
+9. **The email carries both a text and an HTML part**, and the HTML is
+   table-based with inline styles. Not a stylistic choice: mail clients strip
+   `<style>` blocks and have no meaningful flexbox, so anything modern arrives
+   as an unstyled column. Every interpolated value is escaped, because customer
+   and salon names arrive from a public booking form and are never markup.
+
+10. **The send address is a required parameter, not a default.** The commonest
+    reason to resend is that the first address was wrong, so making the
+    operator type it means they have to look at it.
+
+11. **`businessRegNo` is optional and omitted entirely when unset.** Sri Lankan
+    invoices usually carry one, but nothing in the product needs it, and an
+    empty label is worse than no label.
+
+12. **Still no tax line.** No tax field exists in the schema and multi-country
+    tax is explicitly out of MVP scope (CLAUDE.md 1.11). An invoice here is a
+    receipt for one appointment, not accounting.

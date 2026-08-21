@@ -6,6 +6,7 @@ import { Staff } from "../entities/staff.entity";
 import { TenantModule } from "../tenant/tenant.module";
 import { BookingModule } from "../booking/booking.module";
 import { NotificationModule } from "../notification/notification.module";
+import { InvoiceModule } from "../invoice/invoice.module";
 import { AppointmentController } from "./appointment.controller";
 import { AppointmentService } from "./appointment.service";
 
@@ -15,6 +16,7 @@ import { AppointmentService } from "./appointment.service";
     TenantModule,
     BookingModule,
     NotificationModule,
+    InvoiceModule,
   ],
   controllers: [AppointmentController],
   providers: [AppointmentService],

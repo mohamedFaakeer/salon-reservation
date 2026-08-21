@@ -21,3 +21,4 @@ export * from "./notification.entity";
 export * from "./rating.entity";
 export * from "./inquiry.entity";
 export * from "./service-discount.entity";
+export * from "./invoice.entity";

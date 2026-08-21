@@ -30,6 +30,13 @@ export interface TenantSettings {
    * without that authority.
    */
   discountCapPercent: number;
+  /**
+   * Printed on invoices when set, omitted entirely when not. Sri Lankan
+   * invoices usually carry one, but nothing in the product needs it, so a
+   * salon that has not filled it in gets a clean document rather than an
+   * empty label.
+   */
+  businessRegNo?: string | null;
 }
 
 /** DECISIONS.md Q5/Q9 defaults; advanceRule defaults to NO_ADVANCE. */
@@ -49,4 +56,5 @@ export const DEFAULT_TENANT_SETTINGS: TenantSettings = {
   reminderOffsets: [24, 2],
   // Enough for the everyday goodwill gesture, not enough to waive a bill.
   discountCapPercent: 10,
+  businessRegNo: null,
 };

@@ -31,6 +31,8 @@ import { TenantService } from "../tenant/tenant.service";
 import { BookingService } from "../booking/booking.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { NotificationService } from "../notification/notification.service";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { InvoiceService } from "../invoice/invoice.service";
 
 const ELEVATED_ROLES: string[] = [UserRole.OWNER, UserRole.MANAGER, UserRole.RECEPTIONIST];
 /** Never matches a real Staff row — forces an empty result set. */
@@ -50,6 +52,7 @@ export class AppointmentService {
     private readonly tenantService: TenantService,
     private readonly booking: BookingService,
     private readonly notifications: NotificationService,
+    private readonly invoices: InvoiceService,
   ) {}
 
   /** POST /appointments — receptionist/walk-in/phone/WhatsApp, reserve+confirm in one request. */
@@ -193,7 +196,14 @@ export class AppointmentService {
     }
     appointment.status = AppointmentStatus.COMPLETED;
     appointment.completedAt = new Date();
-    return this.appointments.save(appointment);
+    const saved = await this.appointments.save(appointment);
+
+    // Fire-and-forget by design: a failed invoice must never undo a finished
+    // service. Same rule notifications already follow (PRD 3.10); the drawer
+    // can reissue it.
+    await this.invoices.issueAndSendQuietly(tenantId, saved.id, ctx.userId);
+
+    return saved;
   }
 
   /** OWNER/MANAGER/RECEPTIONIST only — gated at the controller, matching checkIn's ownership-free shape. */

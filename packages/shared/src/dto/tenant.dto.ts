@@ -131,6 +131,12 @@ export class TenantSettingsUpdateDto {
   @Min(0)
   @Max(100)
   discountCapPercent?: number;
+
+  /** Printed on invoices when set. Empty string clears it. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  businessRegNo?: string | null;
 }
 
 /** PATCH /tenant/me — name only; slug/currency/timezone are not editable here. */

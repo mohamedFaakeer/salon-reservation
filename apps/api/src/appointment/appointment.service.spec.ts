@@ -7,6 +7,7 @@ import type { Staff } from "../entities/staff.entity";
 import type { TenantService } from "../tenant/tenant.service";
 import type { BookingService } from "../booking/booking.service";
 import type { NotificationService } from "../notification/notification.service";
+import type { InvoiceService } from "../invoice/invoice.service";
 import type { TenantContextData } from "../tenant/tenant-context";
 
 function mockRepo<T extends ObjectLiteral>() {
@@ -33,6 +34,7 @@ describe("AppointmentService", () => {
   let tenantService: TenantService;
   let booking: BookingService;
   let notifications: NotificationService;
+  let invoices: InvoiceService;
   let service: AppointmentService;
 
   beforeEach(() => {
@@ -44,7 +46,16 @@ describe("AppointmentService", () => {
     } as unknown as TenantService;
     booking = { reserveAndConfirm: vi.fn(async () => ({ id: "appt-1" }) as Appointment) } as unknown as BookingService;
     notifications = { fire: vi.fn(async () => undefined) } as unknown as NotificationService;
-    service = new AppointmentService(appointments, staff, lines, tenantService, booking, notifications);
+    invoices = { issueAndSendQuietly: vi.fn(async () => undefined) } as unknown as InvoiceService;
+    service = new AppointmentService(
+      appointments,
+      staff,
+      lines,
+      tenantService,
+      booking,
+      notifications,
+      invoices,
+    );
   });
 
   describe("create", () => {
