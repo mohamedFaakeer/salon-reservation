@@ -100,6 +100,8 @@ export interface ServiceItem {
   durationMin: number;
   priceCents: number;
   active: boolean;
+  /** The standing offer, if one is set. Null is "no offer", not "not asked". */
+  discount?: ServiceDiscountView | null;
 }
 
 export interface CustomerRecord {
@@ -124,7 +126,11 @@ export interface AppointmentServiceLineView {
   serviceId: string | null;
   nameSnapshot: string;
   durationMinSnapshot: number;
+  /** List price at booking. Charged is this less the discount. */
   priceCentsSnapshot: number;
+  /** Frozen at booking — changing the offer later never rewrites it. */
+  discountCentsSnapshot?: number;
+  discountLabelSnapshot?: string | null;
   status: "ACTIVE" | "REMOVED";
 }
 
@@ -1161,4 +1167,58 @@ export interface ReportsSummary {
 export function fetchReports(range: { from: string; to: string }): Promise<ReportsSummary> {
   const qs = new URLSearchParams({ from: range.from, to: range.to });
   return request<ReportsSummary>(`/reports?${qs.toString()}`);
+}
+
+/* ------------------------------------------------------------------ *
+ * Service offers
+ *
+ * One standing offer per service. Priced by the appointment's slot, not
+ * the moment of booking — so what a customer is quoted depends on when
+ * they are coming in, not when they tapped Book.
+ * ------------------------------------------------------------------ */
+
+export type DiscountTypeValue = "FIXED" | "PERCENT";
+
+/** 0=Mon..6=Sun, matching the rota. `endMin` is exclusive and may be 1440. */
+export interface DiscountWindow {
+  dayOfWeek: number;
+  startMin: number;
+  endMin: number;
+}
+
+export interface ServiceDiscountView {
+  id: string;
+  type: DiscountTypeValue;
+  /** Cents when FIXED, whole percent when PERCENT. */
+  value: number;
+  startDate: string;
+  endDate: string;
+  label: string | null;
+  active: boolean;
+  /** Empty means all day, every day inside the date range. */
+  windows: DiscountWindow[];
+}
+
+export interface SetServiceDiscountInput {
+  type: DiscountTypeValue;
+  value: number;
+  startDate: string;
+  endDate: string;
+  label?: string;
+  windows?: DiscountWindow[];
+}
+
+/** PUT, not PATCH: an offer is replaced whole. Half of one means nothing. */
+export function setServiceDiscount(
+  serviceId: string,
+  input: SetServiceDiscountInput,
+): Promise<ServiceItem> {
+  return request<ServiceItem>(`/services/${serviceId}/discount`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export function removeServiceDiscount(serviceId: string): Promise<ServiceItem> {
+  return request<ServiceItem>(`/services/${serviceId}/discount`, { method: "DELETE" });
 }

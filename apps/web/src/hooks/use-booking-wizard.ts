@@ -54,7 +54,10 @@ export function useBookingWizard(salon: SalonProfile) {
     [salon.services, selectedServiceIds],
   );
   const totalDurationMin = selectedServices.reduce((sum, s) => sum + s.durationMin, 0);
+  // List price, deliberately. What an offer actually takes off depends on
+  // the slot, which the server prices once one is chosen.
   const totalPriceCents = selectedServices.reduce((sum, s) => sum + s.priceCents, 0);
+  const hasOfferOnSelection = selectedServices.some((s) => Boolean(s.discount));
 
   const qualifiedStaff = useMemo(() => {
     // A staff member is only offered once the engine has actually returned
@@ -203,6 +206,7 @@ export function useBookingWizard(salon: SalonProfile) {
     toggleService,
     totalDurationMin,
     totalPriceCents,
+    hasOfferOnSelection,
     qualifiedStaff,
     selectedStaffId,
     setSelectedStaffId,

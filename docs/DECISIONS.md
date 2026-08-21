@@ -813,3 +813,49 @@ inventing a look for one screen would have made it read as a different product.
 11. **Audit moved from System to a new Insight group** beside Reports. It
     answers "what happened" at a different resolution to the same question,
     and was only ever under System by default.
+
+## 29. Service offers, on both sides of the glass (D2) (2026-08-21)
+
+1. **The customer-side offer badge takes no new colour.** Wax-Resist's legend
+   gives every colour exactly one job — `--dye` is *bookable*, `--indigo` is
+   *selected*, `--alarm` is *the hold is expiring*. A discount badge in a
+   fourth hue would break the system outright. So the offer speaks in the
+   resist language: undyed cloth, ink type, carrying the crackle. The mapping
+   is the world's own — the crackle is where the wax broke, and here it is
+   where the full price did not land.
+
+2. **The salon page states the condition, not just a lower price.** No time is
+   chosen there, so an offer is conditional. The badge names its hours
+   ("Mon, Tue 5-8pm") or, for an all-day offer, its end date. A page showing
+   only a lower figure that becomes the full price at checkout would read as a
+   bait, and would deserve to.
+
+3. **The running total is the list price, deliberately.** It is the honest
+   ceiling: the server prices the offer once a slot is chosen, so this figure
+   can only ever move in the customer's favour. A total that rose at checkout
+   is the failure mode worth preventing. When any selected service carries an
+   offer the bar says "offers apply at some times" rather than implying the
+   total is final.
+
+4. **Hours default to "All day".** The offer most salons run is "20% off this
+   September", so the case needing no configuration should not have to be
+   configured. "Chosen hours" reveals weekday chips and per-day windows.
+
+5. **The editor's live preview is the real validation.** An offer is five
+   inputs that only mean something together, so the preview says the whole
+   thing back in one sentence - money, name, hours, end date. That is what
+   catches a 20% typed where LKR 20 was meant, which no single field can.
+
+6. **Switching between percentage and fixed clears the number.** 20 means two
+   very different things either side of that toggle, and carrying it across is
+   how a 20% discount becomes twenty rupees off.
+
+7. **The discount is named everywhere it appears** - on the customer's booking
+   record, in the admin's appointment drawer, in the services table. A
+   receptionist asked "why is this cheaper?" can answer without opening
+   Services, and it is the same wording the invoice will carry, so the
+   confirmation and the receipt cannot disagree.
+
+8. **The services table shows the struck price and the offer's name.** An
+   owner scanning the list needs to see what is running, not merely that
+   something is.

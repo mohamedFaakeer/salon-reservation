@@ -404,7 +404,25 @@ export function AppointmentDetailDrawer({
                     <li key={line.id} className="flex items-center justify-between gap-2 py-0.5">
                       <span>
                         {line.nameSnapshot} ({formatDurationMin(line.durationMinSnapshot)}) —{" "}
-                        {formatPriceCents(line.priceCentsSnapshot)}
+                        {(line.discountCentsSnapshot ?? 0) > 0 ? (
+                          <>
+                            <span className="text-slate-400 line-through">
+                              {formatPriceCents(line.priceCentsSnapshot)}
+                            </span>{" "}
+                            <span className="font-medium text-slate-800">
+                              {formatPriceCents(
+                                line.priceCentsSnapshot - (line.discountCentsSnapshot ?? 0),
+                              )}
+                            </span>
+                            {/* Named, so a receptionist asked "why is this
+                                cheaper?" can answer without opening Services. */}
+                            <span className="ml-1.5 rounded-full bg-teal-50 px-2 py-0.5 text-[11px] font-medium text-teal-800">
+                              {line.discountLabelSnapshot ?? "offer"}
+                            </span>
+                          </>
+                        ) : (
+                          formatPriceCents(line.priceCentsSnapshot)
+                        )}
                       </span>
                       {canManageAppointments(roles) && cancellable && activeLines.length > 1 ? (
                         <button

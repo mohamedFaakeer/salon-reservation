@@ -14,12 +14,37 @@ export interface SalonListItem {
   topServices: string[];
 }
 
+/** 0=Mon..6=Sun. `endMin` is exclusive. */
+export interface OfferWindow {
+  dayOfWeek: number;
+  startMin: number;
+  endMin: number;
+}
+
+/**
+ * A standing offer, as the salon page can describe it.
+ *
+ * Conditional by nature: `priceCents` stays the list price and this says what
+ * the offer would make it and when it runs. No time has been chosen on the
+ * salon page, so quoting a single lower figure there would be a promise the
+ * booking might not keep.
+ */
+export interface ServiceOffer {
+  label: string;
+  discountedPriceCents: number;
+  startDate: string;
+  endDate: string;
+  /** Empty means all day, every day inside the dates. */
+  windows: OfferWindow[];
+}
+
 export interface SalonService {
   id: string;
   name: string;
   category: string | null;
   durationMin: number;
   priceCents: number;
+  discount?: ServiceOffer | null;
 }
 
 export interface SalonStaff {
@@ -84,7 +109,11 @@ export interface AppointmentServiceLineView {
   serviceId: string | null;
   nameSnapshot: string;
   durationMinSnapshot: number;
+  /** The list price at booking. What was charged is this less the discount. */
   priceCentsSnapshot: number;
+  /** Frozen at booking, so a later change to the offer never rewrites it. */
+  discountCentsSnapshot?: number;
+  discountLabelSnapshot?: string | null;
 }
 
 export interface BookingDetail {

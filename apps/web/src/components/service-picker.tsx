@@ -1,6 +1,7 @@
 import type { SalonProfile } from "../lib/api-client";
 import type { BookingWizard } from "../hooks/use-booking-wizard";
 import { formatDurationMin, formatPriceCents } from "../lib/format";
+import { describeOffer } from "../lib/offer";
 import { EmptyState } from "./empty-state";
 
 /**
@@ -58,9 +59,39 @@ export function ServicePicker({ salon, wizard }: { salon: SalonProfile; wizard: 
                   <span className={`block text-[11px] ${selected ? "text-[var(--bloom)]" : "text-[#5E6B60]"}`}>
                     {formatDurationMin(service.durationMin)}
                   </span>
+                  {/*
+                    The offer takes no new colour. The legend gives --dye
+                    "bookable", --indigo "selected" and --alarm the expiring
+                    hold; a fourth meaning would break it. So the badge speaks
+                    in resist — undyed cloth, ink type, carrying the crackle.
+                    The crackle is where the wax broke and the full price did
+                    not land.
+                  */}
+                  {service.discount ? (
+                    <span className="offer-chip" data-testid={`service-offer-${service.id}`}>
+                      <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
+                        <path d="M2.5 8.5 7 13l6.5-9" />
+                      </svg>
+                      {service.discount.label}
+                      <span className="offer-when">
+                        · {describeOffer(service.discount)}
+                      </span>
+                    </span>
+                  ) : null}
                 </span>
-                <span className="display tabular shrink-0 text-[15px]">
-                  {formatPriceCents(service.priceCents)}
+                <span className="shrink-0 text-right">
+                  {service.discount ? (
+                    <span
+                      className={`block text-[11.5px] line-through decoration-[1.5px] tabular ${
+                        selected ? "text-[var(--bloom)]" : "text-[#7D8A80]"
+                      }`}
+                    >
+                      {formatPriceCents(service.priceCents)}
+                    </span>
+                  ) : null}
+                  <span className="display tabular block text-[15px]">
+                    {formatPriceCents(service.discount?.discountedPriceCents ?? service.priceCents)}
+                  </span>
                 </span>
               </button>
             </li>

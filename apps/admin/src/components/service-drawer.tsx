@@ -1,8 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { createService, updateService, type ServiceItem } from "../lib/api-client";
+import {
+  createService,
+  removeServiceDiscount,
+  setServiceDiscount,
+  updateService,
+  type ServiceItem,
+} from "../lib/api-client";
 import { ConfirmDialog } from "./confirm-dialog";
+import {
+  draftFromDiscount,
+  draftIsValid,
+  draftValueForApi,
+  OfferEditor,
+  type OfferDraft,
+} from "./offer-editor";
 import { DrawerShell } from "./drawer-shell";
 import { BusyLabel } from "./spinner";
 import { useToast } from "./toast";
@@ -43,6 +56,7 @@ export function ServiceDrawer({
   const [category, setCategory] = useState(service?.category ?? "");
   const [durationMin, setDurationMin] = useState(service ? String(service.durationMin) : "");
   const [priceRupees, setPriceRupees] = useState(service ? centsToRupees(service.priceCents) : "");
+  const [offer, setOffer] = useState<OfferDraft>(() => draftFromDiscount(service?.discount));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState(false);
@@ -50,7 +64,9 @@ export function ServiceDrawer({
 
   const durationValid = /^\d+$/.test(durationMin) && Number(durationMin) >= 1;
   const priceValid = RUPEE_PATTERN.test(priceRupees);
-  const canSubmit = name.trim().length > 0 && durationValid && priceValid;
+  const priceCents = priceValid ? rupeesToCents(priceRupees) : 0;
+  const canSubmit =
+    name.trim().length > 0 && durationValid && priceValid && draftIsValid(offer, priceCents);
 
   /**
    * Price and duration are snapshotted onto every appointment at booking time,
@@ -74,11 +90,14 @@ export function ServiceDrawer({
         durationMin: Number(durationMin),
         priceCents: rupeesToCents(priceRupees),
       };
-      if (service) {
-        await updateService(service.id, payload);
-      } else {
-        await createService(payload);
-      }
+      // The service is written first because the offer hangs off it: a new
+      // service has no id to attach one to until it exists.
+      const saved = service
+        ? await updateService(service.id, payload)
+        : await createService(payload);
+
+      await syncOffer(saved.id);
+
       toast.success(
         service ? `${payload.name} updated` : `${payload.name} added`,
         service ? "Existing bookings keep the price they were booked at." : undefined,
@@ -92,6 +111,30 @@ export function ServiceDrawer({
     } finally {
       setSubmitting(false);
     }
+  }
+
+  /**
+   * The offer is a separate resource, so saving one means a second request.
+   *
+   * Removing is only attempted when there was something to remove — asking
+   * the server to delete an offer that never existed answers 404, which is
+   * correct of it and useless here.
+   */
+  async function syncOffer(serviceId: string): Promise<void> {
+    if (offer.mode === "NONE") {
+      if (service?.discount) {
+        await removeServiceDiscount(serviceId);
+      }
+      return;
+    }
+    await setServiceDiscount(serviceId, {
+      type: offer.mode === "PERCENT" ? "PERCENT" : "FIXED",
+      value: draftValueForApi(offer),
+      startDate: offer.startDate,
+      endDate: offer.endDate,
+      label: offer.label.trim() || undefined,
+      windows: offer.allDay ? [] : offer.windows,
+    });
   }
 
   function handleSubmit(): void {
@@ -159,6 +202,8 @@ export function ServiceDrawer({
               <span className="text-xs text-slate-500">In rupees, not cents</span>
             </label>
           </div>
+
+          <OfferEditor draft={offer} onChange={setOffer} priceCents={priceCents} />
 
           {error ? (
             <p role="alert" className="text-sm text-red-600">

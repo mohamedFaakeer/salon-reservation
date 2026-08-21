@@ -122,6 +122,13 @@ export function BookingWizard({ salon }: { salon: SalonProfile }) {
               <span className="block text-[11px] text-[var(--resist-dim)]">
                 {wizard.selectedServiceIds.length}{" "}
                 {wizard.selectedServiceIds.length === 1 ? "service" : "services"}
+                {/*
+                  The running total is the list price on purpose. An offer
+                  depends on the time chosen, and no time is chosen yet — a
+                  lower figure here that rose at checkout would be a bait.
+                  This only ever surprises in the customer's favour.
+                */}
+                {wizard.hasOfferOnSelection ? " · offers apply at some times" : null}
               </span>
             </div>
             <DyeButton testId="wizard-continue" onClick={next} disabled={!canContinue}>

@@ -204,12 +204,30 @@ export default function ManageBookingPage() {
             </p>
             <p className="mt-3 text-[13px] text-[var(--resist-dim)]">Services</p>
             <ul className="text-[13px] text-[var(--resist)]">
-              {booking.lines.map((line) => (
-                <li key={line.id}>
-                  {line.nameSnapshot} ({formatDurationMin(line.durationMinSnapshot)}) —{" "}
-                  {formatPriceCents(line.priceCentsSnapshot)}
-                </li>
-              ))}
+              {booking.lines.map((line) => {
+                const off = line.discountCentsSnapshot ?? 0;
+                return (
+                  <li key={line.id}>
+                    {line.nameSnapshot} ({formatDurationMin(line.durationMinSnapshot)}) —{" "}
+                    {off > 0 ? (
+                      <>
+                        <span className="text-[var(--resist-dim)] line-through decoration-[1.5px]">
+                          {formatPriceCents(line.priceCentsSnapshot)}
+                        </span>{" "}
+                        {formatPriceCents(line.priceCentsSnapshot - off)}
+                        {/* Named, not just a smaller number: the customer
+                            should be able to see which offer they got, and
+                            it is the same wording the invoice will carry. */}
+                        <span className="ml-1 text-[12px] text-[var(--bloom)]">
+                          {line.discountLabelSnapshot ?? "offer applied"}
+                        </span>
+                      </>
+                    ) : (
+                      formatPriceCents(line.priceCentsSnapshot)
+                    )}
+                  </li>
+                );
+              })}
             </ul>
             <p className="mt-3 font-bold text-[var(--resist)]">
               {formatPriceCents(booking.totalCents)}

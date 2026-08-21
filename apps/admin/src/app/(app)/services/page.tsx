@@ -202,7 +202,34 @@ export default function ServicesPage() {
                 )}
               </Cell>
               <Cell align="right">{formatDurationMin(service.durationMin)}</Cell>
-              <Cell align="right">{formatPriceCents(service.priceCents)}</Cell>
+              <Cell align="right">
+                {service.discount ? (
+                  <>
+                    <span className="block text-xs text-slate-400 line-through tabular">
+                      {formatPriceCents(service.priceCents)}
+                    </span>
+                    <span className="block tabular">
+                      {formatPriceCents(
+                        service.priceCents -
+                          (service.discount.type === "PERCENT"
+                            ? Math.round((service.priceCents * service.discount.value) / 100)
+                            : service.discount.value),
+                      )}
+                    </span>
+                    {/* The dates matter as much as the amount: an owner
+                        scanning this list needs to see what is running now
+                        and what has quietly expired. */}
+                    <span className="block text-[11px] font-medium text-teal-700">
+                      {service.discount.label ??
+                        (service.discount.type === "PERCENT"
+                          ? `${service.discount.value}% off`
+                          : "offer")}
+                    </span>
+                  </>
+                ) : (
+                  formatPriceCents(service.priceCents)
+                )}
+              </Cell>
               <Cell>
                 <ActivePill active={service.active} />
               </Cell>
