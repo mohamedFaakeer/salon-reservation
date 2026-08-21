@@ -3,6 +3,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsDateString,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -88,4 +89,42 @@ export class IncentivePreviewQueryDto {
   @IsOptional()
   @IsUUID("4")
   staffId?: string;
+}
+
+/**
+ * POST /incentive-payouts — finalise one staff member's figure for a period.
+ *
+ * Idempotent on the money the same way an invoice is: running it twice with
+ * nothing changed returns the existing payout rather than a near-identical
+ * duplicate. A changed figure supersedes — the old row is voided and a new
+ * one takes its place, never edited in place.
+ */
+export class RunIncentivePayoutDto {
+  @IsUUID("4")
+  staffId!: string;
+
+  @IsDateString()
+  periodStart!: string;
+
+  @IsDateString()
+  periodEnd!: string;
+}
+
+/** GET /incentive-payouts — filters. */
+export class IncentivePayoutQueryDto {
+  @IsOptional()
+  @IsUUID("4")
+  staffId?: string;
+
+  @IsOptional()
+  @IsIn(["FINALISED", "PAID", "VOID"])
+  status?: "FINALISED" | "PAID" | "VOID";
+}
+
+/** PATCH /incentive-payouts/:id/void — a manual correction, without reissuing. */
+export class VoidIncentivePayoutDto {
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  reason!: string;
 }

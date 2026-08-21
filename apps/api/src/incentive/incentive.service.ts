@@ -12,8 +12,25 @@ import { Payment } from "../entities/payment.entity";
 import { Service } from "../entities/service.entity";
 import { Staff } from "../entities/staff.entity";
 import { resolveDateRange } from "../common/date-range";
-import { allocateReceivedByLine, computeIncentive, type EarningLine, type PlanComponents } from "./incentive.domain";
+import { allocateReceivedByLine, computeIncentive, type IncentiveBreakdown, type PlanComponents } from "./incentive.domain";
 import type { IncentivePlanView, IncentivePreviewRow } from "./incentive.types";
+
+/** One paid, completed line, kept detailed enough to explain a frozen payout later. */
+export interface ContributingLine {
+  appointmentId: string;
+  bookingReference: string;
+  serviceId: string | null;
+  serviceName: string;
+  chargedCents: number;
+  receivedCents: number;
+}
+
+export interface StaffEarnings {
+  staff: Staff;
+  plan: IncentivePlan;
+  breakdown: IncentiveBreakdown;
+  lines: ContributingLine[];
+}
 
 @Injectable()
 export class IncentiveService {
@@ -74,21 +91,47 @@ export class IncentiveService {
     return this.get(tenantId, plan.id);
   }
 
-  /**
-   * The live, unsaved figure for a range — what a payout would total if run
-   * right now. Nothing here is written; A5's payout run reuses this same
-   * computation and is what actually freezes it.
-   */
+  /** The live, unsaved figure for a range — what a payout would total if run right now. */
   async preview(tenantId: string, query: IncentivePreviewQueryDto): Promise<IncentivePreviewRow[]> {
     const range = resolveDateRange(query.from, query.to, new Date());
+    const staffRows = await this.eligibleStaff(tenantId, query.staffId);
+    const earnings = await this.computeForStaff(tenantId, staffRows, range);
 
-    const staffRows = await this.staff.find({
-      where: query.staffId
-        ? { tenantId, id: query.staffId }
-        : { tenantId, active: true },
-      relations: { incentivePlan: { serviceRates: true } },
+    return earnings.map((e) => ({
+      staffId: e.staff.id,
+      staffName: e.staff.name,
+      planId: e.plan.id,
+      planName: e.plan.name,
+      ...e.breakdown,
+    }));
+  }
+
+  /**
+   * The detailed version `preview` summarises — every contributing line kept
+   * alongside the total, so A5's payout run has what it needs to freeze a
+   * snapshot that still explains itself months later. Shared by both rather
+   * than computed twice, so a preview and the payout it becomes can never
+   * quietly disagree.
+   */
+  async earningsFor(tenantId: string, staffId: string, range: { from: string; to: string }): Promise<StaffEarnings | null> {
+    const staffRows = await this.eligibleStaff(tenantId, staffId);
+    const earnings = await this.computeForStaff(tenantId, staffRows, range);
+    return earnings[0] ?? null;
+  }
+
+  private async eligibleStaff(tenantId: string, staffId?: string): Promise<Staff[]> {
+    return this.staff.find({
+      where: staffId ? { tenantId, id: staffId } : { tenantId, active: true },
+      relations: { incentivePlan: { serviceRates: { service: true } } },
     });
-    const earning = staffRows.filter((s) => s.incentivePlan !== null);
+  }
+
+  private async computeForStaff(
+    tenantId: string,
+    staffRows: Staff[],
+    range: { from: string; to: string },
+  ): Promise<StaffEarnings[]> {
+    const earning = staffRows.filter((s): s is Staff & { incentivePlan: IncentivePlan } => s.incentivePlan !== null);
     if (earning.length === 0) {
       return [];
     }
@@ -102,17 +145,15 @@ export class IncentiveService {
       },
     });
     if (completed.length === 0) {
-      return earning.map((s) => zeroRow(s, s.incentivePlan!.name));
+      return earning.map((s) => ({ staff: s, plan: s.incentivePlan, breakdown: zeroBreakdown(), lines: [] }));
     }
 
-    const [lineRows, paymentRows] = await Promise.all([
-      this.lines.find({
-        where: { appointmentId: In(completed.map((a) => a.id)), status: "ACTIVE" },
-      }),
-      this.payments.find({
-        where: { appointmentId: In(completed.map((a) => a.id)), state: PaymentStatus.SUCCESS },
-      }),
+    const [lineRows, paymentRows, serviceRows] = await Promise.all([
+      this.lines.find({ where: { appointmentId: In(completed.map((a) => a.id)), status: "ACTIVE" } }),
+      this.payments.find({ where: { appointmentId: In(completed.map((a) => a.id)), state: PaymentStatus.SUCCESS } }),
+      this.services.find({ where: { tenantId } }),
     ]);
+    const serviceNameById = new Map(serviceRows.map((s) => [s.id, s.name]));
 
     const receivedByAppointment = new Map<string, number>();
     for (const p of paymentRows) {
@@ -127,7 +168,7 @@ export class IncentiveService {
     }
     const apptById = new Map(completed.map((a) => [a.id, a]));
 
-    const earningLinesByStaff = new Map<string, EarningLine[]>();
+    const contributingByStaff = new Map<string, ContributingLine[]>();
     for (const [appointmentId, apptLines] of linesByAppointment) {
       const appt = apptById.get(appointmentId);
       if (!appt) continue;
@@ -137,15 +178,23 @@ export class IncentiveService {
       }));
       const received = receivedByAppointment.get(appointmentId) ?? 0;
       const shares = allocateReceivedByLine(received, chargedLines);
-      const arr = earningLinesByStaff.get(appt.staffId) ?? [];
+      const arr = contributingByStaff.get(appt.staffId) ?? [];
       chargedLines.forEach((cl, i) => {
-        arr.push({ serviceId: cl.line.serviceId, receivedCents: shares[i], jobCompleted: true });
+        arr.push({
+          appointmentId,
+          bookingReference: appt.bookingReference,
+          serviceId: cl.line.serviceId,
+          serviceName: cl.line.serviceId ? (serviceNameById.get(cl.line.serviceId) ?? cl.line.nameSnapshot) : cl.line.nameSnapshot,
+          chargedCents: cl.chargedCents,
+          receivedCents: shares[i],
+        });
       });
-      earningLinesByStaff.set(appt.staffId, arr);
+      contributingByStaff.set(appt.staffId, arr);
     }
 
     return earning.map((s) => {
-      const plan = s.incentivePlan!;
+      const plan = s.incentivePlan;
+      const contributing = contributingByStaff.get(s.id) ?? [];
       const components: PlanComponents = {
         baseCommissionPercent: plan.baseCommissionPercent,
         perJobAmountCents: plan.perJobAmountCents,
@@ -153,14 +202,11 @@ export class IncentiveService {
         tierBonusPercent: plan.tierBonusPercent,
         serviceRates: new Map((plan.serviceRates ?? []).map((r) => [r.serviceId, r.ratePercent])),
       };
-      const breakdown = computeIncentive(components, earningLinesByStaff.get(s.id) ?? []);
-      return {
-        staffId: s.id,
-        staffName: s.name,
-        planId: plan.id,
-        planName: plan.name,
-        ...breakdown,
-      };
+      const breakdown = computeIncentive(
+        components,
+        contributing.map((l) => ({ serviceId: l.serviceId, receivedCents: l.receivedCents, jobCompleted: true })),
+      );
+      return { staff: s, plan, breakdown, lines: contributing };
     });
   }
 
@@ -241,17 +287,6 @@ export class IncentiveService {
   }
 }
 
-function zeroRow(staff: Staff, planName: string): IncentivePreviewRow {
-  return {
-    staffId: staff.id,
-    staffName: staff.name,
-    planId: staff.incentivePlanId!,
-    planName,
-    revenueCents: 0,
-    commissionCents: 0,
-    jobsCompleted: 0,
-    perJobCents: 0,
-    tierBonusCents: 0,
-    totalCents: 0,
-  };
+function zeroBreakdown(): IncentiveBreakdown {
+  return { revenueCents: 0, commissionCents: 0, jobsCompleted: 0, perJobCents: 0, tierBonusCents: 0, totalCents: 0 };
 }
