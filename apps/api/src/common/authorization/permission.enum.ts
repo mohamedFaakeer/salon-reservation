@@ -32,6 +32,22 @@ export enum Permission {
    * owner's decision to make, not a side effect of working the desk.
    */
   VIEW_REPORTS = "VIEW_REPORTS",
+  /**
+   * Punch anybody in or out. OWNER, MANAGER and RECEPTIONIST — the front-desk
+   * path, which exists because `staff.userId` is nullable: a stylist with no
+   * login of their own would otherwise be untrackable.
+   */
+  RECORD_ATTENDANCE = "RECORD_ATTENDANCE",
+  /** Punch yourself in or out. STAFF; the "yourself" half is a service-layer check. */
+  RECORD_OWN_ATTENDANCE = "RECORD_OWN_ATTENDANCE",
+  /**
+   * Read the attendance record: who was late, who never came. OWNER and
+   * MANAGER only, and deliberately not the same as RECORD_ATTENDANCE — a
+   * receptionist needs to punch people in, not to audit their colleagues.
+   */
+  VIEW_ATTENDANCE = "VIEW_ATTENDANCE",
+  /** Decide an attendance correction. OWNER and MANAGER. */
+  APPROVE_ATTENDANCE_EDIT = "APPROVE_ATTENDANCE_EDIT",
   VIEW_OWN_SCHEDULE = "VIEW_OWN_SCHEDULE",
   VIEW_AUDIT_LOG = "VIEW_AUDIT_LOG",
   VIEW_NOTIFICATIONS = "VIEW_NOTIFICATIONS",

@@ -5,6 +5,7 @@ import { DataSource } from "typeorm";
 import {
   Appointment,
   AppointmentServiceLine,
+  AttendanceDay,
   AuditLog,
   Branch,
   Closure,
@@ -44,6 +45,7 @@ export const AppDataSource = new DataSource({
   entities: [
     Appointment,
     AppointmentServiceLine,
+    AttendanceDay,
     AuditLog,
     Branch,
     Closure,

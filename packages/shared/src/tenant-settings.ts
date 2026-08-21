@@ -31,6 +31,21 @@ export interface TenantSettings {
    */
   discountCapPercent: number;
   /**
+   * How many minutes past the rostered start still counts as on time.
+   *
+   * Without one, arriving at 09:00:40 is "late" and the attendance report
+   * fills with noise nobody reads — which is how a report stops being looked
+   * at. Zero means the rota is the rota.
+   */
+  attendanceGraceMinutes: number;
+  /**
+   * The same allowance at the other end of the shift, kept separate because
+   * salons rarely treat the two the same: a stylist who stays until the last
+   * customer leaves is not owed the same latitude as one who arrives after
+   * the doors open.
+   */
+  earlyDepartureGraceMinutes: number;
+  /**
    * Printed on invoices when set, omitted entirely when not. Sri Lankan
    * invoices usually carry one, but nothing in the product needs it, so a
    * salon that has not filled it in gets a clean document rather than an
@@ -56,5 +71,7 @@ export const DEFAULT_TENANT_SETTINGS: TenantSettings = {
   reminderOffsets: [24, 2],
   // Enough for the everyday goodwill gesture, not enough to waive a bill.
   discountCapPercent: 10,
+  attendanceGraceMinutes: 10,
+  earlyDepartureGraceMinutes: 10,
   businessRegNo: null,
 };

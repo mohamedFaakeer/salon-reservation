@@ -132,6 +132,23 @@ export class TenantSettingsUpdateDto {
   @Max(100)
   discountCapPercent?: number;
 
+  /**
+   * Minutes of latitude on each end of a rostered shift before an arrival
+   * counts as late or a departure as early. Capped at four hours: anything
+   * beyond that is not a grace period, it is a different shift.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(240)
+  attendanceGraceMinutes?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(240)
+  earlyDepartureGraceMinutes?: number;
+
   /** Printed on invoices when set. Empty string clears it. */
   @IsOptional()
   @IsString()

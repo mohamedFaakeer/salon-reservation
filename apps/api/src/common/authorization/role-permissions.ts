@@ -20,6 +20,9 @@ const OWNER_MANAGER_PERMISSIONS: Permission[] = [
   Permission.MANAGE_CUSTOMERS,
   Permission.VIEW_DASHBOARD,
   Permission.VIEW_REPORTS,
+  Permission.RECORD_ATTENDANCE,
+  Permission.VIEW_ATTENDANCE,
+  Permission.APPROVE_ATTENDANCE_EDIT,
   Permission.VIEW_AUDIT_LOG,
   Permission.VIEW_NOTIFICATIONS,
 ];
@@ -34,11 +37,14 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.RECORD_PAYMENT,
     Permission.MANAGE_CUSTOMERS,
     Permission.VIEW_DASHBOARD,
+    // Punching a stylist in, but not reading anyone's attendance record.
+    Permission.RECORD_ATTENDANCE,
     Permission.VIEW_NOTIFICATIONS,
   ],
   [UserRole.STAFF]: [
     Permission.MANAGE_OWN_APPOINTMENT,
     Permission.VIEW_OWN_CUSTOMER_INFO,
     Permission.VIEW_OWN_SCHEDULE,
+    Permission.RECORD_OWN_ATTENDANCE,
   ],
 };

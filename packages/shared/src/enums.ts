@@ -137,3 +137,34 @@ export enum DiscountType {
   FIXED = "FIXED",
   PERCENT = "PERCENT",
 }
+
+/**
+ * What a single staff member's single day amounts to.
+ *
+ * Ordered by how the verdict is reached rather than alphabetically, because
+ * the order *is* the rule: a fact beats a plan. Somebody who was rostered off
+ * but came in and punched is PRESENT, not DAY_OFF — the punch is the stronger
+ * truth, and a rota that disagrees with a person standing in the salon is the
+ * thing that is wrong.
+ */
+export enum AttendanceDayStatus {
+  /** Checked in. Still here if there is no check-out and the day is not over. */
+  PRESENT = "PRESENT",
+  /**
+   * Checked in, the day is over, and nobody ever checked out. Deliberately its
+   * own state rather than a guess at a leaving time: people forget to punch
+   * out far more often than they forget to punch in, and inventing the missing
+   * half would be the system making up a fact about someone's day.
+   */
+  MISSING_CHECK_OUT = "MISSING_CHECK_OUT",
+  /** The salon was closed. Nobody was expected. */
+  CLOSED = "CLOSED",
+  /** Approved leave covered this date. */
+  ON_LEAVE = "ON_LEAVE",
+  /** No rota row for this weekday — not a working day for this person. */
+  DAY_OFF = "DAY_OFF",
+  /** Rostered, the day is not over, and they have not arrived yet. Not absence. */
+  EXPECTED = "EXPECTED",
+  /** Rostered, the day is over, and nothing was ever recorded. */
+  ABSENT = "ABSENT",
+}

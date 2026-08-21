@@ -25,4 +25,5 @@ export * from "./dto/service-discount.dto";
 export * from "./dto/appointment-discount.dto";
 export * from "./dto/invoice.dto";
 export * from "./dto/notification.dto";
+export * from "./dto/attendance.dto";
 export * from "./errors/api-error";
