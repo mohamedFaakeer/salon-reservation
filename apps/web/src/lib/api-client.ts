@@ -102,6 +102,8 @@ export interface BookingDetail {
   staff: SalonStaff;
   lines: AppointmentServiceLineView[];
   salonSlug: string;
+  /** Present once the customer has rated this visit. Null until then. */
+  rating?: RatingView | null;
 }
 
 export interface ConfirmResponse {
@@ -240,6 +242,28 @@ export function rescheduleBooking(
   input: { phone: string; newStart: string; newStaffId?: string },
 ): Promise<BookingDetail> {
   return request<BookingDetail>(`/bookings/${reference}/reschedule`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export interface RatingView {
+  id: string;
+  score: number;
+  comment: string | null;
+  createdAt: string;
+  appointmentId: string;
+}
+
+/**
+ * Rate a completed visit. Authenticated by the same reference-plus-phone the
+ * rest of the manage-booking flow uses — there is no account to sign into.
+ */
+export function submitRating(
+  reference: string,
+  input: { phone: string; score: number; comment?: string },
+): Promise<RatingView> {
+  return request<RatingView>(`/bookings/${reference}/rating`, {
     method: "POST",
     body: JSON.stringify(input),
   });

@@ -608,6 +608,9 @@ export interface CustomerStats {
   firstVisitDate: string | null;
   lastVisitDate: string | null;
   services: Array<{ name: string; count: number }>;
+  /** Mean of the ratings they have left. Null when they have left none. */
+  averageRating: number | null;
+  ratingCount: number;
 }
 
 /** Aggregated in the database — never tally these from a page of results. */

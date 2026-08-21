@@ -17,4 +17,4 @@ export * from "./appointment-service.entity";
 export * from "./payment.entity";
 export * from "./payment-attempt.entity";
 export * from "./refund.entity";
-export * from "./notification.entity";
+export * from "./notification.entity";export * from "./rating.entity";

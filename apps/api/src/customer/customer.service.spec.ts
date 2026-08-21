@@ -5,6 +5,7 @@ import type { Customer } from "../entities/customer.entity";
 import type { Appointment } from "../entities/appointment.entity";
 import type { AppointmentServiceLine } from "../entities/appointment-service.entity";
 import type { Payment } from "../entities/payment.entity";
+import type { Rating } from "../entities/rating.entity";
 
 function mockRepo<T extends ObjectLiteral>() {
   return {
@@ -45,6 +46,7 @@ describe("CustomerService", () => {
   let appointments: Repository<Appointment>;
   let lines: Repository<AppointmentServiceLine>;
   let payments: Repository<Payment>;
+  let ratings: Repository<Rating>;
   let service: CustomerService;
 
   beforeEach(() => {
@@ -52,7 +54,8 @@ describe("CustomerService", () => {
     appointments = mockRepo<Appointment>();
     lines = mockRepo<AppointmentServiceLine>();
     payments = mockRepo<Payment>();
-    service = new CustomerService(customers, appointments, lines, payments);
+    ratings = mockRepo<Rating>();
+    service = new CustomerService(customers, appointments, lines, payments, ratings);
   });
 
   describe("search", () => {
@@ -197,6 +200,7 @@ describe("CustomerService", () => {
     function seed({
       statuses = [] as Array<{ status: AppointmentStatus; count: number }>,
       spent = 0,
+      rating = { average: null as string | null, count: 0 },
       services = [] as Array<{ name: string; count: number }>,
       dates = { first: null as string | null, last: null as string | null },
     }) {
@@ -210,6 +214,7 @@ describe("CustomerService", () => {
         queryBuilder([], { total: spent }) as never,
       );
       vi.mocked(lines.createQueryBuilder).mockReturnValue(queryBuilder(services) as never);
+      vi.mocked(ratings.createQueryBuilder).mockReturnValue(queryBuilder([], rating) as never);
     }
 
     it("counts visits, cancellations and no-shows from one grouped query", async () => {
@@ -285,6 +290,25 @@ describe("CustomerService", () => {
         statusCode: 404,
         code: "CUSTOMER_NOT_FOUND",
       });
+    });
+
+    it("averages the ratings they have left", async () => {
+      seed({ rating: { average: "4.3333", count: 3 } });
+
+      const result = await service.stats("t1", "c1");
+
+      expect(result.averageRating).toBe(4.3);
+      expect(result.ratingCount).toBe(3);
+    });
+
+    it("has no average for a customer who has never rated", async () => {
+      seed({});
+
+      const result = await service.stats("t1", "c1");
+
+      // Zero out of five would be the worst score there is; null says unrated.
+      expect(result.averageRating).toBeNull();
+      expect(result.ratingCount).toBe(0);
     });
   });
 });

@@ -13,6 +13,7 @@ import { PaymentModule } from "../payment/payment.module";
 import { NotificationModule } from "../notification/notification.module";
 import { BookingController } from "./booking.controller";
 import { BookingService } from "./booking.service";
+import { RatingModule } from "../rating/rating.module";
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { BookingService } from "./booking.service";
     PricingModule,
     PaymentModule,
     NotificationModule,
+    RatingModule,
   ],
   controllers: [BookingController],
   providers: [BookingService],

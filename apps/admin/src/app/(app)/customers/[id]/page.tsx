@@ -216,9 +216,19 @@ function CustomerHistory({ stats }: { stats: CustomerStats }) {
     <section className="rounded-lg border border-slate-200 bg-white p-4">
       <h2 className="text-sm font-semibold text-slate-900">History at this salon</h2>
 
-      <dl className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Fact label="Visits" value={String(stats.visits)} tabular />
         <Fact label="Total spent" value={formatPriceCents(stats.totalSpentCents)} tabular />
+        <Fact
+          label="Their rating"
+          value={stats.averageRating === null ? "Not rated" : `${stats.averageRating} / 5`}
+          tabular={stats.averageRating !== null}
+          note={
+            stats.ratingCount > 0
+              ? `from ${stats.ratingCount} visit${stats.ratingCount === 1 ? "" : "s"}`
+              : undefined
+          }
+        />
         <Fact
           label="Cancelled"
           value={String(stats.cancellations)}
@@ -228,6 +238,7 @@ function CustomerHistory({ stats }: { stats: CustomerStats }) {
           label="No-shows"
           value={String(stats.noShows)}
           tabular
+          noteTone="warn"
           note={
             /* A rate only means something once something has concluded, and
                only worth flagging when it is bad enough to change how you
@@ -265,15 +276,21 @@ function CustomerHistory({ stats }: { stats: CustomerStats }) {
   );
 }
 
+/**
+ * `tone` exists because a note under a figure can be either a fact or a
+ * warning, and amber on "from 3 visits" would read as an alert about nothing.
+ */
 function Fact({
   label,
   value,
   note,
+  noteTone = "quiet",
   tabular = false,
 }: {
   label: string;
   value: string;
   note?: string;
+  noteTone?: "quiet" | "warn";
   tabular?: boolean;
 }) {
   return (
@@ -282,7 +299,15 @@ function Fact({
         {label}
       </dt>
       <dd className={`text-sm text-slate-800 ${tabular ? "tabular" : ""}`}>{value}</dd>
-      {note ? <p className="text-xs font-medium text-amber-800">{note}</p> : null}
+      {note ? (
+        <p
+          className={`text-xs font-medium ${
+            noteTone === "warn" ? "text-amber-800" : "text-slate-500"
+          }`}
+        >
+          {note}
+        </p>
+      ) : null}
     </div>
   );
 }

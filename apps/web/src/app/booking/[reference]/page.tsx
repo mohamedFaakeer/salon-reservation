@@ -20,6 +20,7 @@ import {
   statusLabel,
 } from "../../../lib/format";
 import { BusyLabel } from "../../../components/spinner";
+import { RateVisit } from "../../../components/rate-visit";
 
 const NOT_CANCELLABLE_STATUSES = new Set([
   "CANCELLED",
@@ -180,6 +181,18 @@ export default function ManageBookingPage() {
         </form>
       ) : (
         <div className="mt-6 flex flex-col gap-4">
+          {/* Only a finished visit can be rated. The server refuses anything
+              else; this keeps the invitation from appearing before there is
+              something to have an opinion about.
+
+              RateVisit owns its own submitted state and shows the thank-you
+              itself, so it must not be unmounted the moment the rating lands —
+              doing that made the whole block vanish with no confirmation, which
+              reads as the tap having failed. */}
+          {booking.status === "COMPLETED" ? (
+            <RateVisit reference={reference} phone={phone} existing={booking.rating ?? null} />
+          ) : null}
+
           <div className="rounded-[var(--radius)] border border-[rgba(240,231,214,0.16)] p-4">
             <p className="text-[13px] text-[var(--resist-dim)]">Status</p>
             <p data-testid="booking-status" className="font-bold text-[var(--resist)]">

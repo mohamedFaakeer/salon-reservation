@@ -17,6 +17,7 @@ import { Customer } from "../entities/customer.entity";
 import { Appointment } from "../entities/appointment.entity";
 import { AppointmentServiceLine } from "../entities/appointment-service.entity";
 import { Payment } from "../entities/payment.entity";
+import { Rating } from "../entities/rating.entity";
 import { isUniqueViolation } from "../common/postgres-errors.util";
 import { normalizePhone } from "./phone.util";
 
@@ -36,6 +37,9 @@ export interface CustomerStats {
   firstVisitDate: string | null;
   lastVisitDate: string | null;
   services: CustomerServiceCount[];
+  /** Mean of the ratings they have left. Null when they have left none. */
+  averageRating: number | null;
+  ratingCount: number;
 }
 
 export interface CustomerListResult {
@@ -57,6 +61,7 @@ export class CustomerService {
     @InjectRepository(Appointment) private readonly appointments: Repository<Appointment>,
     @InjectRepository(AppointmentServiceLine) private readonly lines: Repository<AppointmentServiceLine>,
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
+    @InjectRepository(Rating) private readonly ratings: Repository<Rating>,
   ) {}
 
   /** POST /customers — hard block on a phone/email match (PRD: "no silent duplicates"). */
@@ -192,7 +197,7 @@ export class CustomerService {
     // Confirms the customer belongs to this tenant before aggregating.
     await this.findById(tenantId, customerId);
 
-    const [byStatus, spend, services, visitDates] = await Promise.all([
+    const [byStatus, spend, services, visitDates, ratings] = await Promise.all([
       this.appointments
         .createQueryBuilder("a")
         .select("a.status", "status")
@@ -237,6 +242,13 @@ export class CustomerService {
         .where("a.tenantId = :tenantId AND a.customerId = :customerId", { tenantId, customerId })
         .andWhere("a.status = :completed", { completed: AppointmentStatus.COMPLETED })
         .getRawOne<{ first: string | null; last: string | null }>(),
+
+      this.ratings
+        .createQueryBuilder("r")
+        .select("AVG(r.score)", "average")
+        .addSelect("COUNT(*)::int", "count")
+        .where('r."tenantId" = :tenantId AND r."customerId" = :customerId', { tenantId, customerId })
+        .getRawOne<{ average: string | null; count: number }>(),
     ]);
 
     const counts = new Map(byStatus.map((r) => [r.status, Number(r.count)]));
@@ -257,6 +269,13 @@ export class CustomerService {
       firstVisitDate: visitDates?.first ?? null,
       lastVisitDate: visitDates?.last ?? null,
       services: services.map((r) => ({ name: r.name, count: Number(r.count) })),
+      // Null rather than 0 — an unrated customer has no score, and zero out of
+      // five would be the worst one there is.
+      averageRating:
+        Number(ratings?.count ?? 0) === 0
+          ? null
+          : Math.round(Number(ratings?.average) * 10) / 10,
+      ratingCount: Number(ratings?.count ?? 0),
     };
   }
 
