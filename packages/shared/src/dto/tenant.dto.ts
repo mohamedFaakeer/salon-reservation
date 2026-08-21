@@ -120,6 +120,17 @@ export class TenantSettingsUpdateDto {
   @Min(1, { each: true })
   @Max(720, { each: true })
   reminderOffsets?: number[];
+
+  /**
+   * Whole percent, 0-100. How much of a bill anyone who can take payment may
+   * give away unaided; above it, an owner or manager must apply the discount.
+   * Zero means nobody discounts without that authority.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  discountCapPercent?: number;
 }
 
 /** PATCH /tenant/me — name only; slug/currency/timezone are not editable here. */

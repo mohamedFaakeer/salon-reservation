@@ -22,5 +22,6 @@ export * from "./dto/rating.dto";
 export * from "./dto/inquiry.dto";
 export * from "./dto/report.dto";
 export * from "./dto/service-discount.dto";
+export * from "./dto/appointment-discount.dto";
 export * from "./dto/notification.dto";
 export * from "./errors/api-error";

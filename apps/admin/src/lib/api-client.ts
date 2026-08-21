@@ -63,6 +63,8 @@ export interface TenantSettingsView {
   sameDayLeadMinutes: number;
   noShowGraceMinutes: number;
   reminderOffsets: number[];
+  /** Whole percent a receptionist may discount unaided. 0 = owner/manager only. */
+  discountCapPercent?: number;
 }
 
 export interface TenantSettingsPatch {
@@ -74,6 +76,7 @@ export interface TenantSettingsPatch {
   sameDayLeadMinutes?: number;
   noShowGraceMinutes?: number;
   reminderOffsets?: number[];
+  discountCapPercent?: number;
 }
 
 export interface BranchRecord {
@@ -145,6 +148,13 @@ export interface AppointmentRecord {
   /** Present on list responses (joined server-side for search) — absent elsewhere. */
   customer?: { firstName: string; lastName: string };
   subtotalCents: number;
+  /** Everything that came off: service offers plus the desk's own. */
+  discountCents: number;
+  /** The desk's own share of it, kept separate so it can be edited. */
+  billDiscountCents: number;
+  billDiscountType: "FIXED" | "PERCENT" | null;
+  billDiscountValue: number | null;
+  billDiscountReason: string | null;
   totalCents: number;
   advanceRequiredCents: number;
   advancePaidCents: number;
@@ -1221,4 +1231,22 @@ export function setServiceDiscount(
 
 export function removeServiceDiscount(serviceId: string): Promise<ServiceItem> {
   return request<ServiceItem>(`/services/${serviceId}/discount`, { method: "DELETE" });
+}
+
+/**
+ * A discount on the bill, applied at the desk.
+ *
+ * Distinct from a service offer: that is configuration the salon publishes,
+ * this is a judgement about one customer, so it carries a reason. Send
+ * `value: 0` to remove it. The cap is enforced server-side — a 403 with
+ * `DISCOUNT_CAP_EXCEEDED` means it needs an owner or manager.
+ */
+export function setAppointmentDiscount(
+  appointmentId: string,
+  input: { type: DiscountTypeValue; value: number; reason?: string },
+): Promise<AppointmentDetail> {
+  return request<AppointmentDetail>(`/appointments/${appointmentId}/discount`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
 }

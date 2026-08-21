@@ -16,6 +16,7 @@ import {
   type CreateAppointmentDto,
   type RemoveAppointmentServiceDto,
   type RescheduleAppointmentDto,
+  type SetAppointmentDiscountDto,
 } from "@salon/shared";
 import { Appointment } from "../entities/appointment.entity";
 import { AppointmentServiceLine } from "../entities/appointment-service.entity";
@@ -276,6 +277,31 @@ export class AppointmentService {
   private async attachLines(appointment: Appointment): Promise<Appointment & { lines: AppointmentServiceLine[] }> {
     const lines = await this.lines.find({ where: { appointmentId: appointment.id } });
     return { ...appointment, lines };
+  }
+
+  /**
+   * PATCH /appointments/:id/discount.
+   *
+   * Whether the caller may exceed the salon's cap is decided here from their
+   * roles, not sent by the client — the whole point of a cap is that the
+   * person it constrains cannot lift it.
+   */
+  async setDiscount(
+    tenantId: string,
+    id: string,
+    dto: SetAppointmentDiscountDto,
+    ctx: TenantContextData,
+  ): Promise<Appointment & { lines: AppointmentServiceLine[] }> {
+    const appointment = await this.findOwned(tenantId, id);
+    const tenant = await this.tenantService.findById(tenantId);
+    const result = await this.booking.setBillDiscount(tenant, appointment, {
+      type: dto.type,
+      value: dto.value,
+      reason: dto.reason,
+      actorUserId: ctx.userId,
+      mayExceedCap: ctx.roles.some((r) => r === UserRole.OWNER || r === UserRole.MANAGER),
+    });
+    return this.attachLines(result);
   }
 
   private isElevated(ctx: TenantContextData): boolean {

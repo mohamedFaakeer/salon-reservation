@@ -1,4 +1,16 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, Param, Post, Query, Req } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Headers,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+} from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 // DTOs must stay VALUE imports: ValidationPipe resolves them via
@@ -10,6 +22,7 @@ import {
   CancelAppointmentDto,
   CreateAppointmentDto,
   RemoveAppointmentServiceDto,
+  SetAppointmentDiscountDto,
   RescheduleAppointmentDto,
 } from "@salon/shared";
 import { ApiError } from "@salon/shared";
@@ -108,6 +121,22 @@ export class AppointmentController {
   addService(@Req() req: Request, @Param("id") id: string, @Body() dto: AddAppointmentServiceDto) {
     const ctx = getTenantContext(req);
     return this.appointments.addService(ctx.tenantId, id, dto, ctx.userId, ctx);
+  }
+
+  /**
+   * Guarded by RECORD_PAYMENT, not MANAGE_APPOINTMENTS: discounting is part of
+   * settling a bill. Whether the caller may exceed the salon's cap is worked
+   * out server-side from their roles.
+   */
+  @Patch(":id/discount")
+  @Permissions(Permission.RECORD_PAYMENT)
+  setDiscount(
+    @Req() req: Request,
+    @Param("id") id: string,
+    @Body() dto: SetAppointmentDiscountDto,
+  ) {
+    const ctx = getTenantContext(req);
+    return this.appointments.setDiscount(ctx.tenantId, id, dto, ctx);
   }
 
   @Delete(":id/services/:appointmentServiceId")

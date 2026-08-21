@@ -1,6 +1,7 @@
 import type { DataSource, EntityManager, ObjectLiteral, Repository } from "typeorm";
 import {
   AdvanceRule,
+  DiscountType,
   AppointmentStatus,
   BookingSource,
   SlotHoldStatus,
@@ -62,6 +63,7 @@ function fakeTenant(): Tenant {
       sameDayLeadMinutes: 120,
       noShowGraceMinutes: 15,
       reminderOffsets: [24, 2],
+      discountCapPercent: 10,
     },
   } as Tenant;
 }
@@ -83,6 +85,7 @@ describe("BookingService", () => {
   let paymentsRepo: Repository<Payment>;
   let refundsRepo: Repository<Refund>;
   let queryBuilderExecute: ReturnType<typeof vi.fn>;
+  let setSpy: ReturnType<typeof vi.fn>;
   let dataSource: DataSource;
   let availability: AvailabilityService;
   let customers: CustomerService;
@@ -104,9 +107,10 @@ describe("BookingService", () => {
     } as unknown as Repository<Staff>;
 
     queryBuilderExecute = vi.fn(async () => ({ affected: 1 }));
+    setSpy = vi.fn().mockReturnThis();
     const queryBuilder = {
       update: vi.fn().mockReturnThis(),
-      set: vi.fn().mockReturnThis(),
+      set: setSpy,
       where: vi.fn().mockReturnThis(),
       execute: queryBuilderExecute,
     };
@@ -798,6 +802,196 @@ describe("BookingService", () => {
           actorUserId: "user-1",
         }),
       ).rejects.toMatchObject({ statusCode: 409, code: "VERSION_CONFLICT" });
+    });
+  });
+
+  /** What the optimistic-lock UPDATE was asked to set. */
+  function queryBuilderSet(): Record<string, unknown> {
+    const calls = vi.mocked(setSpy).mock.calls;
+    return calls[calls.length - 1][0] as Record<string, unknown>;
+  }
+
+  /**
+   * The desk discount. These tests are about the two things that lose money
+   * when wrong: the cap, and never letting a bill fall below what has been
+   * paid.
+   */
+  describe("setBillDiscount", () => {
+    const APPOINTMENT_ID = "appt-1";
+
+    function bill(overrides: Partial<Appointment> = {}): Appointment {
+      return {
+        id: APPOINTMENT_ID,
+        tenantId: "tenant-1",
+        status: AppointmentStatus.CHECKED_IN,
+        subtotalCents: 500_000,
+        discountCents: 0,
+        billDiscountType: null,
+        billDiscountValue: null,
+        billDiscountCents: 0,
+        billDiscountReason: null,
+        totalCents: 500_000,
+        advancePaidCents: 0,
+        balanceCents: 500_000,
+        version: 1,
+        ...overrides,
+      } as Appointment;
+    }
+
+    function lines(priceCents: number, discountCents = 0) {
+      vi.mocked(lineRepo.find).mockResolvedValue([
+        { id: "l1", priceCentsSnapshot: priceCents, discountCentsSnapshot: discountCents, status: "ACTIVE" },
+      ] as unknown as AppointmentServiceLine[]);
+    }
+
+    function capTenant(percent: number): Tenant {
+      const t = fakeTenant();
+      return { ...t, settings: { ...t.settings, discountCapPercent: percent } } as Tenant;
+    }
+
+    beforeEach(() => {
+      lines(500_000);
+      vi.mocked(appointmentsRepo.findOneOrFail).mockResolvedValue(bill());
+    });
+
+    it("applies a discount inside the cap", async () => {
+      await service.setBillDiscount(capTenant(10), bill(), {
+        type: DiscountType.PERCENT,
+        value: 10,
+        actorUserId: "user-1",
+        mayExceedCap: false,
+      });
+
+      const patch = queryBuilderSet();
+      expect(patch.billDiscountCents).toBe(50_000);
+      expect(patch.totalCents).toBe(450_000);
+      expect(patch.discountCents).toBe(50_000);
+    });
+
+    it("refuses a discount over the cap for somebody who cannot lift it", async () => {
+      await expect(
+        service.setBillDiscount(capTenant(10), bill(), {
+          type: DiscountType.PERCENT,
+          value: 25,
+          actorUserId: "user-1",
+          mayExceedCap: false,
+        }),
+      ).rejects.toMatchObject({ statusCode: 403, code: "DISCOUNT_CAP_EXCEEDED" });
+    });
+
+    it("allows the same discount for somebody who can", async () => {
+      await expect(
+        service.setBillDiscount(capTenant(10), bill(), {
+          type: DiscountType.PERCENT,
+          value: 25,
+          actorUserId: "owner-1",
+          mayExceedCap: true,
+        }),
+      ).resolves.toBeDefined();
+    });
+
+    it("catches a fixed amount that is over the cap once measured", async () => {
+      // LKR 500 off an LKR 800 bill is 63% given away, however it was typed.
+      lines(80_000);
+      await expect(
+        service.setBillDiscount(capTenant(10), bill({ subtotalCents: 80_000, totalCents: 80_000 }), {
+          type: DiscountType.FIXED,
+          value: 50_000,
+          actorUserId: "user-1",
+          mayExceedCap: false,
+        }),
+      ).rejects.toMatchObject({ code: "DISCOUNT_CAP_EXCEEDED" });
+    });
+
+    it("measures the cap against what was owed after the salon's own offer", async () => {
+      // A 20% promotion has not spent the receptionist's discretion: 10% of
+      // the remaining 4,000 is still 10%.
+      lines(500_000, 100_000);
+      await expect(
+        service.setBillDiscount(capTenant(10), bill(), {
+          type: DiscountType.PERCENT,
+          value: 10,
+          actorUserId: "user-1",
+          mayExceedCap: false,
+        }),
+      ).resolves.toBeDefined();
+    });
+
+    it("stacks on the service offer rather than replacing it", async () => {
+      lines(500_000, 100_000);
+
+      await service.setBillDiscount(capTenant(100), bill(), {
+        type: DiscountType.PERCENT,
+        value: 10,
+        actorUserId: "user-1",
+        mayExceedCap: true,
+      });
+
+      const patch = queryBuilderSet();
+      // 10% of the remaining 4,000 = 400. Total off = 1,400; charged = 3,600.
+      expect(patch.billDiscountCents).toBe(40_000);
+      expect(patch.discountCents).toBe(140_000);
+      expect(patch.totalCents).toBe(360_000);
+    });
+
+    it("refuses to discount below what has already been paid", async () => {
+      // Turning a discount into a refund silently would invent money movement
+      // the refund flow exists to record properly.
+      const paid = bill({ advancePaidCents: 480_000 });
+      vi.mocked(appointmentsRepo.findOneOrFail).mockResolvedValue(paid);
+
+      await expect(
+        service.setBillDiscount(capTenant(100), paid, {
+          type: DiscountType.PERCENT,
+          value: 50,
+          actorUserId: "owner-1",
+          mayExceedCap: true,
+        }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "DISCOUNT_BELOW_PAID" });
+    });
+
+    it("clears the discount when the value is zero", async () => {
+      await service.setBillDiscount(capTenant(10), bill({ billDiscountCents: 50_000 }), {
+        type: DiscountType.PERCENT,
+        value: 0,
+        actorUserId: "user-1",
+        mayExceedCap: false,
+      });
+
+      const patch = queryBuilderSet();
+      expect(patch.billDiscountCents).toBe(0);
+      expect(patch.billDiscountType).toBeNull();
+      expect(patch.totalCents).toBe(500_000);
+    });
+
+    it("will not discount a cancelled booking", async () => {
+      await expect(
+        service.setBillDiscount(capTenant(10), bill({ status: AppointmentStatus.CANCELLED }), {
+          type: DiscountType.PERCENT,
+          value: 5,
+          actorUserId: "user-1",
+          mayExceedCap: false,
+        }),
+      ).rejects.toMatchObject({ statusCode: 400, code: "BAD_STATE" });
+    });
+
+    it("records who gave it away and why", async () => {
+      await service.setBillDiscount(capTenant(10), bill(), {
+        type: DiscountType.PERCENT,
+        value: 10,
+        reason: "  Regular customer  ",
+        actorUserId: "user-1",
+        mayExceedCap: false,
+      });
+
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "APPOINTMENT_DISCOUNT_APPLIED",
+          actorUserId: "user-1",
+          metadata: expect.objectContaining({ reason: "Regular customer", sharePercent: 10 }),
+        }),
+        expect.anything(),
+      );
     });
   });
 });

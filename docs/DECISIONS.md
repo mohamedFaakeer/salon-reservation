@@ -859,3 +859,58 @@ inventing a look for one screen would have made it read as a different product.
 8. **The services table shows the struck price and the offer's name.** An
    owner scanning the list needs to see what is running, not merely that
    something is.
+
+## 30. The desk discount and its cap (D3) (2026-08-21)
+
+1. **Discounts stack sequentially, not additively.** A service already
+   discounted 20% to LKR 4,000 and then given 10% at the desk lands at
+   LKR 3,600 - 28% off the list price. Additive would take both off the
+   original, which lets two ordinary-looking numbers drive a bill to nothing.
+
+2. **The cap is a percentage of the bill, whatever the discount was typed as.**
+   This is the load-bearing decision. A receptionist waving LKR 500 off an
+   LKR 800 bill is giving away 63%, and a cap that only understood percentages
+   would wave that through. The share rounds up, so 10.1% does not sneak past
+   a 10% cap.
+
+3. **The cap is measured after the salon's own offers.** A customer arriving
+   into a 20% promotion has not spent the receptionist's discretion; the base
+   is what was still owed.
+
+4. **Whether the caller may exceed the cap is decided server-side from their
+   roles**, never sent by the client. The whole point of a cap is that the
+   person it constrains cannot lift it. `OVERRIDE_DISCOUNT_CAP` is held by
+   OWNER and MANAGER; the route itself is guarded by RECORD_PAYMENT, because
+   discounting is part of settling a bill rather than managing a booking.
+
+5. **Discounting below what has already been paid is refused**, naming the
+   amount and pointing at the refund flow. Silently turning a discount into a
+   refund would invent money movement that flow exists to record properly.
+
+6. **The cap refusal is not presented as an error.** It stays inline in amber
+   and names who to ask, rather than firing a red toast. The system is telling
+   the operator something useful, not reporting a fault.
+
+7. **Three database constraints, because the arithmetic is where money is
+   lost.** A bill discount cannot exceed the subtotal; a recorded discount
+   type must come with the amount it produced and vice versa, since half a
+   discount is not a state anything can render; and `totalCents` can never be
+   negative, whatever combination of a service offer and a desk discount lands
+   on one bill. All three were executed against a real database and confirmed
+   to refuse the bad row.
+
+8. **A percentage re-applies when the bill changes.** Adding or removing a
+   service recomputes the desk discount from its stored type and value rather
+   than carrying the cents forward, which would quietly change what was agreed.
+
+9. **The discount control sits above the payment form**, because that is the
+   real order: agree the price, then take the money. Inside the payment form
+   it would suggest a discount belongs to one tender rather than to the bill.
+
+10. **The summary names the two halves separately** - "Offers" and "Discount".
+    An owner reading a short bill needs to know whether the salon published
+    that price or somebody at the desk decided it.
+
+11. **The default cap is 10%.** Enough for the everyday goodwill gesture, not
+    enough to waive a bill. Zero is available and means only an owner or
+    manager may discount.

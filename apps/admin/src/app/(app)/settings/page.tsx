@@ -62,6 +62,7 @@ interface FormState {
   bookingWindowDays: string;
   sameDayLeadMinutes: string;
   noShowGraceMinutes: string;
+  discountCapPercent: string;
   reminderOffsets: number[];
 }
 
@@ -101,6 +102,7 @@ function toForm(
     bookingWindowDays: String(settings.bookingWindowDays),
     sameDayLeadMinutes: String(settings.sameDayLeadMinutes),
     noShowGraceMinutes: String(settings.noShowGraceMinutes),
+    discountCapPercent: String(settings.discountCapPercent ?? 0),
     reminderOffsets: [...settings.reminderOffsets].sort((a, b) => b - a),
   };
 }
@@ -114,6 +116,7 @@ const BOUNDS = {
   bookingWindowDays: [1, 365],
   sameDayLeadMinutes: [0, 1440],
   noShowGraceMinutes: [0, 1440],
+  discountCapPercent: [0, 100],
 } as const;
 
 function isValid(form: FormState): boolean {
@@ -263,6 +266,9 @@ export default function SettingsPage() {
     }
     if (form.sameDayLeadMinutes !== baseline.sameDayLeadMinutes) {
       patch.sameDayLeadMinutes = Number(form.sameDayLeadMinutes);
+    }
+    if (form.discountCapPercent !== baseline.discountCapPercent) {
+      patch.discountCapPercent = Number(form.discountCapPercent);
     }
     if (form.noShowGraceMinutes !== baseline.noShowGraceMinutes) {
       patch.noShowGraceMinutes = Number(form.noShowGraceMinutes);
@@ -521,6 +527,17 @@ export default function SettingsPage() {
             max={BOUNDS.noShowGraceMinutes[1]}
             unit="minutes"
             hint="How late before staff can mark a no-show."
+            disabled={!canManage}
+          />
+          <NumberField
+            id="discount-cap"
+            label="Receptionist discount limit"
+            value={form.discountCapPercent}
+            onChange={(v) => set("discountCapPercent", v)}
+            min={BOUNDS.discountCapPercent[0]}
+            max={BOUNDS.discountCapPercent[1]}
+            unit="% of a bill"
+            hint="Anything larger needs you or a manager. Zero means only you can discount."
             disabled={!canManage}
           />
         </div>

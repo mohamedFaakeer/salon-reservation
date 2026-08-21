@@ -38,6 +38,7 @@ import { DrawerShell } from "./drawer-shell";
 import { LoadingSkeleton } from "./loading-skeleton";
 import { BusyLabel } from "./spinner";
 import { StatusBadge } from "./status-badge";
+import { BillDiscount } from "./bill-discount";
 import { useToast } from "./toast";
 import { errorCopy } from "../lib/error-copy";
 
@@ -564,6 +565,23 @@ export function AppointmentDetailDrawer({
               Advance required: {formatPriceCents(appointment.advanceRequiredCents)} · Paid:{" "}
               {formatPriceCents(appointment.advancePaidCents)}
             </p>
+            {appointment.discountCents > 0 ? (
+              /* Both halves named separately: an owner reading a short bill
+                 needs to know whether the salon published that price or
+                 somebody at the desk decided it. */
+              <p data-testid="detail-discount" className="text-slate-600">
+                {appointment.discountCents - appointment.billDiscountCents > 0 ? (
+                  <>
+                    Offers: −
+                    {formatPriceCents(appointment.discountCents - appointment.billDiscountCents)}
+                    {appointment.billDiscountCents > 0 ? " · " : null}
+                  </>
+                ) : null}
+                {appointment.billDiscountCents > 0 ? (
+                  <>Discount: −{formatPriceCents(appointment.billDiscountCents)}</>
+                ) : null}
+              </p>
+            ) : null}
             <p data-testid="detail-balance" className="font-semibold text-slate-900">
               Balance due: {formatPriceCents(appointment.balanceCents)}
             </p>
@@ -643,6 +661,12 @@ export function AppointmentDetailDrawer({
                   </button>
                 </div>
               </div>
+            ) : null}
+
+            {/* Above the payment form on purpose: you agree the price, then
+                you take the money. */}
+            {canRecordPayment(roles) && cancellable ? (
+              <BillDiscount appointment={appointment} onChanged={() => { load(); onChanged(); }} />
             ) : null}
 
             {canRecordPayment(roles) && appointment.balanceCents > 0 ? (

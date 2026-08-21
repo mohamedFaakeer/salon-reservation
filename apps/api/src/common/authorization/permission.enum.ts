@@ -15,6 +15,12 @@ export enum Permission {
   /** STAFF's narrower own-resource case; ownership itself is a service-layer check (P10). */
   MANAGE_OWN_APPOINTMENT = "MANAGE_OWN_APPOINTMENT",
   RECORD_PAYMENT = "RECORD_PAYMENT",
+  /**
+   * Discount a bill by more than the tenant's own cap. OWNER and MANAGER
+   * only: anyone who can take payment may make the everyday goodwill gesture,
+   * but waiving a bill is an owner's call, not a busy desk's.
+   */
+  OVERRIDE_DISCOUNT_CAP = "OVERRIDE_DISCOUNT_CAP",
   ISSUE_REFUND = "ISSUE_REFUND",
   MANAGE_CUSTOMERS = "MANAGE_CUSTOMERS",
   VIEW_OWN_CUSTOMER_INFO = "VIEW_OWN_CUSTOMER_INFO",

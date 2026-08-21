@@ -9,6 +9,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm";
+import type { DiscountType } from "@salon/shared";
 import { AppointmentStatus, type BookingSource } from "@salon/shared";
 import { Branch } from "./branch.entity";
 import { Customer } from "./customer.entity";
@@ -82,8 +83,29 @@ export class Appointment {
   @Column({ type: "int" })
   subtotalCents!: number;
 
+  /** Everything that came off this bill: service offers plus the desk's own. */
   @Column({ type: "int", default: 0 })
   discountCents!: number;
+
+  /**
+   * The desk's own discount, kept apart from the service offers folded into
+   * `discountCents`. How it was expressed is stored alongside what it was
+   * worth: "LKR 500 off" and "10% off" can be the same money today and
+   * different money after a service is added, and a receipt that lost which
+   * was meant cannot explain itself.
+   */
+  @Column({ type: "varchar", length: 10, nullable: true })
+  billDiscountType!: DiscountType | null;
+
+  @Column({ type: "int", nullable: true })
+  billDiscountValue!: number | null;
+
+  @Column({ type: "int", default: 0 })
+  billDiscountCents!: number;
+
+  /** Why somebody gave money away. The audit row is worth little without it. */
+  @Column({ type: "varchar", length: 200, nullable: true })
+  billDiscountReason!: string | null;
 
   @Column({ type: "int" })
   totalCents!: number;

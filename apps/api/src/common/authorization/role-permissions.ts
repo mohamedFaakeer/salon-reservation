@@ -15,6 +15,7 @@ const OWNER_MANAGER_PERMISSIONS: Permission[] = [
   Permission.MANAGE_STAFF,
   Permission.MANAGE_APPOINTMENTS,
   Permission.RECORD_PAYMENT,
+  Permission.OVERRIDE_DISCOUNT_CAP,
   Permission.ISSUE_REFUND,
   Permission.MANAGE_CUSTOMERS,
   Permission.VIEW_DASHBOARD,

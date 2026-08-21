@@ -17,6 +17,7 @@ import {
   PaymentProviderName,
   PaymentStatus,
   PaymentType,
+  type DiscountType,
   type CreateBookingDto,
   type CreateCustomerDto,
 } from "@salon/shared";
@@ -46,6 +47,7 @@ import { AuditService } from "../audit/audit.service";
 import { PricingService } from "../pricing/pricing.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { ServiceDiscountService } from "../pricing/service-discount.service";
+import { billDiscountCents, discountSharePercent } from "../pricing/bill-discount";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { RefundCalculator } from "../pricing/refund-calculator";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
@@ -73,6 +75,18 @@ export interface ReserveResult {
   expiresAt: Date;
   bookingReference: string;
 }
+
+/**
+ * A bill that is no longer live cannot be discounted. COMPLETED is
+ * deliberately absent: settling up is exactly when a discount gets given.
+ */
+const DISCOUNT_LOCKED_STATUSES = new Set<AppointmentStatus>([
+  AppointmentStatus.CANCELLED,
+  AppointmentStatus.NO_SHOW,
+  AppointmentStatus.EXPIRED,
+  AppointmentStatus.RESCHEDULED,
+  AppointmentStatus.PENDING_PAYMENT,
+]);
 
 const TERMINAL_STATUSES = new Set<AppointmentStatus>([
   AppointmentStatus.CANCELLED,
@@ -694,13 +708,27 @@ export class BookingService {
       // Recomputed from the lines rather than carried forward: the new line
       // may itself be discounted, and reusing the old figure would quietly
       // charge list price for it.
-      const discountCents = activeLines.reduce((sum, l) => sum + (l.discountCentsSnapshot ?? 0), 0);
+      const serviceDiscountCents = activeLines.reduce(
+        (sum, l) => sum + (l.discountCentsSnapshot ?? 0),
+        0,
+      );
+      // A percentage the desk agreed applies to the new bill, not the old one:
+      // carrying the cents forward would quietly change what was agreed.
+      const billCents = billDiscountCents(
+        subtotalCents,
+        serviceDiscountCents,
+        appointment.billDiscountType && appointment.billDiscountValue !== null
+          ? { type: appointment.billDiscountType, value: appointment.billDiscountValue }
+          : null,
+      );
+      const discountCents = serviceDiscountCents + billCents;
       const totalCents = Math.max(0, subtotalCents - discountCents);
       const balanceCents = totalCents - appointment.advancePaidCents;
 
       await this.applyOptimisticUpdate(manager, appointment, {
         subtotalCents,
         discountCents,
+        billDiscountCents: billCents,
         totalCents,
         balanceCents,
       });
@@ -757,8 +785,20 @@ export class BookingService {
 
       const remaining = activeLines.filter((l) => l.id !== line.id);
       const subtotalCents = remaining.reduce((sum, l) => sum + l.priceCentsSnapshot, 0);
-      // The removed line takes its own discount with it.
-      const discountCents = remaining.reduce((sum, l) => sum + (l.discountCentsSnapshot ?? 0), 0);
+      // The removed line takes its own discount with it, and the desk's
+      // percentage re-applies to what is left.
+      const serviceDiscountCents = remaining.reduce(
+        (sum, l) => sum + (l.discountCentsSnapshot ?? 0),
+        0,
+      );
+      const billCents = billDiscountCents(
+        subtotalCents,
+        serviceDiscountCents,
+        appointment.billDiscountType && appointment.billDiscountValue !== null
+          ? { type: appointment.billDiscountType, value: appointment.billDiscountValue }
+          : null,
+      );
+      const discountCents = serviceDiscountCents + billCents;
       const totalCents = Math.max(0, subtotalCents - discountCents);
       const refundCents = Math.max(0, appointment.advancePaidCents - totalCents);
 
@@ -777,6 +817,7 @@ export class BookingService {
       await this.applyOptimisticUpdate(manager, refreshedAppointment, {
         subtotalCents,
         discountCents,
+        billDiscountCents: billCents,
         totalCents,
         balanceCents,
       });
@@ -864,6 +905,10 @@ export class BookingService {
         | "cancelledAt"
         | "subtotalCents"
         | "discountCents"
+        | "billDiscountType"
+        | "billDiscountValue"
+        | "billDiscountCents"
+        | "billDiscountReason"
         | "totalCents"
         | "balanceCents"
         | "advancePaidCents"
@@ -1143,6 +1188,116 @@ export class BookingService {
    * slot on a Tuesday afternoon must not inherit the offer. The discount is
    * frozen onto the line here for the same reason the price is — rule §5.
    */
+
+  /**
+   * PATCH /appointments/:id/discount — the desk takes something off the bill.
+   *
+   * Distinct from a service offer: that is configuration the salon publishes,
+   * this is a judgement somebody made about one customer. So it carries a
+   * reason, names its author in the audit trail, and is capped.
+   *
+   * Sending zero removes it. Refusing to go below what has already been paid
+   * is deliberate — turning a discount into a refund silently would invent
+   * money movement the refund flow exists to record properly.
+   */
+  async setBillDiscount(
+    tenant: Tenant,
+    appointment: Appointment,
+    input: {
+      type: DiscountType;
+      value: number;
+      reason?: string;
+      actorUserId: string;
+      mayExceedCap: boolean;
+    },
+  ): Promise<Appointment> {
+    if (DISCOUNT_LOCKED_STATUSES.has(appointment.status)) {
+      throw new ApiError({
+        statusCode: 400,
+        code: "BAD_STATE",
+        message: `A ${appointment.status.toLowerCase().replace(/_/g, " ")} appointment cannot be discounted.`,
+      });
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const lineRepo = manager.getRepository(AppointmentServiceLine);
+      const activeLines = await lineRepo.find({
+        where: { appointmentId: appointment.id, status: "ACTIVE" },
+      });
+
+      const subtotalCents = activeLines.reduce((sum, l) => sum + l.priceCentsSnapshot, 0);
+      const serviceDiscountCents = activeLines.reduce(
+        (sum, l) => sum + (l.discountCentsSnapshot ?? 0),
+        0,
+      );
+
+      const requested = input.value > 0 ? { type: input.type, value: input.value } : null;
+      const billCents = billDiscountCents(subtotalCents, serviceDiscountCents, requested);
+
+      // The cap is measured against what was owed after the salon's own
+      // offers: a customer arriving into a 20% promotion has not spent the
+      // receptionist's discretion.
+      const share = discountSharePercent(subtotalCents, serviceDiscountCents, billCents);
+      if (!input.mayExceedCap && share > tenant.settings.discountCapPercent) {
+        throw new ApiError({
+          statusCode: 403,
+          code: "DISCOUNT_CAP_EXCEEDED",
+          message:
+            tenant.settings.discountCapPercent === 0
+              ? "Discounts have to be applied by an owner or manager."
+              : `That is ${share}% of the bill. You can approve up to ${tenant.settings.discountCapPercent}% — anything more needs an owner or manager.`,
+        });
+      }
+
+      const discountCents = serviceDiscountCents + billCents;
+      const totalCents = Math.max(0, subtotalCents - discountCents);
+
+      if (totalCents < appointment.advancePaidCents) {
+        throw new ApiError({
+          statusCode: 409,
+          code: "DISCOUNT_BELOW_PAID",
+          message: `${formatCents(appointment.advancePaidCents)} has already been paid on this booking. Record a refund instead of discounting below it.`,
+        });
+      }
+
+      const refreshed = await manager
+        .getRepository(Appointment)
+        .findOneOrFail({ where: { id: appointment.id } });
+
+      await this.applyOptimisticUpdate(manager, refreshed, {
+        subtotalCents,
+        discountCents,
+        totalCents,
+        balanceCents: totalCents - refreshed.advancePaidCents,
+        billDiscountType: requested ? input.type : null,
+        billDiscountValue: requested ? input.value : null,
+        billDiscountCents: billCents,
+        billDiscountReason: requested ? (input.reason?.trim() || null) : null,
+      });
+
+      await this.audit.record(
+        {
+          tenantId: tenant.id,
+          actorUserId: input.actorUserId,
+          action: requested ? "APPOINTMENT_DISCOUNT_APPLIED" : "APPOINTMENT_DISCOUNT_REMOVED",
+          entityType: "Appointment",
+          entityId: appointment.id,
+          metadata: {
+            type: requested ? input.type : null,
+            value: requested ? input.value : null,
+            discountCents: billCents,
+            sharePercent: share,
+            reason: input.reason?.trim() ?? null,
+            totalCents,
+          },
+        },
+        manager,
+      );
+
+      return manager.getRepository(Appointment).findOneOrFail({ where: { id: appointment.id } });
+    });
+  }
+
   private async resolveServiceLines(
     tenantId: string,
     serviceIds: string[],
@@ -1172,4 +1327,9 @@ export class BookingService {
       };
     });
   }
+}
+
+/** For the one error message that has to quote an amount back. */
+function formatCents(cents: number): string {
+  return `LKR ${(cents / 100).toLocaleString("en-LK", { minimumFractionDigits: 2 })}`;
 }

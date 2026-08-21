@@ -19,6 +19,17 @@ export interface TenantSettings {
   sameDayLeadMinutes: number;
   noShowGraceMinutes: number;
   reminderOffsets: number[];
+  /**
+   * How much of a bill anyone who can take payment may give away unaided,
+   * as a whole percent of what is still owed.
+   *
+   * Expressed as a percentage on purpose, so one number governs both a
+   * percentage discount and a fixed one — a receptionist waving LKR 500 off a
+   * LKR 800 bill is giving away 63%, however it was typed. Above this, an
+   * owner or manager has to be the one to do it. Zero means nobody discounts
+   * without that authority.
+   */
+  discountCapPercent: number;
 }
 
 /** DECISIONS.md Q5/Q9 defaults; advanceRule defaults to NO_ADVANCE. */
@@ -36,4 +47,6 @@ export const DEFAULT_TENANT_SETTINGS: TenantSettings = {
   sameDayLeadMinutes: 120,
   noShowGraceMinutes: 15,
   reminderOffsets: [24, 2],
+  // Enough for the everyday goodwill gesture, not enough to waive a bill.
+  discountCapPercent: 10,
 };
