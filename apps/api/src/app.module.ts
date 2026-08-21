@@ -11,6 +11,7 @@ import { AuthModule } from "./auth/auth.module";
 import { TenantModule } from "./tenant/tenant.module";
 import { AuthorizationModule } from "./common/authorization/authorization.module";
 import { SuperAdminModule } from "./super-admin/super-admin.module";
+import { TeamModule } from "./team/team.module";
 import { ClosureModule } from "./closure/closure.module";
 import { AuditModule } from "./audit/audit.module";
 import { ServiceModule } from "./service/service.module";
@@ -66,6 +67,7 @@ import { RequestLoggingMiddleware } from "./common/middleware/request-logging.mi
     // JwtAuthGuard (AuthModule) -> TenantGuard (TenantModule) -> RolesGuard.
     AuthorizationModule,
     SuperAdminModule,
+    TeamModule,
     ClosureModule,
     AuditModule,
     ServiceModule,

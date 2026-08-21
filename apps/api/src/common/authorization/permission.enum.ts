@@ -7,6 +7,8 @@ export enum Permission {
   /** SUPER_ADMIN: provision tenants / demo-seed / list tenants. */
   PLATFORM_ADMIN = "PLATFORM_ADMIN",
   MANAGE_TENANT_SETTINGS = "MANAGE_TENANT_SETTINGS",
+  /** Create and suspend staff logins. OWNER only — this grants privilege. */
+  MANAGE_TEAM = "MANAGE_TEAM",
   MANAGE_SERVICES = "MANAGE_SERVICES",
   MANAGE_STAFF = "MANAGE_STAFF",
   MANAGE_APPOINTMENTS = "MANAGE_APPOINTMENTS",

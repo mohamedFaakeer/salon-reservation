@@ -24,7 +24,8 @@ const OWNER_MANAGER_PERMISSIONS: Permission[] = [
 
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   [UserRole.SUPER_ADMIN]: [Permission.PLATFORM_ADMIN],
-  [UserRole.OWNER]: OWNER_MANAGER_PERMISSIONS,
+  // Owners get everything a manager does, plus the right to hand out logins.
+  [UserRole.OWNER]: [...OWNER_MANAGER_PERMISSIONS, Permission.MANAGE_TEAM],
   [UserRole.MANAGER]: OWNER_MANAGER_PERMISSIONS,
   [UserRole.RECEPTIONIST]: [
     Permission.MANAGE_APPOINTMENTS,

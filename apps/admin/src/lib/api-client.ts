@@ -950,3 +950,39 @@ export function demoSeedTenant(tenantId: string): Promise<DemoSeedResult> {
     body: JSON.stringify({}),
   });
 }
+
+export type AssignableRole = "MANAGER" | "RECEPTIONIST" | "STAFF";
+
+export interface TeamMember {
+  userId: string;
+  name: string;
+  email: string;
+  role: string;
+  status: "ACTIVE" | "DISABLED";
+  staffId: string | null;
+  lastLoginAt: string | null;
+  createdAt: string;
+}
+
+export function fetchTeam(): Promise<TeamMember[]> {
+  return request<TeamMember[]>("/team");
+}
+
+export function createTeamMember(input: {
+  name: string;
+  email: string;
+  password: string;
+  role: AssignableRole;
+}): Promise<TeamMember> {
+  return request<TeamMember>("/team", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateTeamMember(
+  userId: string,
+  patch: { role?: AssignableRole; status?: "ACTIVE" | "DISABLED" },
+): Promise<TeamMember> {
+  return request<TeamMember>(`/team/${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}

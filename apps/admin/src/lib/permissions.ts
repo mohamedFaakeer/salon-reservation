@@ -67,3 +67,27 @@ export function canViewDashboard(roles: string[]): boolean {
 export function isSuperAdmin(roles: string[]): boolean {
   return roles.includes("SUPER_ADMIN");
 }
+
+/** Mirrors MANAGE_TEAM (OWNER only) — creating logins hands out privilege. */
+export function canManageTeam(roles: string[]): boolean {
+  return roles.includes("OWNER");
+}
+
+/**
+ * What each assignable role can reach, derived from the same predicates the
+ * sidebar uses rather than a hand-written table. A table would drift the first
+ * time the permission matrix changed, and this screen exists precisely to tell
+ * an owner the truth about what they are granting.
+ */
+export const MODULES: Array<{ label: string; can: (roles: string[]) => boolean }> = [
+  { label: "Today & schedule", can: canViewDashboard },
+  { label: "Appointments", can: canManageAppointments },
+  { label: "Customers", can: canManageCustomers },
+  { label: "Payments", can: canRecordPayment },
+  { label: "Refunds", can: canIssueRefund },
+  { label: "Services", can: canManageServices },
+  { label: "Staff & availability", can: canManageStaff },
+  { label: "Settings", can: canManageSettings },
+  { label: "Audit", can: canViewAudit },
+  { label: "Staff logins", can: canManageTeam },
+];

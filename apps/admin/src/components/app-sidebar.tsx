@@ -10,6 +10,7 @@ import {
   canManageServices,
   canManageSettings,
   canManageStaff,
+  canManageTeam,
   canViewAudit,
   canViewDashboard,
 } from "../lib/permissions";
@@ -138,6 +139,19 @@ const GROUPS: NavGroup[] = [
   {
     label: "People",
     items: [
+      {
+        href: "/team",
+        label: "Staff logins",
+        visible: canManageTeam,
+        icon: (
+          <Icon>
+            <circle cx="6.4" cy="5.6" r="2.3" {...stroke} />
+            <path d="M2.4 13c.7-2 2.2-3 4-3s3.3 1 4 3" {...stroke} />
+            <path d="M11 8.6a2 2 0 1 0 0-3.6" {...stroke} />
+            <path d="M12.2 13c-.2-.9-.5-1.7-1-2.3" {...stroke} />
+          </Icon>
+        ),
+      },
       {
         href: "/customers",
         label: "Customers",
