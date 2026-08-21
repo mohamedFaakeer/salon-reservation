@@ -23,6 +23,7 @@ import { CustomerModule } from "./customer/customer.module";
 import { BookingModule } from "./booking/booking.module";
 import { AppointmentModule } from "./appointment/appointment.module";
 import { InquiryModule } from "./inquiry/inquiry.module";
+import { ReportsModule } from "./reports/reports.module";
 import { SalonModule } from "./salon/salon.module";
 import { PaymentModule } from "./payment/payment.module";
 import { NotificationModule } from "./notification/notification.module";
@@ -80,6 +81,7 @@ import { RequestLoggingMiddleware } from "./common/middleware/request-logging.mi
     BookingModule,
     AppointmentModule,
     InquiryModule,
+    ReportsModule,
     SalonModule,
     PaymentModule,
     NotificationModule,

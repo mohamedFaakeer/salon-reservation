@@ -692,3 +692,64 @@ inventing a stylist and a time to hang it on.
    and is announced politely — a toast for "copied" is louder than the action
    deserves. A blocked clipboard fails silently on purpose: the code is on
    screen and selectable, so there is nothing to report.
+
+## 27. Reports backend (RP2) (2026-08-21)
+
+1. **One endpoint, one range, one round trip.** `GET /reports?from=&to=`
+   returns every panel. Twelve endpoints would mean twelve spinners and —
+   worse — twelve chances for the panels to describe different periods, which
+   is how a report quietly lies.
+
+2. **`VIEW_REPORTS` is a new permission, OWNER and MANAGER only.** Reusing
+   `VIEW_DASHBOARD` was rejected because receptionists hold it, and these
+   figures include salon revenue, a per-stylist league table and named
+   customer spend. Who sees that is the owner's decision, not a side effect of
+   working the desk.
+
+3. **The date-range contract was extracted, not duplicated.** `resolveDateRange`
+   moved out of `DashboardService` into `common/date-range.ts` and both modules
+   now share it. A dashboard and a report covering different days is a bug
+   nobody reports, because both screens look plausible.
+
+4. **Timestamps get a real UTC window.** Appointments filter on
+   `appointmentDate`, already a local calendar date, but payments and refunds
+   carry `timestamptz`. Comparing those to a bare date silently uses UTC
+   midnight, which is 05:30 in Colombo — a payment taken at 4am would land in
+   the previous day's takings. `utcWindowFor` converts the local range to a
+   half-open UTC window instead.
+
+5. **Busy hours are shifted into Colombo before the hour is taken.** Otherwise
+   every appointment reports five and a half hours early and the heatmap is
+   wrong in a way that still looks plausible. `ISODOW` is shifted from Mon=1
+   to Mon=0 to match the rota's existing numbering rather than introducing a
+   second convention.
+
+6. **Utilisation sits beside the completed count, not instead of it.** A raw
+   job count punishes whoever takes the long work — one colour treatment is
+   three haircuts — and a league table that does that is worse than none.
+   Utilisation is null, never 0%, when nobody was rostered: 0% blames someone
+   for a week they were never scheduled to work.
+
+7. **Ratings are scoped to work done in the range, not ratings submitted in
+   it.** "How was the work you did that week received" is the useful question,
+   and a rating left late still describes the visit it was about.
+
+8. **Refunds are scoped through their payment.** `refund` is the one table here
+   with no `tenantId` of its own. Filtering it directly is not merely wrong, it
+   is a cross-tenant read — the join is what enforces rule §7 for that query.
+   This was caught by executing the SQL, not by reading it.
+
+9. **Two panels deliberately break the range convention, and say so.** The
+   funnel counts what *arrived* in the period, because an appointment booked in
+   March for June is March's win. Lapsed customers are measured as of the
+   range's end, so a historical range answers "who had gone quiet by then"
+   rather than silently reporting today's answer under a date the user chose.
+
+10. **The arithmetic lives in `reports.math.ts` as pure functions.** The rota
+    maths, the loss tally and the deposit comparison are where a mistake is
+    silent, so they are testable without eleven mocked repositories — matching
+    CLAUDE.md §5's "Domains = pure functions".
+
+11. **Every empty-denominator rate is null, never 0.** Zero is a claim: "0%
+    no-shows" reads as a perfect record when it should read "nothing has
+    concluded yet". Same rule the customer no-show rate already follows.

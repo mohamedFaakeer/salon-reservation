@@ -5,9 +5,9 @@ import { InjectRepository } from "@nestjs/typeorm";
 // erase it and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { Between, Repository } from "typeorm";
-import { ApiError, AppointmentStatus } from "@salon/shared";
+import { AppointmentStatus } from "@salon/shared";
 import { Appointment } from "../entities/appointment.entity";
-import { colomboNow } from "../availability/time.util";
+import { resolveDateRange } from "../common/date-range";
 
 /**
  * Statuses that don't count toward revenue/outstanding (API.md
@@ -21,9 +21,6 @@ const NON_REVENUE_STATUSES = new Set<AppointmentStatus>([
   AppointmentStatus.RESCHEDULED,
   AppointmentStatus.EXPIRED,
 ]);
-
-/** A year and a day. Wide enough for "this year", narrow enough to stay a scan. */
-const MAX_RANGE_DAYS = 366;
 
 /**
  * Counts that describe a period. True for any range.
@@ -72,36 +69,17 @@ export class DashboardService {
    */
   async summary(tenantId: string, from?: string, to?: string): Promise<DashboardSummary> {
     const now = new Date();
-    const today = colomboNow(now).date;
-    const start = from ?? today;
-    const end = to ?? start;
-
-    if (end < start) {
-      throw new ApiError({
-        statusCode: 400,
-        code: "INVALID_DATE_RANGE",
-        message: "The end date must be on or after the start date.",
-      });
-    }
-    if (daysBetween(start, end) > MAX_RANGE_DAYS) {
-      throw new ApiError({
-        statusCode: 400,
-        code: "DATE_RANGE_TOO_WIDE",
-        message: `Choose a range of ${MAX_RANGE_DAYS} days or fewer.`,
-      });
-    }
+    // Shared with the reports module so the two can never cover different days.
+    const range = resolveDateRange(from, to, now);
 
     const rows = await this.appointments.find({
-      where: { tenantId, appointmentDate: Between(start, end) },
+      where: { tenantId, appointmentDate: Between(range.from, range.to) },
     });
 
-    const totals = tally(rows);
-    const includesToday = start <= today && today <= end;
-
     return {
-      ...totals,
-      range: { from: start, to: end },
-      live: includesToday ? liveCounts(rows, now, today) : null,
+      ...tally(rows),
+      range: { from: range.from, to: range.to },
+      live: range.includesToday ? liveCounts(rows, now, range.today) : null,
     };
   }
 
@@ -178,7 +156,3 @@ function liveCounts(rows: Appointment[], now: Date, today: string): DashboardLiv
   return live;
 }
 
-function daysBetween(from: string, to: string): number {
-  const ms = new Date(`${to}T00:00:00Z`).getTime() - new Date(`${from}T00:00:00Z`).getTime();
-  return Math.round(ms / 86_400_000);
-}

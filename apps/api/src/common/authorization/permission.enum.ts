@@ -19,6 +19,13 @@ export enum Permission {
   MANAGE_CUSTOMERS = "MANAGE_CUSTOMERS",
   VIEW_OWN_CUSTOMER_INFO = "VIEW_OWN_CUSTOMER_INFO",
   VIEW_DASHBOARD = "VIEW_DASHBOARD",
+  /**
+   * The reports module. OWNER and MANAGER only — deliberately NOT the same as
+   * VIEW_DASHBOARD, which receptionists hold. Reports expose salon revenue,
+   * a per-stylist league table and named customer spend; who sees that is the
+   * owner's decision to make, not a side effect of working the desk.
+   */
+  VIEW_REPORTS = "VIEW_REPORTS",
   VIEW_OWN_SCHEDULE = "VIEW_OWN_SCHEDULE",
   VIEW_AUDIT_LOG = "VIEW_AUDIT_LOG",
   VIEW_NOTIFICATIONS = "VIEW_NOTIFICATIONS",

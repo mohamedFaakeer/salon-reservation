@@ -18,6 +18,7 @@ const OWNER_MANAGER_PERMISSIONS: Permission[] = [
   Permission.ISSUE_REFUND,
   Permission.MANAGE_CUSTOMERS,
   Permission.VIEW_DASHBOARD,
+  Permission.VIEW_REPORTS,
   Permission.VIEW_AUDIT_LOG,
   Permission.VIEW_NOTIFICATIONS,
 ];
