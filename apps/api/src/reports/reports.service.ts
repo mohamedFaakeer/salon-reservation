@@ -223,7 +223,12 @@ export class ReportsService {
       .innerJoin(Appointment, "a", 'a.id = l."appointmentId"')
       .select('l."nameSnapshot"', "name")
       .addSelect("COUNT(*)::int", "count")
-      .addSelect('COALESCE(SUM(l."priceCentsSnapshot"), 0)::int', "revenueCents")
+      // Net of the service discount. Summing list prices would report revenue
+      // the salon never took the moment any offer ran.
+      .addSelect(
+        'COALESCE(SUM(l."priceCentsSnapshot" - l."discountCentsSnapshot"), 0)::int',
+        "revenueCents",
+      )
       .where('a."tenantId" = :tenantId', { tenantId })
       .andWhere('a."appointmentDate" BETWEEN :from AND :to', range)
       .andWhere("l.status = :active", { active: "ACTIVE" })

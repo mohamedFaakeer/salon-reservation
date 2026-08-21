@@ -7,6 +7,7 @@ import { Staff } from "../entities/staff.entity";
 import { WorkingSchedule } from "../entities/working-schedule.entity";
 import { Closure } from "../entities/closure.entity";
 import { TenantModule } from "../tenant/tenant.module";
+import { PricingModule } from "../pricing/pricing.module";
 import { SalonController } from "./salon.controller";
 import { SalonService } from "./salon.service";
 
@@ -14,6 +15,7 @@ import { SalonService } from "./salon.service";
   imports: [
     TypeOrmModule.forFeature([Tenant, Branch, Service, Staff, WorkingSchedule, Closure]),
     TenantModule,
+    PricingModule,
   ],
   controllers: [SalonController],
   providers: [SalonService],

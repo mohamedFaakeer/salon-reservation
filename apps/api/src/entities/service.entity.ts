@@ -6,10 +6,12 @@ import {
   Index,
   JoinColumn,
   ManyToOne,
+  OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm";
 import { Branch } from "./branch.entity";
+import { ServiceDiscount } from "./service-discount.entity";
 import { Tenant } from "./tenant.entity";
 
 /** No soft-delete column — removal is PATCH {active:false} (API.md §3). */
@@ -53,6 +55,13 @@ export class Service {
 
   @Column({ type: "boolean", default: true })
   active!: boolean;
+
+  /**
+   * At most one standing offer, enforced by a unique index on the child. Two
+   * overlapping discounts would need precedence rules nobody asked for.
+   */
+  @OneToOne(() => ServiceDiscount, (d) => d.service)
+  discount!: ServiceDiscount | null;
 
   @CreateDateColumn({ type: "timestamptz" })
   createdAt!: Date;

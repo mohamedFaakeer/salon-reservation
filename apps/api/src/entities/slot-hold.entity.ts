@@ -76,7 +76,10 @@ export interface BookingSnapshotLine {
   serviceId: string;
   nameSnapshot: string;
   durationMinSnapshot: number;
+  /** List price. The discount is separate so the hold quotes both. */
   priceCentsSnapshot: number;
+  discountCentsSnapshot: number;
+  discountLabelSnapshot: string | null;
 }
 
 export interface BookingSnapshot {

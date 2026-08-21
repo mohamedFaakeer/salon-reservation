@@ -47,8 +47,24 @@ export class AppointmentServiceLine {
   @Column({ type: "int" })
   durationMinSnapshot!: number;
 
+  /** The list price at booking. Deliberately NOT net of any discount. */
   @Column({ type: "int" })
   priceCentsSnapshot!: number;
+
+  /**
+   * The service discount that was live when this was booked.
+   *
+   * Recorded beside the list price rather than folded into it, so an invoice
+   * can show what was charged *and* what it would have cost. The database
+   * caps it at the line's own price, which is what stops a mis-set percentage
+   * producing a negative line.
+   */
+  @Column({ type: "int", default: 0 })
+  discountCentsSnapshot!: number;
+
+  /** What the offer was called at the time, e.g. "Tuesday 20% off". */
+  @Column({ type: "varchar", length: 60, nullable: true })
+  discountLabelSnapshot!: string | null;
 
   @Column({ type: "varchar", length: 10, default: "ACTIVE" })
   status!: "ACTIVE" | "REMOVED";

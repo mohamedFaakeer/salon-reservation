@@ -9,6 +9,8 @@ import { AdvanceRule, type TenantSettings } from "@salon/shared";
 import { Tenant } from "../entities/tenant.entity";
 import { Branch } from "../entities/branch.entity";
 import { Service } from "../entities/service.entity";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { ServiceDiscountService } from "../pricing/service-discount.service";
 import { Staff } from "../entities/staff.entity";
 import { WorkingSchedule } from "../entities/working-schedule.entity";
 import { Closure } from "../entities/closure.entity";
@@ -37,13 +39,39 @@ export interface SalonHoursEntry {
   endMin: number;
 }
 
+/**
+ * A service as the customer site shows it.
+ *
+ * `priceCents` stays the list price and the offer is described beside it,
+ * because a discount that runs only on Tuesday evenings has no single price
+ * to quote on a page where no time has been chosen yet. The site shows the
+ * list price struck through with the offer named; the exact figure appears
+ * once a slot is picked and the server prices it for that moment.
+ */
+export interface SalonServiceView {
+  id: string;
+  name: string;
+  category: string | null;
+  durationMin: number;
+  priceCents: number;
+  discount: {
+    label: string;
+    /** What it would cost inside the offer, for showing the saving. */
+    discountedPriceCents: number;
+    startDate: string;
+    endDate: string;
+    /** Empty means all day, every day in range. */
+    windows: Array<{ dayOfWeek: number; startMin: number; endMin: number }>;
+  } | null;
+}
+
 export interface SalonProfile {
   slug: string;
   name: string;
   address: string | null;
   city: string | null;
   phone: string | null;
-  services: Array<{ id: string; name: string; category: string | null; durationMin: number; priceCents: number }>;
+  services: SalonServiceView[];
   staff: Array<{ id: string; name: string }>;
   /** Derived from the union of active staff schedules — no tenant-level "hours" column exists. Null = closed that day. */
   hours: Array<SalonHoursEntry | null>;
@@ -62,6 +90,7 @@ export class SalonService {
     @InjectRepository(WorkingSchedule) private readonly schedules: Repository<WorkingSchedule>,
     @InjectRepository(Closure) private readonly closures: Repository<Closure>,
     private readonly tenantService: TenantService,
+    private readonly serviceDiscounts: ServiceDiscountService,
   ) {}
 
   /**
@@ -113,7 +142,11 @@ export class SalonService {
 
     const [branch, services, staff, closures] = await Promise.all([
       this.branches.findOne({ where: { tenantId: tenant.id, active: true } }),
-      this.services.find({ where: { tenantId: tenant.id, active: true }, order: { name: "ASC" } }),
+      this.services.find({
+        where: { tenantId: tenant.id, active: true },
+        relations: { discount: { windows: true } },
+        order: { name: "ASC" },
+      }),
       this.staff.find({ where: { tenantId: tenant.id, active: true }, order: { name: "ASC" } }),
       this.closures.find({
         where: { tenantId: tenant.id, endDate: MoreThanOrEqual(todayLocalDate()) },
@@ -129,13 +162,7 @@ export class SalonService {
       address: branch?.address ?? null,
       city: branch?.city ?? null,
       phone: branch?.phone ?? null,
-      services: services.map((s) => ({
-        id: s.id,
-        name: s.name,
-        category: s.category,
-        durationMin: s.durationMin,
-        priceCents: s.priceCents,
-      })),
+      services: services.map((s) => toServiceView(s, this.serviceDiscounts)),
       staff: staff.map((s) => ({ id: s.id, name: s.name })),
       hours,
       advanceRuleLabel: formatAdvanceRule(tenant.settings),
@@ -201,4 +228,48 @@ function formatCancellationPolicy(policy: {
     return `Free cancellation up to ${policy.selfServiceCutoffHours}h before your appointment`;
   }
   return `${policy.refundPercentBeforeCutoff}% refund if cancelled at least ${policy.selfServiceCutoffHours}h before your appointment`;
+}
+
+/**
+ * The list price plus, when one exists, what the offer would make it.
+ *
+ * The discounted figure is computed by the same engine the booking uses, so
+ * the site can never quote a saving the server would not honour. It is
+ * advisory here — the binding price is the one returned for the chosen slot.
+ */
+function toServiceView(service: Service, discounts: ServiceDiscountService): SalonServiceView {
+  const base = {
+    id: service.id,
+    name: service.name,
+    category: service.category,
+    durationMin: service.durationMin,
+    priceCents: service.priceCents,
+  };
+
+  const offer = service.discount;
+  if (!offer || !offer.active) {
+    return { ...base, discount: null };
+  }
+
+  // Priced as if the offer were live, to get the figure and the wording; the
+  // date and window checks are left to the caller's chosen slot.
+  const priced = discounts.priceAt(service.priceCents, { ...offer, startDate: "0001-01-01", endDate: "9999-12-31", windows: [] }, new Date());
+  if (priced.discountCents === 0) {
+    return { ...base, discount: null };
+  }
+
+  return {
+    ...base,
+    discount: {
+      label: priced.label ?? "Offer",
+      discountedPriceCents: priced.chargedCents,
+      startDate: offer.startDate,
+      endDate: offer.endDate,
+      windows: (offer.windows ?? []).map((w) => ({
+        dayOfWeek: w.dayOfWeek,
+        startMin: w.startMin,
+        endMin: w.endMin,
+      })),
+    },
+  };
 }

@@ -1,6 +1,5 @@
 import { Injectable } from "@nestjs/common";
 import { AdvanceRule, type TenantSettings } from "@salon/shared";
-import type { BookingSnapshotLine } from "../entities/slot-hold.entity";
 
 export interface AppointmentTotals {
   subtotalCents: number;
@@ -10,17 +9,30 @@ export interface AppointmentTotals {
   balanceCents: number;
 }
 
+/** Anything carrying a snapshotted list price and the discount taken off it. */
+export interface PricedLine {
+  priceCentsSnapshot: number;
+  discountCentsSnapshot?: number;
+}
+
 /**
  * The single place appointment totals and advance amounts are computed
- * (DATABASE.md §7: "single PricingService"). No discount mechanism exists
- * yet, so `discountCents` is always 0 — unchanged from before this phase.
+ * (DATABASE.md §7: "single PricingService").
+ *
+ * `subtotalCents` is the sum of **list** prices and `discountCents` what came
+ * off them, so the two together tell the whole story on an invoice. Folding
+ * the discount into the subtotal would produce the same total while making it
+ * impossible to say what the customer saved.
+ *
+ * The advance is computed on the total *after* discount: asking for 50% of a
+ * price nobody is paying would over-collect and then owe a refund.
  */
 @Injectable()
 export class PricingService {
-  computeTotals(lines: BookingSnapshotLine[], settings: TenantSettings): AppointmentTotals {
+  computeTotals(lines: PricedLine[], settings: TenantSettings): AppointmentTotals {
     const subtotalCents = lines.reduce((sum, l) => sum + l.priceCentsSnapshot, 0);
-    const discountCents = 0;
-    const totalCents = subtotalCents - discountCents;
+    const discountCents = lines.reduce((sum, l) => sum + (l.discountCentsSnapshot ?? 0), 0);
+    const totalCents = Math.max(0, subtotalCents - discountCents);
 
     const rawAdvance = this.computeRawAdvance(totalCents, settings);
     const advanceRequiredCents = Math.max(0, Math.min(rawAdvance, totalCents));

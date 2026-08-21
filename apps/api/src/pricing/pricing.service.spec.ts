@@ -7,8 +7,22 @@ function settings(overrides: Partial<TenantSettings>): TenantSettings {
 }
 
 const lines: BookingSnapshotLine[] = [
-  { serviceId: "svc-1", nameSnapshot: "Haircut", durationMinSnapshot: 30, priceCentsSnapshot: 300000 },
-  { serviceId: "svc-2", nameSnapshot: "Wash", durationMinSnapshot: 15, priceCentsSnapshot: 100000 },
+  {
+    serviceId: "svc-1",
+    nameSnapshot: "Haircut",
+    durationMinSnapshot: 30,
+    priceCentsSnapshot: 300000,
+    discountCentsSnapshot: 0,
+    discountLabelSnapshot: null,
+  },
+  {
+    serviceId: "svc-2",
+    nameSnapshot: "Wash",
+    durationMinSnapshot: 15,
+    priceCentsSnapshot: 100000,
+    discountCentsSnapshot: 0,
+    discountLabelSnapshot: null,
+  },
 ];
 
 describe("PricingService", () => {
@@ -70,5 +84,75 @@ describe("PricingService", () => {
       settings({ advanceRule: AdvanceRule.PERCENTAGE, advancePercent: null }),
     );
     expect(totals.advanceRequiredCents).toBe(0);
+  });
+
+  describe("discounts", () => {
+    const discounted: BookingSnapshotLine[] = [
+      {
+        serviceId: "svc-1",
+        nameSnapshot: "Colour",
+        durationMinSnapshot: 90,
+        priceCentsSnapshot: 500000,
+        discountCentsSnapshot: 100000,
+        discountLabelSnapshot: "Tuesday 20% off",
+      },
+      {
+        serviceId: "svc-2",
+        nameSnapshot: "Wash",
+        durationMinSnapshot: 15,
+        priceCentsSnapshot: 100000,
+        discountCentsSnapshot: 0,
+        discountLabelSnapshot: null,
+      },
+    ];
+
+    it("keeps the subtotal at list price and reports the discount beside it", () => {
+      const totals = service.computeTotals(discounted, settings({ advanceRule: AdvanceRule.NO_ADVANCE }));
+
+      // Both numbers are needed on an invoice: what it would have cost, and
+      // what came off. A netted subtotal loses the second.
+      expect(totals.subtotalCents).toBe(600000);
+      expect(totals.discountCents).toBe(100000);
+      expect(totals.totalCents).toBe(500000);
+    });
+
+    it("charges the advance on the discounted total, not the list price", () => {
+      const totals = service.computeTotals(
+        discounted,
+        settings({ advanceRule: AdvanceRule.PERCENTAGE, advancePercent: 50 }),
+      );
+
+      // 50% of 500,000, not of 600,000 — over-collecting would owe a refund.
+      expect(totals.advanceRequiredCents).toBe(250000);
+      expect(totals.balanceCents).toBe(250000);
+    });
+
+    it("never produces a negative total", () => {
+      const freebie: BookingSnapshotLine[] = [
+        {
+          serviceId: "svc-1",
+          nameSnapshot: "Freebie",
+          durationMinSnapshot: 30,
+          priceCentsSnapshot: 100000,
+          discountCentsSnapshot: 100000,
+          discountLabelSnapshot: "On the house",
+        },
+      ];
+      const totals = service.computeTotals(freebie, settings({ advanceRule: AdvanceRule.NO_ADVANCE }));
+
+      expect(totals.totalCents).toBe(0);
+      expect(totals.balanceCents).toBe(0);
+    });
+
+    it("treats a line with no discount field as undiscounted", () => {
+      // Rows written before the column existed read back as undefined.
+      const totals = service.computeTotals(
+        [{ priceCentsSnapshot: 250000 }],
+        settings({ advanceRule: AdvanceRule.NO_ADVANCE }),
+      );
+
+      expect(totals.discountCents).toBe(0);
+      expect(totals.totalCents).toBe(250000);
+    });
   });
 });

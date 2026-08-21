@@ -126,3 +126,14 @@ export enum InquiryStatus {
   /** Dealt with, or went nowhere. Never deleted — CLAUDE.md rule §8. */
   CLOSED = "CLOSED",
 }
+
+/**
+ * How a discount is expressed. Stored alongside the amount so the salon's own
+ * intent survives: "20% off" and "LKR 1,000 off" can be the same money today
+ * and different money after a price change, and a report that lost which one
+ * was meant cannot explain either.
+ */
+export enum DiscountType {
+  FIXED = "FIXED",
+  PERCENT = "PERCENT",
+}

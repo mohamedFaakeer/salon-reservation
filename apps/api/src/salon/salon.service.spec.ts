@@ -1,6 +1,8 @@
 import type { ObjectLiteral, Repository } from "typeorm";
 import { AdvanceRule } from "@salon/shared";
 import { SalonService } from "./salon.service";
+import { ServiceDiscountService } from "../pricing/service-discount.service";
+import { DiscountType } from "@salon/shared";
 import type { Tenant } from "../entities/tenant.entity";
 import type { Branch } from "../entities/branch.entity";
 import type { Service } from "../entities/service.entity";
@@ -71,7 +73,16 @@ describe("SalonService", () => {
     schedules = mockRepo<WorkingSchedule>();
     closures = mockRepo<Closure>();
     tenantService = { findActiveBySlug: vi.fn(async () => fakeTenant()) } as unknown as TenantService;
-    service = new SalonService(tenants, branches, services, staff, schedules, closures, tenantService);
+    service = new SalonService(
+      tenants,
+      branches,
+      services,
+      staff,
+      schedules,
+      closures,
+      tenantService,
+      new ServiceDiscountService(),
+    );
   });
 
   describe("list", () => {
@@ -161,7 +172,16 @@ describe("SalonService", () => {
       expect(profile.address).toBe("123 Galle Rd");
       expect(profile.phone).toBe("0771234567");
       expect(profile.services).toEqual([
-        { id: "s1", name: "Haircut", category: "Hair", durationMin: 30, priceCents: 150000 },
+        // `discount: null` is explicit rather than absent: the customer site
+        // has to distinguish "no offer" from "we did not ask".
+        {
+          id: "s1",
+          name: "Haircut",
+          category: "Hair",
+          durationMin: 30,
+          priceCents: 150000,
+          discount: null,
+        },
       ]);
       expect(profile.staff).toEqual([{ id: "st1", name: "Amara" }]);
       expect(profile.closures).toEqual([{ name: "Poya Day", startDate: "2027-01-01", endDate: "2027-01-01" }]);
@@ -275,6 +295,75 @@ describe("SalonService", () => {
       expect(closures.find).toHaveBeenCalledWith(
         expect.objectContaining({ where: expect.objectContaining({ tenantId: "tenant-1" }) }),
       );
+    });
+  });
+
+  describe("profile discounts", () => {
+    it("describes a live offer beside the list price rather than replacing it", async () => {
+      // No time is chosen on the salon page, so a Tuesday-evening offer has no
+      // single price to quote. Both numbers go out and the page shows the saving.
+      vi.mocked(branches.findOne).mockResolvedValue(null);
+      vi.mocked(staff.find).mockResolvedValue([]);
+      vi.mocked(closures.find).mockResolvedValue([]);
+      vi.mocked(schedules.find).mockResolvedValue([]);
+      vi.mocked(services.find).mockResolvedValue([
+        {
+          id: "s1",
+          name: "Colour",
+          category: "Hair",
+          durationMin: 90,
+          priceCents: 500000,
+          discount: {
+            type: DiscountType.PERCENT,
+            value: 20,
+            startDate: "2026-09-01",
+            endDate: "2026-09-30",
+            label: "September sale",
+            active: true,
+            windows: [{ dayOfWeek: 1, startMin: 1020, endMin: 1200 }],
+          },
+        } as unknown as Service,
+      ]);
+
+      const profile = await service.profile("elegance");
+
+      expect(profile.services[0].priceCents).toBe(500000);
+      expect(profile.services[0].discount).toEqual({
+        label: "September sale",
+        discountedPriceCents: 400000,
+        startDate: "2026-09-01",
+        endDate: "2026-09-30",
+        windows: [{ dayOfWeek: 1, startMin: 1020, endMin: 1200 }],
+      });
+    });
+
+    it("hides an offer that has been switched off", async () => {
+      vi.mocked(branches.findOne).mockResolvedValue(null);
+      vi.mocked(staff.find).mockResolvedValue([]);
+      vi.mocked(closures.find).mockResolvedValue([]);
+      vi.mocked(schedules.find).mockResolvedValue([]);
+      vi.mocked(services.find).mockResolvedValue([
+        {
+          id: "s1",
+          name: "Colour",
+          category: "Hair",
+          durationMin: 90,
+          priceCents: 500000,
+          discount: {
+            type: DiscountType.PERCENT,
+            value: 20,
+            startDate: "2026-09-01",
+            endDate: "2026-09-30",
+            label: null,
+            active: false,
+            windows: [],
+          },
+        } as unknown as Service,
+      ]);
+
+      const profile = await service.profile("elegance");
+
+      expect(profile.services[0].discount).toBeNull();
     });
   });
 });

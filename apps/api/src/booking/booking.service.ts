@@ -45,6 +45,8 @@ import { AuditService } from "../audit/audit.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { PricingService } from "../pricing/pricing.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { ServiceDiscountService } from "../pricing/service-discount.service";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { RefundCalculator } from "../pricing/refund-calculator";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { PaymentService } from "../payment/payment.service";
@@ -148,6 +150,7 @@ export class BookingService {
     private readonly pricing: PricingService,
     private readonly payments: PaymentService,
     private readonly refundCalculator: RefundCalculator,
+    private readonly serviceDiscounts: ServiceDiscountService,
     private readonly notifications: NotificationService,
   ) {}
 
@@ -178,7 +181,7 @@ export class BookingService {
 
   /** POST /salons/:slug/bookings — creates a 10-min HELD SlotHold; no Appointment yet. */
   async reserve(tenant: Tenant, dto: CreateBookingDto, sessionKey: string): Promise<ReserveResult> {
-    const lines = await this.resolveServiceLines(tenant.id, dto.serviceIds);
+    const lines = await this.resolveServiceLines(tenant.id, dto.serviceIds, new Date(dto.start));
     const totals = this.pricing.computeTotals(lines, tenant.settings);
     const amountCents = totals.totalCents;
     const durationMin = lines.reduce((sum, l) => sum + l.durationMinSnapshot, 0);
@@ -534,6 +537,8 @@ export class BookingService {
         nameSnapshot: l.nameSnapshot,
         durationMinSnapshot: l.durationMinSnapshot,
         priceCentsSnapshot: l.priceCentsSnapshot,
+        discountCentsSnapshot: l.discountCentsSnapshot,
+        discountLabelSnapshot: l.discountLabelSnapshot,
       }));
 
       const newAppointment = await this.createAppointmentAtomic(manager, tenant, {
@@ -663,7 +668,9 @@ export class BookingService {
    */
   async addService(tenant: Tenant, appointment: Appointment, input: AddServiceInput): Promise<Appointment> {
     this.assertMutable(appointment, tenant, false, new Date());
-    const newLines = await this.resolveServiceLines(tenant.id, input.serviceIds);
+    // Priced for the appointment already on the books, not for now: adding a
+    // service to a Tuesday-evening booking should get the Tuesday-evening offer.
+    const newLines = await this.resolveServiceLines(tenant.id, input.serviceIds, appointment.startTime);
 
     return this.dataSource.transaction(async (manager) => {
       const lineRepo = manager.getRepository(AppointmentServiceLine);
@@ -675,6 +682,8 @@ export class BookingService {
             nameSnapshot: l.nameSnapshot,
             durationMinSnapshot: l.durationMinSnapshot,
             priceCentsSnapshot: l.priceCentsSnapshot,
+            discountCentsSnapshot: l.discountCentsSnapshot,
+            discountLabelSnapshot: l.discountLabelSnapshot,
             status: "ACTIVE",
           }),
         ),
@@ -682,10 +691,19 @@ export class BookingService {
 
       const activeLines = await lineRepo.find({ where: { appointmentId: appointment.id, status: "ACTIVE" } });
       const subtotalCents = activeLines.reduce((sum, l) => sum + l.priceCentsSnapshot, 0);
-      const totalCents = subtotalCents - appointment.discountCents;
+      // Recomputed from the lines rather than carried forward: the new line
+      // may itself be discounted, and reusing the old figure would quietly
+      // charge list price for it.
+      const discountCents = activeLines.reduce((sum, l) => sum + (l.discountCentsSnapshot ?? 0), 0);
+      const totalCents = Math.max(0, subtotalCents - discountCents);
       const balanceCents = totalCents - appointment.advancePaidCents;
 
-      await this.applyOptimisticUpdate(manager, appointment, { subtotalCents, totalCents, balanceCents });
+      await this.applyOptimisticUpdate(manager, appointment, {
+        subtotalCents,
+        discountCents,
+        totalCents,
+        balanceCents,
+      });
 
       await this.audit.record(
         {
@@ -737,10 +755,11 @@ export class BookingService {
       line.removedReason = input.reason;
       await lineRepo.save(line);
 
-      const subtotalCents = activeLines
-        .filter((l) => l.id !== line.id)
-        .reduce((sum, l) => sum + l.priceCentsSnapshot, 0);
-      const totalCents = subtotalCents - appointment.discountCents;
+      const remaining = activeLines.filter((l) => l.id !== line.id);
+      const subtotalCents = remaining.reduce((sum, l) => sum + l.priceCentsSnapshot, 0);
+      // The removed line takes its own discount with it.
+      const discountCents = remaining.reduce((sum, l) => sum + (l.discountCentsSnapshot ?? 0), 0);
+      const totalCents = Math.max(0, subtotalCents - discountCents);
       const refundCents = Math.max(0, appointment.advancePaidCents - totalCents);
 
       if (refundCents > 0) {
@@ -755,7 +774,12 @@ export class BookingService {
         .findOneOrFail({ where: { id: appointment.id } });
       const balanceCents = totalCents - refreshedAppointment.advancePaidCents;
 
-      await this.applyOptimisticUpdate(manager, refreshedAppointment, { subtotalCents, totalCents, balanceCents });
+      await this.applyOptimisticUpdate(manager, refreshedAppointment, {
+        subtotalCents,
+        discountCents,
+        totalCents,
+        balanceCents,
+      });
 
       await this.audit.record(
         {
@@ -839,6 +863,7 @@ export class BookingService {
         | "cancellationReason"
         | "cancelledAt"
         | "subtotalCents"
+        | "discountCents"
         | "totalCents"
         | "balanceCents"
         | "advancePaidCents"
@@ -880,7 +905,7 @@ export class BookingService {
       });
     }
 
-    const lines = await this.resolveServiceLines(tenant.id, input.serviceIds);
+    const lines = await this.resolveServiceLines(tenant.id, input.serviceIds, new Date(input.start));
     const durationMin = lines.reduce((sum, l) => sum + l.durationMinSnapshot, 0);
     const start = new Date(input.start);
     const end = new Date(start.getTime() + durationMin * 60_000);
@@ -1071,6 +1096,8 @@ export class BookingService {
           nameSnapshot: l.nameSnapshot,
           durationMinSnapshot: l.durationMinSnapshot,
           priceCentsSnapshot: l.priceCentsSnapshot,
+          discountCentsSnapshot: l.discountCentsSnapshot,
+          discountLabelSnapshot: l.discountLabelSnapshot,
           status: "ACTIVE",
         }),
       ),
@@ -1108,10 +1135,23 @@ export class BookingService {
     return err;
   }
 
-  private async resolveServiceLines(tenantId: string, serviceIds: string[]): Promise<BookingSnapshotLine[]> {
+  /**
+   * Snapshot the services as they are priced *for that appointment's slot*.
+   *
+   * `at` is the appointment's start, not now: a salon advertising "Tuesday
+   * 20% off" means the chair is occupied on a Tuesday, so booking a Saturday
+   * slot on a Tuesday afternoon must not inherit the offer. The discount is
+   * frozen onto the line here for the same reason the price is — rule §5.
+   */
+  private async resolveServiceLines(
+    tenantId: string,
+    serviceIds: string[],
+    at: Date,
+  ): Promise<BookingSnapshotLine[]> {
     const requested = new Set(serviceIds);
     const rows = await this.services.find({
       where: { id: In(serviceIds), tenantId, active: true },
+      relations: { discount: { windows: true } },
     });
     if (rows.length !== requested.size) {
       throw new ApiError({
@@ -1120,11 +1160,16 @@ export class BookingService {
         message: "One or more requested services do not exist.",
       });
     }
-    return rows.map((s) => ({
-      serviceId: s.id,
-      nameSnapshot: s.name,
-      durationMinSnapshot: s.durationMin,
-      priceCentsSnapshot: s.priceCents,
-    }));
+    return rows.map((s) => {
+      const priced = this.serviceDiscounts.priceAt(s.priceCents, s.discount, at);
+      return {
+        serviceId: s.id,
+        nameSnapshot: s.name,
+        durationMinSnapshot: s.durationMin,
+        priceCentsSnapshot: priced.listPriceCents,
+        discountCentsSnapshot: priced.discountCents,
+        discountLabelSnapshot: priced.label,
+      };
+    });
   }
 }

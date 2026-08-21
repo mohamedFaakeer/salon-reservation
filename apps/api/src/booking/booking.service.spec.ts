@@ -21,6 +21,7 @@ import type { CustomerService } from "../customer/customer.service";
 import type { AuditService } from "../audit/audit.service";
 import { PricingService } from "../pricing/pricing.service";
 import { RefundCalculator } from "../pricing/refund-calculator";
+import { ServiceDiscountService } from "../pricing/service-discount.service";
 import type { PaymentService } from "../payment/payment.service";
 import type { NotificationService } from "../notification/notification.service";
 
@@ -159,6 +160,7 @@ describe("BookingService", () => {
       new PricingService(),
       payments,
       new RefundCalculator(),
+      new ServiceDiscountService(),
       notifications,
     );
   });
@@ -310,7 +312,16 @@ describe("BookingService", () => {
           bookingReference: "ELE-PRE01",
           customerId: "customer-1",
           notes: "Please be gentle",
-          lines: [{ serviceId: "svc-1", nameSnapshot: "Cut", durationMinSnapshot: 30, priceCentsSnapshot: 5000 }],
+          lines: [
+            {
+              serviceId: "svc-1",
+              nameSnapshot: "Cut",
+              durationMinSnapshot: 30,
+              priceCentsSnapshot: 5000,
+              discountCentsSnapshot: 0,
+              discountLabelSnapshot: null,
+            },
+          ],
         } satisfies BookingSnapshot,
       } as unknown as SlotHold);
 
