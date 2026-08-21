@@ -988,3 +988,70 @@ export function updateTeamMember(
     body: JSON.stringify(patch),
   });
 }
+
+/* ------------------------------------------------------------------ *
+ * Inquiries
+ *
+ * A question somebody asked, holding no slot. Deliberately a separate
+ * resource from appointments — see DECISIONS.md for why it is not just an
+ * appointment status.
+ * ------------------------------------------------------------------ */
+
+export type InquiryStatusValue = "OPEN" | "CONVERTED" | "CLOSED";
+
+export interface InquiryRecord {
+  id: string;
+  customerId: string;
+  /** Whole, not a joined display name — converting pre-fills the booking drawer. */
+  customer: { id: string; firstName: string; lastName: string; phone: string } | null;
+  source: "WALK_IN" | "PHONE" | "WHATSAPP";
+  status: InquiryStatusValue;
+  notes: string | null;
+  services: Array<{ serviceId: string | null; name: string }>;
+  appointmentId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function fetchInquiries(
+  params: { status?: InquiryStatusValue; customerId?: string; limit?: number; offset?: number } = {},
+): Promise<{ data: InquiryRecord[]; meta: ListMeta }> {
+  const qs = new URLSearchParams();
+  if (params.status) {
+    qs.set("status", params.status);
+  }
+  if (params.customerId) {
+    qs.set("customerId", params.customerId);
+  }
+  qs.set("limit", String(params.limit ?? 25));
+  qs.set("offset", String(params.offset ?? 0));
+  return request<{ data: InquiryRecord[]; meta: ListMeta }>(`/inquiries?${qs.toString()}`);
+}
+
+/** No staff, date or time — an inquiry reserves nothing. */
+export function createInquiry(input: {
+  customerId?: string;
+  newCustomer?: { firstName: string; lastName: string; phone: string; email?: string };
+  serviceIds?: string[];
+  source: "WALK_IN" | "PHONE" | "WHATSAPP";
+  notes?: string;
+}): Promise<InquiryRecord> {
+  return request<InquiryRecord>("/inquiries", { method: "POST", body: JSON.stringify(input) });
+}
+
+/**
+ * Close, reopen, or record that it became a booking.
+ *
+ * Conversion is two steps on purpose: the booking is created through the
+ * ordinary availability engine first, and only then linked here. There is no
+ * second booking path.
+ */
+export function updateInquiry(
+  id: string,
+  patch: { status: InquiryStatusValue; appointmentId?: string },
+): Promise<InquiryRecord> {
+  return request<InquiryRecord>(`/inquiries/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}

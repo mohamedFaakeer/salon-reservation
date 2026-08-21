@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import {
   ApiRequestError,
   createAppointment,
+  createInquiry,
   fetchAvailability,
   fetchServices,
   fetchStaff,
   fetchTenantMe,
+  type AppointmentRecord,
   type AvailabilitySlot,
   type CustomerRecord,
   type ServiceItem,
@@ -25,6 +27,17 @@ import { BusyLabel } from "./spinner";
 const SOURCES = ["WALK_IN", "PHONE", "WHATSAPP"] as const;
 type Source = (typeof SOURCES)[number];
 
+/**
+ * Booking or inquiry.
+ *
+ * An inquiry is a question, not a reservation — somebody asking what a bridal
+ * package costs has not chosen a stylist or a time, and making the receptionist
+ * invent both just to write the question down is how questions stop getting
+ * written down. So the mode hides staff, date, the slot picker and check-in
+ * rather than disabling them: a field you must not fill in is noise.
+ */
+type Mode = "BOOKING" | "INQUIRY";
+
 function generateIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -36,17 +49,32 @@ export function BookingDrawer({
   onClose,
   onCreated,
   defaultCheckInNow = false,
+  defaultMode = "BOOKING",
+  initialCustomer = null,
+  initialServiceIds,
+  lockMode = false,
 }: {
   onClose: () => void;
-  onCreated: () => void;
+  /**
+   * Receives the booking that was created, so a caller converting an inquiry
+   * can link the two. Callers that only need to refresh may ignore it.
+   */
+  onCreated: (appointment?: AppointmentRecord) => void;
   /** The "Walk-in" quick action pre-checks this — the customer is already standing there. */
   defaultCheckInNow?: boolean;
+  defaultMode?: Mode;
+  /** Pre-filled when converting an inquiry — they already told us who they are. */
+  initialCustomer?: CustomerRecord | null;
+  initialServiceIds?: string[];
+  /** Converting is a booking by definition; offering "inquiry" there is a dead end. */
+  lockMode?: boolean;
 }) {
+  const [mode, setMode] = useState<Mode>(defaultMode);
   const [slug, setSlug] = useState<string | null>(null);
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
-  const [customer, setCustomer] = useState<CustomerRecord | null>(null);
-  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
+  const [customer, setCustomer] = useState<CustomerRecord | null>(initialCustomer);
+  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>(initialServiceIds ?? []);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
   const [date, setDate] = useState(todayLocalDate());
   const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
@@ -68,7 +96,9 @@ export function BookingDrawer({
   }, []);
 
   useEffect(() => {
-    if (!slug || selectedServiceIds.length === 0) {
+    // An inquiry never asks the availability engine anything — there is no
+    // slot to look for, and querying would be a wasted round trip per keystroke.
+    if (mode === "INQUIRY" || !slug || selectedServiceIds.length === 0) {
       setSlots([]);
       return;
     }
@@ -98,7 +128,7 @@ export function BookingDrawer({
     return () => {
       stale = true;
     };
-  }, [slug, selectedServiceIds, selectedStaffId, date]);
+  }, [mode, slug, selectedServiceIds, selectedStaffId, date]);
 
   function toggleService(id: string): void {
     setSelectedServiceIds((prev) =>
@@ -111,6 +141,35 @@ export function BookingDrawer({
     .filter((s) => selectedServiceIds.includes(s.id))
     .reduce((sum, s) => sum + s.priceCents, 0);
 
+  async function handleLogInquiry(): Promise<void> {
+    if (!customer) {
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await createInquiry({
+        customerId: customer.id,
+        // Optional on purpose: "do you do balayage?" is a real question about
+        // a service the salon may not even offer.
+        serviceIds: selectedServiceIds,
+        source,
+        notes: notes.trim() || undefined,
+      });
+      toast.success(
+        "Inquiry logged",
+        `${customer.firstName} ${customer.lastName} — nothing is booked yet.`,
+      );
+      onCreated();
+    } catch (err) {
+      const copy = errorCopy(err);
+      setError(copy.title);
+      toast.error(copy.title, copy.detail);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function handleSubmit(): Promise<void> {
     if (!customer || !selectedSlot) {
       return;
@@ -118,7 +177,7 @@ export function BookingDrawer({
     setSubmitting(true);
     setError(null);
     try {
-      await createAppointment(
+      const appointment = await createAppointment(
         {
           customerId: customer.id,
           serviceIds: selectedServiceIds,
@@ -134,7 +193,7 @@ export function BookingDrawer({
         "Appointment booked",
         `${customer.firstName} ${customer.lastName} — ${formatTime(selectedSlot.start)}`,
       );
-      onCreated();
+      onCreated(appointment);
     } catch (err) {
       // The slot race is not really an error: the booking failed for a reason
       // the operator can fix in one tap, so it stays inline next to the times
@@ -154,9 +213,25 @@ export function BookingDrawer({
     }
   }
 
+  const isInquiry = mode === "INQUIRY";
+
   return (
-    <DrawerShell title="New booking" onClose={onClose}>
+    <DrawerShell title={isInquiry ? "New inquiry" : "New booking"} onClose={onClose}>
       <div className="flex flex-col gap-5">
+        {lockMode ? null : (
+        <ModeSwitch
+          mode={mode}
+          onChange={(next) => {
+            setMode(next);
+            // Dropping the slot matters: switching to an inquiry and back must
+            // not leave a time selected that the operator can no longer see.
+            setSelectedSlot(null);
+            setSlotTakenNotice(false);
+            setError(null);
+          }}
+        />
+        )}
+
         {customer ? (
           <div className="rounded border border-teal-200 bg-teal-50 p-3 text-sm">
             <p className="font-medium text-teal-900">
@@ -183,11 +258,17 @@ export function BookingDrawer({
           />
           {totalPriceCents > 0 ? (
             <p className="mt-1 text-xs text-slate-500">
-              Total: {formatPriceCents(totalPriceCents)}
+              {isInquiry
+                ? /* Named as a quote, not a total: nothing is owed on an
+                     inquiry, and prices can move before they book. */
+                  `Roughly ${formatPriceCents(totalPriceCents)} at today's prices`
+                : `Total: ${formatPriceCents(totalPriceCents)}`}
             </p>
           ) : null}
         </div>
 
+        {isInquiry ? null : (
+          <>
         <div>
           <label className="mb-2 block text-sm font-medium text-slate-700">Staff</label>
           <select
@@ -260,9 +341,13 @@ export function BookingDrawer({
             </div>
           )}
         </div>
+          </>
+        )}
 
         <div>
-          <label className="mb-2 block text-sm font-medium text-slate-700">Source</label>
+          <label className="mb-2 block text-sm font-medium text-slate-700">
+            {isInquiry ? "How they asked" : "Source"}
+          </label>
           <select
             data-testid="drawer-source"
             value={source}
@@ -277,24 +362,41 @@ export function BookingDrawer({
           </select>
         </div>
 
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input
-            data-testid="drawer-check-in-now"
-            type="checkbox"
-            checked={checkInNow}
-            onChange={(e) => setCheckInNow(e.target.checked)}
-          />
-          Check in immediately
-        </label>
+        {isInquiry ? null : (
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              data-testid="drawer-check-in-now"
+              type="checkbox"
+              checked={checkInNow}
+              onChange={(e) => setCheckInNow(e.target.checked)}
+            />
+            Check in immediately
+          </label>
+        )}
 
         <div>
-          <label className="mb-2 block text-sm font-medium text-slate-700">Notes (optional)</label>
+          <label
+            htmlFor="drawer-notes"
+            className="mb-2 block text-sm font-medium text-slate-700"
+          >
+            {isInquiry ? "What they asked" : "Notes (optional)"}
+          </label>
           <textarea
+            id="drawer-notes"
+            data-testid="drawer-notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            rows={2}
+            rows={isInquiry ? 4 : 2}
+            placeholder={
+              isInquiry ? "Wants bridal hair and makeup for a wedding in December…" : undefined
+            }
             className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
           />
+          {isInquiry ? (
+            <p className="mt-1 text-xs text-slate-500">
+              The question itself. This is what you will read when you call them back.
+            </p>
+          ) : null}
         </div>
 
         {error ? (
@@ -305,16 +407,66 @@ export function BookingDrawer({
 
         <button
           type="button"
-          data-testid="drawer-submit"
-          onClick={() => void handleSubmit()}
-          disabled={!customer || !selectedSlot || submitting}
+          data-testid={isInquiry ? "drawer-submit-inquiry" : "drawer-submit"}
+          onClick={() => void (isInquiry ? handleLogInquiry() : handleSubmit())}
+          /* An inquiry needs only somebody to call back. Services are optional
+             and there is no slot to require. */
+          disabled={!customer || (!isInquiry && !selectedSlot) || submitting}
           className="min-h-11 rounded bg-teal-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
-          <BusyLabel busy={submitting} busyText="Booking…">
-            Book appointment
+          <BusyLabel busy={submitting} busyText={isInquiry ? "Saving…" : "Booking…"}>
+            {isInquiry ? "Log inquiry" : "Book appointment"}
           </BusyLabel>
         </button>
       </div>
     </DrawerShell>
+  );
+}
+
+/**
+ * Booking or inquiry, as a real radio group.
+ *
+ * Radios rather than two buttons because this is one mutually exclusive
+ * choice, and a screen reader should announce it as such — "Inquiry, radio
+ * button, 2 of 2" — instead of two unrelated toggles.
+ */
+function ModeSwitch({ mode, onChange }: { mode: Mode; onChange: (next: Mode) => void }) {
+  const options: Array<{ value: Mode; label: string; hint: string }> = [
+    { value: "BOOKING", label: "Booking", hint: "Takes a slot" },
+    { value: "INQUIRY", label: "Inquiry", hint: "Just a question" },
+  ];
+
+  return (
+    <fieldset className="grid grid-cols-2 gap-2" data-testid="drawer-mode">
+      <legend className="mb-2 text-sm font-medium text-slate-700">What is this?</legend>
+      {options.map((option) => {
+        const selected = mode === option.value;
+        return (
+          <label
+            key={option.value}
+            className={`flex cursor-pointer flex-col gap-0.5 rounded border px-3 py-2 transition-colors ${
+              selected
+                ? "border-teal-500 bg-teal-50 text-teal-900"
+                : "border-slate-200 text-slate-700 hover:bg-slate-50"
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="drawer-mode"
+                data-testid={`drawer-mode-${option.value}`}
+                checked={selected}
+                onChange={() => onChange(option.value)}
+                className="h-4 w-4 shrink-0 accent-teal-600"
+              />
+              <span className="text-sm font-medium">{option.label}</span>
+            </span>
+            <span className={`pl-6 text-xs ${selected ? "text-teal-700" : "text-slate-500"}`}>
+              {option.hint}
+            </span>
+          </label>
+        );
+      })}
+    </fieldset>
   );
 }

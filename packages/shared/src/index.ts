@@ -19,5 +19,6 @@ export * from "./dto/appointment.dto";
 export * from "./dto/appointment-lifecycle.dto";
 export * from "./dto/payment.dto";
 export * from "./dto/rating.dto";
+export * from "./dto/inquiry.dto";
 export * from "./dto/notification.dto";
 export * from "./errors/api-error";

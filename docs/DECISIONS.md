@@ -607,3 +607,54 @@ feature was deployed and working; the screen was the problem.
    figure that can legitimately be non-zero before anyone walks in, because an
    advance is money the salon already holds. It is called out in the
    nothing-concluded state rather than suppressed with the rest.
+
+## 25. Inquiries — a question is not a booking (2026-08-21)
+
+Receptionists need to record "what would a bridal package cost?" without
+inventing a stylist and a time to hang it on.
+
+1. **An inquiry is its own entity, not an appointment status.** `appointment`
+   requires `staffId`, `appointmentDate`, `startTime` and `endTime` NOT NULL,
+   and carries the GiST exclusion constraint that CLAUDE.md rule §3 makes the
+   final arbiter against double-booking. An inquiry has none of those four.
+   Storing it there would mean making the constraint's own columns nullable for
+   rows that never occupy a slot, and would push timeless rows into the day
+   board, the availability queries, the dashboard counts, customer stats and
+   the payment ledger. Two new tables — `inquiry` and `inquiry_service` — cost
+   more code and cost the booking guarantees nothing.
+
+2. **Rule §1 is not weakened, because an inquiry never books.** Converting
+   opens the ordinary booking drawer, which calls the same availability engine
+   as every other source; only afterwards is the resulting appointment id
+   recorded against the inquiry. Conversion is therefore two requests, not one
+   transaction. That is deliberate: if the second request fails, a real booking
+   exists against a still-open inquiry — visible and fixable by hand. The
+   alternative ordering fails the other way, leaving an inquiry claiming a
+   booking that was never created.
+
+3. **The link is verified, never trusted.** `appointmentId` arrives from the
+   client, so `update()` re-reads the appointment and rejects it unless it
+   belongs to the caller's tenant *and* to the same customer as the inquiry.
+   `CHK_inquiry_converted_has_appointment` enforces the same pairing in the
+   database: CONVERTED must carry an appointment, anything else must not.
+
+4. **Services are optional on an inquiry.** "Do you do balayage?" is a real
+   question about a service the salon may not even offer. Requiring a service
+   id would lose exactly the inquiries worth capturing. Names are snapshotted
+   as elsewhere, so a later rename does not rewrite what was asked.
+
+5. **The form hides fields rather than disabling them.** Choosing Inquiry
+   removes staff, date, the slot picker and check-in from the drawer entirely,
+   and suppresses the availability request. A field you are not allowed to fill
+   in is noise, and a disabled slot grid invites the operator to wonder what is
+   broken. The price line also changes wording — "roughly … at today's prices"
+   rather than "Total", because nothing is owed and prices can move.
+
+6. **They live as a tab on Appointments, not a twelfth nav item.** Bookings and
+   inquiries stay separate lists: an inquiry has no time, so sorting it into the
+   booking table would need a column it can never fill. The list defaults to
+   Open, because an inquiry is something you still owe somebody an answer to.
+
+7. **`MANAGE_APPOINTMENTS` is reused rather than adding a permission.** Anyone
+   who may take a booking may take the question preceding it; a new capability
+   would have had exactly the same holders.

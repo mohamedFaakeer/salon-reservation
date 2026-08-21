@@ -112,3 +112,17 @@ export enum NotificationEvent {
   NO_SHOW = "NO_SHOW",
   LATE_ARRIVAL = "LATE_ARRIVAL",
 }
+/**
+ * An inquiry is a question, not a reservation: "do you do bridal packages,
+ * and what would it cost?" It holds no slot, blocks no stylist and never
+ * reaches the availability engine — which is exactly why it is not an
+ * Appointment. See DECISIONS.md.
+ */
+export enum InquiryStatus {
+  /** Logged and still needing an answer. */
+  OPEN = "OPEN",
+  /** Became a real booking. `appointmentId` says which one. */
+  CONVERTED = "CONVERTED",
+  /** Dealt with, or went nowhere. Never deleted — CLAUDE.md rule §8. */
+  CLOSED = "CLOSED",
+}

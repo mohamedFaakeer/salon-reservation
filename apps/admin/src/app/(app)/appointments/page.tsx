@@ -17,6 +17,7 @@ import { Cell, DataTable, Row } from "../../../components/data-table";
 import { Pager } from "../../../components/pager";
 import { StatusBadge } from "../../../components/status-badge";
 import { AppointmentDetailDrawer } from "../../../components/appointment-detail-drawer";
+import { InquiriesPanel } from "../../../components/inquiries-panel";
 import { formatDate, formatPriceCents, formatTime } from "../../../lib/format";
 
 const PAGE_SIZE = 25;
@@ -32,9 +33,19 @@ const STATUS_OPTIONS = [
   "RESCHEDULED",
 ] as const;
 
+/**
+ * Bookings and inquiries share this screen because a receptionist is already
+ * here, and the nav already carries eleven destinations. They stay separate
+ * tabs rather than one merged list: an inquiry holds no slot and has no time,
+ * so sorting it into a booking table would mean inventing a column it can
+ * never fill.
+ */
+type Tab = "BOOKINGS" | "INQUIRIES";
+
 export default function AppointmentsPage() {
   const { user } = useAuth();
   const canManage = canManageAppointments(user?.roles ?? []);
+  const [tab, setTab] = useState<Tab>("BOOKINGS");
   const [date, setDate] = useState("");
   const [status, setStatus] = useState("");
   const [staffId, setStaffId] = useState("");
@@ -96,10 +107,44 @@ export default function AppointmentsPage() {
       <div>
         <h1 className="text-xl font-semibold text-slate-900">Appointments</h1>
         <p className="mt-0.5 text-sm text-slate-500">
-          Every booking, filterable by day, status and staff.
+          {tab === "BOOKINGS"
+            ? "Every booking, filterable by day, status and staff."
+            : "Questions people asked that have not become bookings."}
         </p>
       </div>
 
+      <div className="flex gap-1 border-b border-slate-200" role="tablist" aria-label="Appointments view">
+        {(
+          [
+            { value: "BOOKINGS", label: "Bookings" },
+            { value: "INQUIRIES", label: "Inquiries" },
+          ] as Array<{ value: Tab; label: string }>
+        ).map((option) => {
+          const active = tab === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              data-testid={`appointments-tab-${option.value}`}
+              onClick={() => setTab(option.value)}
+              className={`-mb-px min-h-11 border-b-2 px-4 text-sm font-medium transition-colors ${
+                active
+                  ? "border-teal-600 text-teal-700"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === "INQUIRIES" ? (
+        <InquiriesPanel />
+      ) : (
+        <>
       <div className="flex flex-wrap gap-2">
         <input
           data-testid="appointment-date-filter"
@@ -250,6 +295,9 @@ export default function AppointmentsPage() {
               busy={loading}
             />
           ) : null}
+        </>
+      )}
+
         </>
       )}
 
