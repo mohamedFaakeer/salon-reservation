@@ -1326,10 +1326,11 @@ export interface TakingsLossSummary {
   lostRevenueCents: number;
 }
 
+/** `sku` is null for a bundle row — a bundle has no SKU of its own in Phase B. */
 export interface ProductSalesRow {
   variantId: string;
   productName: string;
-  sku: string;
+  sku: string | null;
   unitsSold: number;
   revenueCents: number;
   costCents: number;

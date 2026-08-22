@@ -15,10 +15,20 @@ import { PaymentMethod } from "../enums";
 import { CreateCustomerDto } from "./customer.dto";
 import { PaginationQueryDto } from "./common.dto";
 
-/** One line of the cart being rung up. */
+/**
+ * One line of the cart being rung up — exactly one of `variantId`/`bundleId`
+ * (checked at the service layer, where the actual product/bundle lookup
+ * already has to happen). `quantity` means units for a variant line, whole
+ * bundles for a bundle line.
+ */
 export class RetailSaleLineDto {
+  @IsOptional()
   @IsUUID("4")
-  variantId!: string;
+  variantId?: string;
+
+  @IsOptional()
+  @IsUUID("4")
+  bundleId?: string;
 
   @IsInt()
   @Min(1)

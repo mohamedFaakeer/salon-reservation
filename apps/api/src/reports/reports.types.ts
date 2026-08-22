@@ -100,11 +100,16 @@ export interface LossReport {
   };
 }
 
-/** One variant's period: how much sold, for how much, against what it cost. */
+/**
+ * One variant's (or bundle's) period: how much sold, for how much, against
+ * what it cost. `variantId` actually holds a bundleId for a bundle row —
+ * see `RetailSaleLine`'s doc comment for why a bundle line has no variant of
+ * its own. `sku` is null for a bundle row, which has no SKU in Phase B.
+ */
 export interface ProductSalesRow {
   variantId: string;
   productName: string;
-  sku: string;
+  sku: string | null;
   unitsSold: number;
   revenueCents: number;
   costCents: number;

@@ -33,6 +33,8 @@ export * from "./dto/gift-card.dto";
 export * from "./dto/service-package.dto";
 export * from "./dto/campaign.dto";
 export * from "./dto/product.dto";
+export * from "./dto/product-bundle.dto";
 export * from "./dto/inventory.dto";
 export * from "./dto/retail-sale.dto";
+export * from "./dto/retail-return.dto";
 export * from "./errors/api-error";

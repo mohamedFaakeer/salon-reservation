@@ -11,8 +11,11 @@ import { CustomerModule } from "../customer/customer.module";
 import { AuditModule } from "../audit/audit.module";
 import { TenantModule } from "../tenant/tenant.module";
 import { InventoryModule } from "../inventory/inventory.module";
+import { BundleModule } from "../bundle/bundle.module";
+import { PaymentModule } from "../payment/payment.module";
 import { RetailSaleController } from "./retail-sale.controller";
 import { RetailSaleService } from "./retail-sale.service";
+import { RetailReturnService } from "./retail-return.service";
 
 @Module({
   imports: [
@@ -21,9 +24,11 @@ import { RetailSaleService } from "./retail-sale.service";
     AuditModule,
     TenantModule,
     InventoryModule,
+    BundleModule,
+    PaymentModule,
   ],
   controllers: [RetailSaleController],
-  providers: [RetailSaleService],
-  exports: [RetailSaleService],
+  providers: [RetailSaleService, RetailReturnService],
+  exports: [RetailSaleService, RetailReturnService],
 })
 export class RetailSaleModule {}

@@ -53,7 +53,7 @@ export function ProductSalesPanel({ data }: { data: ProductSalesReport | null })
             {data.byProduct.map((row) => (
               <tr key={row.variantId}>
                 <Td className="font-medium text-slate-900">{row.productName}</Td>
-                <Td className="font-mono text-[12px] text-slate-500">{row.sku}</Td>
+                <Td className="font-mono text-[12px] text-slate-500">{row.sku ?? "Bundle"}</Td>
                 <Td align="right" className="tabular">
                   {row.unitsSold}
                 </Td>

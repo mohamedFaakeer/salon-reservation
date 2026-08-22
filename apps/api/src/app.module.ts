@@ -31,6 +31,7 @@ import { GiftCardModule } from "./gift-card/gift-card.module";
 import { ServicePackageModule } from "./service-package/service-package.module";
 import { ProductModule } from "./product/product.module";
 import { InventoryModule } from "./inventory/inventory.module";
+import { BundleModule } from "./bundle/bundle.module";
 import { RetailSaleModule } from "./retail-sale/retail-sale.module";
 import { SalonModule } from "./salon/salon.module";
 import { PaymentModule } from "./payment/payment.module";
@@ -97,6 +98,7 @@ import { RequestLoggingMiddleware } from "./common/middleware/request-logging.mi
     ServicePackageModule,
     ProductModule,
     InventoryModule,
+    BundleModule,
     RetailSaleModule,
     SalonModule,
     PaymentModule,

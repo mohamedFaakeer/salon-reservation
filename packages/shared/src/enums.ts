@@ -264,3 +264,13 @@ export enum RetailSaleStatus {
   RETURNED = "RETURNED",
   PARTIALLY_RETURNED = "PARTIALLY_RETURNED",
 }
+
+/**
+ * What happens to a returned unit. RESTOCK puts it back into sellable stock
+ * (a new batch, or the same serial reactivated); QUARANTINE is a pure
+ * record — it never re-enters `quantityOnHand`, because it isn't sellable.
+ */
+export enum RetailReturnDisposition {
+  RESTOCK = "RESTOCK",
+  QUARANTINE = "QUARANTINE",
+}

@@ -473,10 +473,14 @@ export class ReportsService {
   private async productSalesReport(tenantId: string, range: Range): Promise<ProductSalesReport> {
     const window = utcWindowFor(range);
 
+    // COALESCE(variantId, bundleId) is the true "what sold" key — a bundle
+    // line's own variantId is always null (see RetailSaleLine's doc comment),
+    // so grouping by variantId alone would merge every bundle sold in the
+    // range into one undifferentiated row.
     const rows = await this.retailSaleLines
       .createQueryBuilder("l")
       .innerJoin(RetailSale, "s", 's.id = l."saleId"')
-      .select('l."variantId"', "variantId")
+      .select('COALESCE(l."variantId", l."bundleId")', "variantId")
       .addSelect('l."nameSnapshot"', "productName")
       .addSelect('l."skuSnapshot"', "sku")
       .addSelect("SUM(l.quantity)::int", "unitsSold")
@@ -485,7 +489,7 @@ export class ReportsService {
       .where('s."tenantId" = :tenantId', { tenantId })
       .andWhere('s."createdAt" >= :startUtc', window)
       .andWhere('s."createdAt" < :endUtc', window)
-      .groupBy('l."variantId"')
+      .groupBy('COALESCE(l."variantId", l."bundleId")')
       .addGroupBy('l."nameSnapshot"')
       .addGroupBy('l."skuSnapshot"')
       .orderBy("5", "DESC")
@@ -493,7 +497,7 @@ export class ReportsService {
       .getRawMany<{
         variantId: string | null;
         productName: string;
-        sku: string;
+        sku: string | null;
         unitsSold: number;
         revenueCents: number;
         costCents: number;

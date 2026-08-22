@@ -3,14 +3,18 @@ import { PaymentMethod } from "@salon/shared";
 import { RetailSaleService } from "./retail-sale.service";
 import { Payment } from "../entities/payment.entity";
 import type { Product } from "../entities/product.entity";
+import type { ProductBundle } from "../entities/product-bundle.entity";
+import type { ProductBundleComponent } from "../entities/product-bundle-component.entity";
 import type { ProductVariant } from "../entities/product-variant.entity";
 import { RetailSale } from "../entities/retail-sale.entity";
 import { RetailSaleLine } from "../entities/retail-sale-line.entity";
 import { RetailSaleLineBatch } from "../entities/retail-sale-line-batch.entity";
+import { RetailReturnLine } from "../entities/retail-return-line.entity";
 import { StockBatch } from "../entities/stock-batch.entity";
 import type { Tenant } from "../entities/tenant.entity";
 import type { StockMutationService } from "../inventory/stock-mutation.service";
 import type { CustomerService } from "../customer/customer.service";
+import type { BundleService } from "../bundle/bundle.service";
 import type { AuditService } from "../audit/audit.service";
 
 function mockRepo<T extends ObjectLiteral>() {
@@ -56,6 +60,7 @@ describe("RetailSaleService", () => {
   let dataSource: DataSource;
   let customers: CustomerService;
   let stockMutation: StockMutationService;
+  let bundles: BundleService;
   let audit: AuditService;
   let service: RetailSaleService;
 
@@ -115,10 +120,14 @@ describe("RetailSaleService", () => {
       save: vi.fn(async (e: RetailSaleLineBatch) => e),
     } as unknown as Repository<RetailSaleLineBatch>;
 
-    stockBatchGetMany = vi.fn(async () => []);
+    let lastBatchQueryVariantId: string | undefined;
+    stockBatchGetMany = vi.fn(async () => batchesByVariant.get(lastBatchQueryVariantId ?? "variant-1") ?? []);
     const stockBatchQueryBuilder = {
       setLock: vi.fn().mockReturnThis(),
-      where: vi.fn().mockReturnThis(),
+      where: vi.fn((_sql: string, params?: { variantId?: string }) => {
+        lastBatchQueryVariantId = params?.variantId;
+        return stockBatchQueryBuilder;
+      }),
       orderBy: vi.fn().mockReturnThis(),
       addOrderBy: vi.fn().mockReturnThis(),
       getMany: stockBatchGetMany,
@@ -128,6 +137,17 @@ describe("RetailSaleService", () => {
       createQueryBuilder: vi.fn(() => stockBatchQueryBuilder),
     } as unknown as Repository<StockBatch>;
 
+    const returnLineQueryBuilder = {
+      select: vi.fn().mockReturnThis(),
+      addSelect: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      groupBy: vi.fn().mockReturnThis(),
+      getRawMany: vi.fn(async () => [] as Array<{ saleLineId: string; quantity: number }>),
+    };
+    const returnLineRepo = {
+      createQueryBuilder: vi.fn(() => returnLineQueryBuilder),
+    } as unknown as Repository<RetailReturnLine>;
+
     const manager = {
       getRepository: (entity: unknown) => {
         if (entity === Payment) return paymentRepo;
@@ -135,6 +155,7 @@ describe("RetailSaleService", () => {
         if (entity === RetailSaleLine) return lineRepo;
         if (entity === RetailSaleLineBatch) return lineBatchRepo;
         if (entity === StockBatch) return batchRepo;
+        if (entity === RetailReturnLine) return returnLineRepo;
         throw new Error("unexpected entity in test manager");
       },
     } as unknown as EntityManager;
@@ -163,12 +184,9 @@ describe("RetailSaleService", () => {
     } as unknown as StockMutationService;
 
     audit = { record: vi.fn() } as unknown as AuditService;
+    bundles = { getSellableBundleWithComponents: vi.fn() } as unknown as BundleService;
 
-    service = new RetailSaleService(dataSource, productsRepo, salesRepo, customers, stockMutation, audit);
-
-    // getMany() returns whatever this variant's registered batches are, sorted
-    // as a real FIFO-by-expiry-then-receipt query would already return them.
-    stockBatchGetMany.mockImplementation(async () => batchesByVariant.get("variant-1") ?? []);
+    service = new RetailSaleService(dataSource, productsRepo, salesRepo, customers, stockMutation, bundles, audit);
   });
 
   function checkoutDto(overrides: Partial<{ lines: Array<{ variantId: string; quantity: number }> }> = {}) {
@@ -280,5 +298,87 @@ describe("RetailSaleService", () => {
     expect(view.id).toBe("sale-existing");
     expect(stockMutation.lockVariant).not.toHaveBeenCalled();
     expect(customers.findOrCreateWalkIn).not.toHaveBeenCalled();
+  });
+
+  describe("bundle lines", () => {
+    function fakeBundleData(): { bundle: ProductBundle; components: ProductBundleComponent[] } {
+      return {
+        bundle: { id: "bundle-1", tenantId: "tenant-1", name: "Gift Set", priceCents: 2000, active: true } as ProductBundle,
+        components: [
+          { id: "c1", bundleId: "bundle-1", variantId: "variant-1", quantityPerBundle: 1 },
+          { id: "c2", bundleId: "bundle-1", variantId: "variant-2", quantityPerBundle: 2 },
+        ] as ProductBundleComponent[],
+      };
+    }
+
+    beforeEach(() => {
+      variantsById.set("variant-2", fakeVariant({ id: "variant-2", sku: "COND-400", priceCents: 800, weightedAvgCostCents: 400 }));
+      batchesByVariant.set("variant-2", [fakeBatch({ id: "batch-cond", variantId: "variant-2", quantityRemaining: 20 })]);
+      vi.mocked(bundles.getSellableBundleWithComponents).mockResolvedValue(fakeBundleData());
+    });
+
+    it("rejects a cart line with both variantId and bundleId", async () => {
+      await expect(
+        service.checkout(fakeTenant(), { lines: [{ variantId: "variant-1", bundleId: "bundle-1", quantity: 1 }], paymentMethod: PaymentMethod.CASH }, "user-1", "idem-b1"),
+      ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    });
+
+    it("rejects a cart line with neither variantId nor bundleId", async () => {
+      await expect(
+        service.checkout(fakeTenant(), { lines: [{ quantity: 1 }], paymentMethod: PaymentMethod.CASH }, "user-1", "idem-b2"),
+      ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    });
+
+    it("sells a bundle as one aggregate line, priced at the bundle's price and costed across its components", async () => {
+      const view = await service.checkout(
+        fakeTenant(),
+        { lines: [{ bundleId: "bundle-1", quantity: 2 }], paymentMethod: PaymentMethod.CASH },
+        "user-1",
+        "idem-b3",
+      );
+
+      expect(view.lines).toHaveLength(1);
+      expect(view.lines[0].bundleId).toBe("bundle-1");
+      expect(view.lines[0].variantId).toBeNull();
+      expect(view.lines[0].skuSnapshot).toBeNull();
+      // Cost per bundle: variant-1 (900 * 1) + variant-2 (400 * 2) = 1700.
+      expect(view.lines[0].unitCostCentsSnapshot).toBe(1700);
+      // 2 bundles at Rs 2000 each.
+      expect(view.totalCents).toBe(4000);
+    });
+
+    it("draws stock from every component variant, in quantityPerBundle * bundle quantity", async () => {
+      await service.checkout(fakeTenant(), { lines: [{ bundleId: "bundle-1", quantity: 3 }], paymentMethod: PaymentMethod.CASH }, "user-1", "idem-b4");
+
+      const movementCalls = vi.mocked(stockMutation.applyMovement).mock.calls.map((c) => c[1]);
+      expect(movementCalls).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ variantId: "variant-1", quantityDelta: -3 }), // 1 per bundle * 3
+          expect.objectContaining({ variantId: "variant-2", quantityDelta: -6 }), // 2 per bundle * 3
+        ]),
+      );
+    });
+
+    it("locks every touched variant — direct lines and every bundle component — in one sorted order", async () => {
+      await service.checkout(
+        fakeTenant(),
+        { lines: [{ bundleId: "bundle-1", quantity: 1 }], paymentMethod: PaymentMethod.CASH },
+        "user-1",
+        "idem-b5",
+      );
+
+      const lockedIds = vi.mocked(stockMutation.lockVariant).mock.calls.map((c) => c[2]);
+      expect(lockedIds).toEqual([...lockedIds].sort());
+      expect(lockedIds).toEqual(expect.arrayContaining(["variant-1", "variant-2"]));
+    });
+
+    it("refuses to sell an inactive bundle", async () => {
+      vi.mocked(bundles.getSellableBundleWithComponents).mockRejectedValueOnce(
+        Object.assign(new Error("not found"), { statusCode: 404, code: "PRODUCT_BUNDLE_NOT_FOUND" }),
+      );
+      await expect(
+        service.checkout(fakeTenant(), { lines: [{ bundleId: "bundle-1", quantity: 1 }], paymentMethod: PaymentMethod.CASH }, "user-1", "idem-b6"),
+      ).rejects.toMatchObject({ code: "PRODUCT_BUNDLE_NOT_FOUND" });
+    });
   });
 });
