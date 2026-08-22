@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Req } from "@nestjs/common";
+import { Controller, Get, Param, Query, Req } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 // VariantLookupQueryDto must stay a VALUE import: ValidationPipe resolves it
@@ -33,5 +33,13 @@ export class ProductVariantController {
   lookup(@Req() req: Request, @Query() query: VariantLookupQueryDto) {
     const ctx = getTenantContext(req);
     return this.productService.lookupVariants(ctx.tenantId, query);
+  }
+
+  /** Active lots/serials for one variant, oldest-expiring first — feeds the Adjust Stock drawer's "specific batch" picker. */
+  @Get(":id/batches")
+  @Permissions(Permission.MANAGE_INVENTORY)
+  listBatches(@Req() req: Request, @Param("id") id: string) {
+    const ctx = getTenantContext(req);
+    return this.productService.listActiveBatches(ctx.tenantId, id);
   }
 }

@@ -34,6 +34,7 @@ const MODULE_ROWS: Array<{ key: keyof ModuleOverridesInput; name: string; desc: 
   { key: "reports", name: "Reports", desc: "The page itself — on lets you pick which panels below" },
   { key: "auditLog", name: "Audit log", desc: "Who changed what, and when" },
   { key: "invoices", name: "Invoices", desc: "Branded, numbered documents" },
+  { key: "inventory", name: "Retail inventory", desc: "Products, stock, Quick Sale checkout" },
 ];
 
 const REPORT_PANEL_ROWS: Array<{ key: keyof ReportPanelOverridesInput; name: string }> = [
@@ -44,6 +45,7 @@ const REPORT_PANEL_ROWS: Array<{ key: keyof ReportPanelOverridesInput; name: str
   { key: "lapsedCustomers", name: "Lapsed customers" },
   { key: "customerSpend", name: "Customer spend" },
   { key: "funnelLosses", name: "Funnel & losses" },
+  { key: "productSales", name: "Product sales & margin" },
 ];
 
 const SEAT_LIMIT_ROWS: Array<{ key: keyof LimitOverridesInput; label: string }> = [

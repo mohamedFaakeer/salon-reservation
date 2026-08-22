@@ -8,6 +8,7 @@ import {
   canManageCustomers,
   canManageGiftCards,
   canManageIncentives,
+  canManageInventory,
   canManageNotifications,
   canManageServicePackages,
   canManageServices,
@@ -15,6 +16,7 @@ import {
   canManageStaff,
   canManageTeam,
   canRecordAttendance,
+  canRecordPayment,
   canViewAudit,
   canViewDashboard,
   canViewReports,
@@ -116,6 +118,47 @@ const GROUPS: NavGroup[] = [
           <Icon>
             <circle cx="8" cy="8" r="6" {...stroke} />
             <path d="M8 4.6V8l2.6 1.6" {...stroke} />
+          </Icon>
+        ),
+      },
+    ],
+  },
+  {
+    label: "Retail",
+    items: [
+      {
+        href: "/quick-sale",
+        label: "Quick Sale",
+        visible: (roles) => canManageInventory(roles) || canRecordPayment(roles),
+        module: "inventory",
+        icon: (
+          <Icon>
+            <circle cx="6" cy="13.5" r="1.1" {...stroke} />
+            <circle cx="11.5" cy="13.5" r="1.1" {...stroke} />
+            <path d="M1.5 2h1.6l1.4 8.2a1.4 1.4 0 0 0 1.4 1.2h5.6a1.4 1.4 0 0 0 1.4-1.15l.9-5.05H4" {...stroke} />
+          </Icon>
+        ),
+      },
+      {
+        href: "/products",
+        label: "Products",
+        visible: canManageInventory,
+        module: "inventory",
+        icon: (
+          <Icon>
+            <path d="M2 4.8 8 2l6 2.8M2 4.8v6.4L8 14l6-2.8V4.8M2 4.8 8 7.6l6-2.8M8 7.6V14" {...stroke} />
+          </Icon>
+        ),
+      },
+      {
+        href: "/stock",
+        label: "Stock",
+        visible: canManageInventory,
+        module: "inventory",
+        icon: (
+          <Icon>
+            <rect x="2" y="6.5" width="12" height="7" rx="1.2" {...stroke} />
+            <path d="M2 9.5h12M5.5 6.5v-1.8a2.5 2.5 0 0 1 5 0v1.8" {...stroke} />
           </Icon>
         ),
       },

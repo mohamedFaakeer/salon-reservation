@@ -13,6 +13,7 @@ import { ServicesPanel } from "../../../components/reports/services-panel";
 import { BusyHoursPanel } from "../../../components/reports/busy-hours-panel";
 import { CustomersPanel, LapsedPanel } from "../../../components/reports/customers-panel";
 import { FunnelPanel } from "../../../components/reports/funnel-panel";
+import { ProductSalesPanel } from "../../../components/reports/product-sales-panel";
 import { formatDateRange } from "../../../lib/format";
 import { ModuleGate } from "../../../components/module-gate";
 
@@ -109,6 +110,7 @@ function ReportsPage() {
           <LapsedPanel rows={report.lapsedCustomers} />
           <CustomersPanel data={report.customerSpend} />
           <FunnelPanel data={report.funnelLosses} />
+          <ProductSalesPanel data={report.productSales} />
         </div>
       )}
     </div>

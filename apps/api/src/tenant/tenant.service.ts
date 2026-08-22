@@ -24,7 +24,7 @@ import type { TenantContextData } from "./tenant-context";
 // erase it and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { CloudinaryService } from "../cloudinary/cloudinary.service";
-import { detectImage } from "./logo-image.util";
+import { detectImage } from "../common/image.util";
 
 const LOGO_MAX_BYTES = 1_000_000;
 const LOGO_MIN_DIMENSION = 200;

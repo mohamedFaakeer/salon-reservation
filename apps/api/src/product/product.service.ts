@@ -7,6 +7,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { ILike, Repository } from "typeorm";
 import {
   ApiError,
+  StockBatchStatus,
   type CreateProductDto,
   type CreateProductVariantDto,
   type ProductQueryDto,
@@ -16,10 +17,14 @@ import {
 } from "@salon/shared";
 import { Product } from "../entities/product.entity";
 import { ProductVariant } from "../entities/product-variant.entity";
+import { StockBatch } from "../entities/stock-batch.entity";
 import { isUniqueViolation } from "../common/postgres-errors.util";
-// AuditService must stay a VALUE import: NestJS resolves constructor
-// injection via design:paramtypes metadata at runtime; `import type` would
-// erase it and break DI.
+import { detectImage } from "../common/image.util";
+// CloudinaryService/AuditService must stay VALUE imports: NestJS resolves
+// constructor injection via design:paramtypes metadata at runtime; `import
+// type` would erase them and break DI.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { CloudinaryService } from "../cloudinary/cloudinary.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { AuditService } from "../audit/audit.service";
 
@@ -34,6 +39,17 @@ export interface VariantListResult {
 }
 
 /**
+ * A little more generous than a logo's (CLAUDE.md §35.2 area): product
+ * photography is real merchandise, not a brand mark, so a wider aspect
+ * ratio and a larger byte ceiling are reasonable without inviting banner-
+ * sized uploads.
+ */
+const PRODUCT_IMAGE_MAX_BYTES = 2_000_000;
+const PRODUCT_IMAGE_MIN_DIMENSION = 200;
+const PRODUCT_IMAGE_MAX_DIMENSION = 4000;
+const PRODUCT_IMAGE_MAX_ASPECT_RATIO = 3;
+
+/**
  * Products/Stock "back office" reads and writes — everything gated by
  * MANAGE_INVENTORY. Stock levels themselves are never touched here: they
  * move only through `StockReceiptService`/`InventoryAdjustmentService`/
@@ -44,6 +60,8 @@ export class ProductService {
   constructor(
     @InjectRepository(Product) private readonly products: Repository<Product>,
     @InjectRepository(ProductVariant) private readonly variants: Repository<ProductVariant>,
+    @InjectRepository(StockBatch) private readonly batches: Repository<StockBatch>,
+    private readonly cloudinary: CloudinaryService,
     private readonly audit: AuditService,
   ) {}
 
@@ -241,5 +259,96 @@ export class ProductService {
 
     const [data, total] = await qb.getManyAndCount();
     return { data, meta: { total, limit: query.limit, offset: query.offset } };
+  }
+
+  /**
+   * Active lots/serials for one variant, oldest-expiring first — exactly the
+   * FIFO order `RetailSaleService.allocateBatches` sells against. Used to
+   * populate the "adjust a specific batch" picker so a correction on a
+   * tracked product still lands on a real batch, keeping
+   * `quantityOnHand` in step with `sum(batch.quantityRemaining)`.
+   */
+  async listActiveBatches(tenantId: string, variantId: string): Promise<StockBatch[]> {
+    await this.findOwnedVariantById(tenantId, variantId);
+    return this.batches.find({
+      where: { tenantId, variantId, status: StockBatchStatus.ACTIVE },
+      order: { expiresAt: "ASC", createdAt: "ASC" },
+    });
+  }
+
+  async uploadImage(tenantId: string, id: string, buffer: Buffer): Promise<Product> {
+    this.assertImageValid(buffer);
+    const product = await this.findOwned(tenantId, id);
+    const imageUrl = await this.cloudinary.uploadProductImage(buffer, `product-images/${tenantId}/products`);
+    product.imageUrl = imageUrl;
+    return this.products.save(product);
+  }
+
+  /** No Cloudinary-side delete — an orphaned free-tier asset is an accepted, documented gap, same as a tenant logo. */
+  async removeImage(tenantId: string, id: string): Promise<Product> {
+    const product = await this.findOwned(tenantId, id);
+    product.imageUrl = null;
+    return this.products.save(product);
+  }
+
+  async uploadVariantImage(tenantId: string, productId: string, variantId: string, buffer: Buffer): Promise<ProductVariant> {
+    this.assertImageValid(buffer);
+    const variant = await this.findOwnedVariant(tenantId, productId, variantId);
+    const imageUrl = await this.cloudinary.uploadProductImage(buffer, `product-images/${tenantId}/variants`);
+    variant.imageUrl = imageUrl;
+    return this.variants.save(variant);
+  }
+
+  async removeVariantImage(tenantId: string, productId: string, variantId: string): Promise<ProductVariant> {
+    const variant = await this.findOwnedVariant(tenantId, productId, variantId);
+    variant.imageUrl = null;
+    return this.variants.save(variant);
+  }
+
+  private assertImageValid(buffer: Buffer): void {
+    if (buffer.byteLength > PRODUCT_IMAGE_MAX_BYTES) {
+      throw new ApiError({
+        statusCode: 400,
+        code: "PRODUCT_IMAGE_FILE_TOO_LARGE",
+        message: `That file is too large — the limit is ${PRODUCT_IMAGE_MAX_BYTES / 1_000_000} MB.`,
+      });
+    }
+    const detected = detectImage(buffer);
+    if (!detected) {
+      throw new ApiError({
+        statusCode: 400,
+        code: "PRODUCT_IMAGE_INVALID_FILE_TYPE",
+        message: "That isn't a PNG, JPEG or WebP image.",
+      });
+    }
+    const { width, height } = detected;
+    if (
+      width < PRODUCT_IMAGE_MIN_DIMENSION ||
+      height < PRODUCT_IMAGE_MIN_DIMENSION ||
+      width > PRODUCT_IMAGE_MAX_DIMENSION ||
+      height > PRODUCT_IMAGE_MAX_DIMENSION
+    ) {
+      throw new ApiError({
+        statusCode: 400,
+        code: "PRODUCT_IMAGE_DIMENSIONS_OUT_OF_RANGE",
+        message: `Image dimensions must be between ${PRODUCT_IMAGE_MIN_DIMENSION}×${PRODUCT_IMAGE_MIN_DIMENSION} and ${PRODUCT_IMAGE_MAX_DIMENSION}×${PRODUCT_IMAGE_MAX_DIMENSION}px.`,
+      });
+    }
+    const ratio = width / height;
+    if (ratio > PRODUCT_IMAGE_MAX_ASPECT_RATIO || ratio < 1 / PRODUCT_IMAGE_MAX_ASPECT_RATIO) {
+      throw new ApiError({
+        statusCode: 400,
+        code: "PRODUCT_IMAGE_ASPECT_RATIO_INVALID",
+        message: `That's an unusually elongated shape for a product photo — keep it within ${PRODUCT_IMAGE_MAX_ASPECT_RATIO}:1.`,
+      });
+    }
+  }
+
+  private async findOwnedVariantById(tenantId: string, variantId: string): Promise<ProductVariant> {
+    const variant = await this.variants.findOne({ where: { tenantId, id: variantId } });
+    if (!variant) {
+      throw new ApiError({ statusCode: 404, code: "PRODUCT_VARIANT_NOT_FOUND", message: "Variant not found." });
+    }
+    return variant;
   }
 }

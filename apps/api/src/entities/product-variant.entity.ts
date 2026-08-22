@@ -59,6 +59,10 @@ export class ProductVariant {
   @Column({ type: "jsonb", default: () => "'{}'" })
   attributes!: Record<string, string>;
 
+  /** Optional — falls back to the parent product's image when unset. Same real-HTTPS-URL rule as `Product.imageUrl`. */
+  @Column({ type: "varchar", length: 500, nullable: true })
+  imageUrl!: string | null;
+
   @Column({ type: "int" })
   priceCents!: number;
 

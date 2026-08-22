@@ -56,6 +56,14 @@ const BY_CODE: Record<string, ErrorCopy> = {
     title: "Too many attempts",
     detail: "Wait about a minute, then try again.",
   },
+  INSUFFICIENT_STOCK: {
+    title: "Not enough stock for this cart",
+    detail: "Someone else may have just sold the last of it. Adjust the quantity, or check Stock for what's really on hand.",
+  },
+  DUPLICATE_SKU_OR_BARCODE: {
+    title: "That SKU or barcode is already in use",
+    detail: "Pick a different one — each has to be unique across the salon's products.",
+  },
 };
 
 export function errorCopy(err: unknown): ErrorCopy {

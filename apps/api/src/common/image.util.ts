@@ -10,6 +10,9 @@
  * type check — multer's reported `mimetype` is client-supplied and proves
  * nothing on its own.
  *
+ * Shared by every image upload in this codebase (tenant logos, product and
+ * product-variant photos) — not `tenant`-specific despite its origin there.
+ *
  * Returns `null` for anything that isn't a well-formed PNG, JPEG or WebP —
  * callers must treat that as rejection, not as "unknown, allow it".
  */

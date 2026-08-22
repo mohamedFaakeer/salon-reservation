@@ -118,6 +118,11 @@ export function canSendMarketingCampaign(roles: string[]): boolean {
   return roles.some((r) => r === "OWNER" || r === "MANAGER");
 }
 
+/** Mirrors MANAGE_INVENTORY (OWNER, MANAGER only) — the retail back office: products, stock, receipts, adjustments. Ringing up a sale is `canRecordPayment` instead. */
+export function canManageInventory(roles: string[]): boolean {
+  return roles.some((r) => r === "OWNER" || r === "MANAGER");
+}
+
 /**
  * STAFF holding only that one role — a stylist with no elevated grant at this
  * salon. Used to route a login toward the floor kiosk instead of the desk
@@ -146,6 +151,7 @@ export const MODULES: Array<{ label: string; can: (roles: string[]) => boolean }
   { label: "Incentives", can: canManageIncentives },
   { label: "Gift cards", can: canManageGiftCards },
   { label: "Service packages", can: canManageServicePackages },
+  { label: "Retail inventory", can: canManageInventory },
   { label: "Settings", can: canManageSettings },
   { label: "Reports", can: canViewReports },
   { label: "Audit", can: canViewAudit },

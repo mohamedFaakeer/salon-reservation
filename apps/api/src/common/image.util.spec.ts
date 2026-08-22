@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectImage } from "./logo-image.util";
+import { detectImage } from "./image.util";
 
 function pngBuffer(width: number, height: number): Buffer {
   const buf = Buffer.alloc(24);

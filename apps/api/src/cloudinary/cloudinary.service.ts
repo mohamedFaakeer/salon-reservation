@@ -34,11 +34,37 @@ export class CloudinaryService {
    * into every surface that renders it starts here.
    */
   async uploadLogo(buffer: Buffer, folder: string): Promise<string> {
+    return this.upload(buffer, folder, "LOGO_UPLOAD_NOT_CONFIGURED", "LOGO_UPLOAD_FAILED", "Couldn't upload the logo right now. Please try again.");
+  }
+
+  /**
+   * Uploads a pre-validated image buffer as a product or product-variant
+   * photo — same square-pad transformation as a logo (every render site
+   * already assumes `object-fit: contain` inside a fixed box), a separate
+   * error code pair so a failure reads as "the photo" not "the logo".
+   */
+  async uploadProductImage(buffer: Buffer, folder: string): Promise<string> {
+    return this.upload(
+      buffer,
+      folder,
+      "PRODUCT_IMAGE_UPLOAD_NOT_CONFIGURED",
+      "PRODUCT_IMAGE_UPLOAD_FAILED",
+      "Couldn't upload the photo right now. Please try again.",
+    );
+  }
+
+  private async upload(
+    buffer: Buffer,
+    folder: string,
+    notConfiguredCode: string,
+    failedCode: string,
+    failedMessage: string,
+  ): Promise<string> {
     if (!this.configured) {
       throw new ApiError({
         statusCode: 503,
-        code: "LOGO_UPLOAD_NOT_CONFIGURED",
-        message: "Logo uploads aren't configured for this environment.",
+        code: notConfiguredCode,
+        message: "Image uploads aren't configured for this environment.",
       });
     }
 
@@ -61,8 +87,8 @@ export class CloudinaryService {
     }).catch((error: unknown) => {
       throw new ApiError({
         statusCode: 502,
-        code: "LOGO_UPLOAD_FAILED",
-        message: "Couldn't upload the logo right now. Please try again.",
+        code: failedCode,
+        message: failedMessage,
         details: { cause: error instanceof Error ? error.message : String(error) },
       });
     });

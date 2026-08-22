@@ -19,7 +19,7 @@ export interface LoginResponse {
   user: AuthUser;
 }
 
-export type ModuleKey = "attendance" | "incentives" | "reports" | "auditLog" | "invoices";
+export type ModuleKey = "attendance" | "incentives" | "reports" | "auditLog" | "invoices" | "inventory";
 export type ReportPanelKey =
   | "takings"
   | "staff"
@@ -27,7 +27,8 @@ export type ReportPanelKey =
   | "busyHours"
   | "lapsedCustomers"
   | "customerSpend"
-  | "funnelLosses";
+  | "funnelLosses"
+  | "productSales";
 
 export interface TenantMe {
   tenant: {
@@ -1072,6 +1073,7 @@ export interface ModuleOverridesInput {
   reports?: boolean;
   auditLog?: boolean;
   invoices?: boolean;
+  inventory?: boolean;
 }
 
 export interface ReportPanelOverridesInput {
@@ -1082,6 +1084,7 @@ export interface ReportPanelOverridesInput {
   lapsedCustomers?: boolean;
   customerSpend?: boolean;
   funnelLosses?: boolean;
+  productSales?: boolean;
 }
 
 export interface LimitOverridesInput {
@@ -1323,8 +1326,25 @@ export interface TakingsLossSummary {
   lostRevenueCents: number;
 }
 
+export interface ProductSalesRow {
+  variantId: string;
+  productName: string;
+  sku: string;
+  unitsSold: number;
+  revenueCents: number;
+  costCents: number;
+  marginCents: number;
+}
+
+export interface ProductSalesReport {
+  totalRevenueCents: number;
+  totalCostCents: number;
+  totalMarginCents: number;
+  byProduct: ProductSalesRow[];
+}
+
 /**
- * Each field is one of the seven report panels, and `null` means it's locked
+ * Each field is one of the eight report panels, and `null` means it's locked
  * on this salon's plan — never "empty this period". The server never sends
  * real numbers for a locked panel in the first place (see `ReportsService`).
  */
@@ -1337,6 +1357,7 @@ export interface ReportsSummary {
   lapsedCustomers: LapsedCustomerRow[] | null;
   customerSpend: { topSpenders: CustomerSpendRow[]; frequent: CustomerSpendRow[] } | null;
   funnelLosses: { funnel: FunnelReport; losses: LossReport } | null;
+  productSales: ProductSalesReport | null;
 }
 
 export function fetchReports(range: { from: string; to: string }): Promise<ReportsSummary> {
@@ -1950,4 +1971,284 @@ export function sendWinbackCampaign(input: {
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+/* -----------------------------------------------------------------------
+ * Inventory + Quick Billing — products, variants, stock, retail checkout.
+ * ------------------------------------------------------------------ */
+
+export interface ProductRecord {
+  id: string;
+  name: string;
+  category: string | null;
+  brand: string | null;
+  description: string | null;
+  imageUrl: string | null;
+  tracksExpiry: boolean;
+  trackSerial: boolean;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductVariantRecord {
+  id: string;
+  productId: string;
+  sku: string;
+  barcode: string | null;
+  attributes: Record<string, string>;
+  imageUrl: string | null;
+  priceCents: number;
+  weightedAvgCostCents: number;
+  quantityOnHand: number;
+  reorderPoint: number | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** Joined in on `GET /product-variants` (search/browse); absent from a product's own nested variant list. */
+  product?: { id: string; name: string; imageUrl: string | null; tracksExpiry: boolean; trackSerial: boolean };
+}
+
+export interface StockBatchRecord {
+  id: string;
+  variantId: string;
+  lotCode: string | null;
+  expiresAt: string | null;
+  serialNumber: string | null;
+  unitCostCents: number;
+  quantityReceived: number;
+  quantityRemaining: number;
+  status: "ACTIVE" | "DEPLETED" | "QUARANTINED" | "WRITTEN_OFF";
+  createdAt: string;
+}
+
+export interface ProductListResult {
+  data: ProductRecord[];
+  meta: { total: number; limit: number; offset: number };
+}
+
+export interface VariantListResult {
+  data: ProductVariantRecord[];
+  meta: { total: number; limit: number; offset: number };
+}
+
+export interface ProductDetail {
+  product: ProductRecord;
+  variants: ProductVariantRecord[];
+}
+
+export function fetchProducts(
+  params: { q?: string; includeInactive?: boolean; limit?: number; offset?: number } = {},
+): Promise<ProductListResult> {
+  const qs = new URLSearchParams();
+  if (params.q) qs.set("q", params.q);
+  if (params.includeInactive) qs.set("includeInactive", "true");
+  if (params.limit) qs.set("limit", String(params.limit));
+  if (params.offset) qs.set("offset", String(params.offset));
+  return request<ProductListResult>(`/products?${qs.toString()}`);
+}
+
+export function fetchProduct(id: string): Promise<ProductDetail> {
+  return request<ProductDetail>(`/products/${id}`);
+}
+
+export interface CreateProductInput {
+  name: string;
+  category?: string;
+  brand?: string;
+  description?: string;
+  tracksExpiry?: boolean;
+  trackSerial?: boolean;
+}
+
+export function createProduct(input: CreateProductInput): Promise<ProductRecord> {
+  return request<ProductRecord>("/products", { method: "POST", body: JSON.stringify(input) });
+}
+
+export interface UpdateProductInput extends Partial<CreateProductInput> {
+  active?: boolean;
+}
+
+export function updateProduct(id: string, input: UpdateProductInput): Promise<ProductRecord> {
+  return request<ProductRecord>(`/products/${id}`, { method: "PATCH", body: JSON.stringify(input) });
+}
+
+export interface CreateVariantInput {
+  sku: string;
+  barcode?: string;
+  attributes?: Record<string, string>;
+  priceCents: number;
+  reorderPoint?: number;
+}
+
+export function createVariant(productId: string, input: CreateVariantInput): Promise<ProductVariantRecord> {
+  return request<ProductVariantRecord>(`/products/${productId}/variants`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export interface UpdateVariantInput extends Partial<CreateVariantInput> {
+  active?: boolean;
+}
+
+export function updateVariant(
+  productId: string,
+  variantId: string,
+  input: UpdateVariantInput,
+): Promise<ProductVariantRecord> {
+  return request<ProductVariantRecord>(`/products/${productId}/variants/${variantId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+/** `GET /product-variants` — the lookup both the Stock list and the Quick Sale search hit. */
+export function fetchVariants(
+  params: { q?: string; barcode?: string; lowStockOnly?: boolean; limit?: number; offset?: number } = {},
+): Promise<VariantListResult> {
+  const qs = new URLSearchParams();
+  if (params.q) qs.set("q", params.q);
+  if (params.barcode) qs.set("barcode", params.barcode);
+  if (params.lowStockOnly) qs.set("lowStockOnly", "true");
+  if (params.limit) qs.set("limit", String(params.limit));
+  if (params.offset) qs.set("offset", String(params.offset));
+  return request<VariantListResult>(`/product-variants?${qs.toString()}`);
+}
+
+export function fetchVariantBatches(variantId: string): Promise<StockBatchRecord[]> {
+  return request<StockBatchRecord[]>(`/product-variants/${variantId}/batches`);
+}
+
+/** Multipart uploads deliberately bypass `request()` — see `uploadTenantLogo`'s own comment for why. */
+async function uploadImageFile<T>(path: string, file: File): Promise<T> {
+  const form = new FormData();
+  form.append("file", file);
+  const headers: Record<string, string> = {};
+  if (currentToken) {
+    headers.Authorization = `Bearer ${currentToken}`;
+  }
+  const res = await fetch(`${apiBaseUrl()}${path}`, { method: "POST", headers, body: form, cache: "no-store" });
+  if (res.status === 401) {
+    unauthorizedHandler?.();
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}) as { code?: string; message?: string });
+    throw new ApiRequestError(res.status, body.code ?? "UNKNOWN_ERROR", body.message ?? "Something went wrong. Please try again.");
+  }
+  return (await res.json()) as T;
+}
+
+export function uploadProductImage(productId: string, file: File): Promise<ProductRecord> {
+  return uploadImageFile<ProductRecord>(`/products/${productId}/image`, file);
+}
+
+export function removeProductImage(productId: string): Promise<ProductRecord> {
+  return request<ProductRecord>(`/products/${productId}/image`, { method: "DELETE" });
+}
+
+export function uploadVariantImage(productId: string, variantId: string, file: File): Promise<ProductVariantRecord> {
+  return uploadImageFile<ProductVariantRecord>(`/products/${productId}/variants/${variantId}/image`, file);
+}
+
+export function removeVariantImage(productId: string, variantId: string): Promise<ProductVariantRecord> {
+  return request<ProductVariantRecord>(`/products/${productId}/variants/${variantId}/image`, { method: "DELETE" });
+}
+
+export interface StockReceiptBatchInput {
+  variantId: string;
+  quantity: number;
+  unitCostCents: number;
+  lotCode?: string;
+  expiresAt?: string;
+  serialNumber?: string;
+}
+
+export interface CreateStockReceiptInput {
+  supplierName?: string;
+  referenceNote?: string;
+  batches: StockReceiptBatchInput[];
+}
+
+export interface StockReceiptRecord {
+  id: string;
+  supplierName: string | null;
+  referenceNote: string | null;
+  receivedAt: string;
+  totalCostCents: number;
+  createdAt: string;
+}
+
+export function receiveStock(input: CreateStockReceiptInput): Promise<StockReceiptRecord> {
+  return request<StockReceiptRecord>("/inventory/receipts", { method: "POST", body: JSON.stringify(input) });
+}
+
+export type StockAdjustmentType = "ADJUSTMENT" | "WRITE_OFF";
+
+export interface CreateStockAdjustmentInput {
+  variantId: string;
+  batchId?: string;
+  quantityDelta: number;
+  type: StockAdjustmentType;
+  reason: string;
+}
+
+export function adjustStock(input: CreateStockAdjustmentInput): Promise<ProductVariantRecord> {
+  return request<ProductVariantRecord>("/inventory/adjustments", { method: "POST", body: JSON.stringify(input) });
+}
+
+export interface RetailSaleLineView {
+  id: string;
+  variantId: string | null;
+  nameSnapshot: string;
+  skuSnapshot: string;
+  quantity: number;
+  unitPriceCentsSnapshot: number;
+  unitCostCentsSnapshot: number;
+  lineTotalCents: number;
+}
+
+export interface RetailSaleView {
+  id: string;
+  customer: { id: string; name: string; phone: string; isWalkIn: boolean };
+  subtotalCents: number;
+  totalCents: number;
+  status: "COMPLETED" | "RETURNED" | "PARTIALLY_RETURNED";
+  soldByName: string | null;
+  paymentId: string | null;
+  lines: RetailSaleLineView[];
+  createdAt: string;
+}
+
+export interface RetailSaleListResult {
+  data: RetailSaleView[];
+  meta: { total: number; limit: number; offset: number };
+}
+
+export interface RetailSaleCheckoutInput {
+  lines: Array<{ variantId: string; quantity: number }>;
+  customer?: { firstName: string; lastName: string; phone: string; email?: string };
+  paymentMethod: PaymentMethod;
+}
+
+export function checkoutRetailSale(input: RetailSaleCheckoutInput, idempotencyKey: string): Promise<RetailSaleView> {
+  return request<RetailSaleView>("/retail-sales/checkout", {
+    method: "POST",
+    body: JSON.stringify(input),
+    idempotencyKey,
+  });
+}
+
+export function fetchRetailSales(
+  params: { q?: string; limit?: number; offset?: number } = {},
+): Promise<RetailSaleListResult> {
+  const qs = new URLSearchParams();
+  if (params.q) qs.set("q", params.q);
+  if (params.limit) qs.set("limit", String(params.limit));
+  if (params.offset) qs.set("offset", String(params.offset));
+  return request<RetailSaleListResult>(`/retail-sales?${qs.toString()}`);
+}
+
+export function fetchRetailSale(id: string): Promise<RetailSaleView> {
+  return request<RetailSaleView>(`/retail-sales/${id}`);
 }

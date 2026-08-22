@@ -46,6 +46,10 @@ export class Product {
   @Column({ type: "text", nullable: true })
   description!: string | null;
 
+  /** A real HTTPS URL (Cloudinary), same as `tenant.settings.logoUrl` — never a data: URI. Optional; a product with none renders a placeholder. */
+  @Column({ type: "varchar", length: 500, nullable: true })
+  imageUrl!: string | null;
+
   @Column({ type: "boolean", default: false })
   tracksExpiry!: boolean;
 

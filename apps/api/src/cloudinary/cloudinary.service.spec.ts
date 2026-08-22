@@ -67,4 +67,23 @@ describe("CloudinaryService", () => {
       code: "LOGO_UPLOAD_FAILED",
     });
   });
+
+  it("uploads a product image under its own error codes, distinct from the logo path", async () => {
+    const service = new CloudinaryService(fakeConfig({}));
+    await expect(service.uploadProductImage(Buffer.from("x"), "product-images/eagle")).rejects.toMatchObject({
+      statusCode: 503,
+      code: "PRODUCT_IMAGE_UPLOAD_NOT_CONFIGURED",
+    });
+
+    vi.mocked(cloudinary.uploader.upload_stream).mockImplementation(
+      fakeUploadStream((callback) =>
+        callback(undefined, { secure_url: "https://res.cloudinary.com/demo/product.png" } as UploadApiResponse),
+      ),
+    );
+    const configured = new CloudinaryService(
+      fakeConfig({ CLOUDINARY_CLOUD_NAME: "demo", CLOUDINARY_API_KEY: "key", CLOUDINARY_API_SECRET: "secret" }),
+    );
+    const url = await configured.uploadProductImage(Buffer.from("x"), "product-images/eagle");
+    expect(url).toBe("https://res.cloudinary.com/demo/product.png");
+  });
 });
