@@ -93,6 +93,11 @@ export class Payment {
   @Column({ type: "uuid", nullable: true })
   packageRedemptionId!: string | null;
 
+  /** Set only for a retail checkout — which sale this payment was recorded against. */
+  @Index()
+  @Column({ type: "uuid", nullable: true })
+  retailSaleId!: string | null;
+
   @CreateDateColumn({ type: "timestamptz" })
   createdAt!: Date;
 

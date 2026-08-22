@@ -50,6 +50,16 @@ export class Customer {
   @Column({ type: "boolean", default: false })
   marketingOptOut!: boolean;
 
+  /**
+   * The tenant's one lazily-created "Walk-in customer" row, used by retail
+   * checkout when no customer is attached. `Payment.customerId` stays
+   * NOT NULL rather than becoming nullable — see `CustomerService.findOrCreateWalkIn`.
+   * Every place that broadly enumerates customers (search, reports, win-back
+   * candidate selection) filters this flag out explicitly.
+   */
+  @Column({ type: "boolean", default: false })
+  isWalkInPlaceholder!: boolean;
+
   @CreateDateColumn({ type: "timestamptz" })
   createdAt!: Date;
 

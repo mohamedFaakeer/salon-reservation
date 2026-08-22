@@ -56,7 +56,10 @@ export class WinbackService {
       // An id that doesn't belong to this tenant (or doesn't exist) is
       // silently dropped rather than erroring the whole batch — the caller
       // only ever sends ids straight from their own report.
-      if (!customer) {
+      // The walk-in placeholder has no real phone/email and is never a lapsed
+      // customer in the ordinary sense — reject it the same as any other id
+      // that doesn't belong to this tenant, rather than trusting the caller.
+      if (!customer || customer.isWalkInPlaceholder) {
         continue;
       }
       if (customer.marketingOptOut) {

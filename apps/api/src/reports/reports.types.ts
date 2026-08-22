@@ -100,6 +100,25 @@ export interface LossReport {
   };
 }
 
+/** One variant's period: how much sold, for how much, against what it cost. */
+export interface ProductSalesRow {
+  variantId: string;
+  productName: string;
+  sku: string;
+  unitsSold: number;
+  revenueCents: number;
+  costCents: number;
+  marginCents: number;
+}
+
+export interface ProductSalesReport {
+  totalRevenueCents: number;
+  totalCostCents: number;
+  totalMarginCents: number;
+  /** Top movers by revenue in the range. */
+  byProduct: ProductSalesRow[];
+}
+
 /** The slice of `LossReport` the Takings panel actually reads — never the staff/hour/deposit breakdown, which belongs to the Funnel panel alone. */
 export interface TakingsLossSummary {
   noShows: number;
@@ -123,4 +142,5 @@ export interface ReportsSummary {
   lapsedCustomers: LapsedCustomerRow[] | null;
   customerSpend: { topSpenders: CustomerSpendRow[]; frequent: CustomerSpendRow[] } | null;
   funnelLosses: { funnel: FunnelReport; losses: LossReport } | null;
+  productSales: ProductSalesReport | null;
 }

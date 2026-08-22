@@ -29,6 +29,7 @@ const OWNER_MANAGER_PERMISSIONS: Permission[] = [
   Permission.VIEW_AUDIT_LOG,
   Permission.VIEW_NOTIFICATIONS,
   Permission.SEND_MARKETING_CAMPAIGN,
+  Permission.MANAGE_INVENTORY,
 ];
 
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {

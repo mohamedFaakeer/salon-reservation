@@ -101,6 +101,15 @@ const RULES: RateLimitRule[] = [
     max: 5,
     windowMs: 60_000,
   },
+  {
+    // Same shape as "payment" but a little higher — a busy retail counter
+    // rings up more transactions per minute than an appointment desk does.
+    name: "retail-checkout",
+    method: "POST",
+    pattern: /^\/retail-sales\/checkout$/,
+    max: 30,
+    windowMs: 60_000,
+  },
 ];
 
 /** Health checks must never be throttled — a 429 here reads as an outage. */

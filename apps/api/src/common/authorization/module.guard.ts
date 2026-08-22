@@ -11,6 +11,7 @@ const MODULE_LABELS: Record<ModuleKey, string> = {
   reports: "Reports",
   auditLog: "The audit log",
   invoices: "Invoices",
+  inventory: "Retail inventory",
 };
 
 /**

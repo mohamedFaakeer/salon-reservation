@@ -14,6 +14,8 @@ import { Inquiry } from "../entities/inquiry.entity";
 import { Payment } from "../entities/payment.entity";
 import { Rating } from "../entities/rating.entity";
 import { Refund } from "../entities/refund.entity";
+import { RetailSale } from "../entities/retail-sale.entity";
+import { RetailSaleLine } from "../entities/retail-sale-line.entity";
 import { Staff } from "../entities/staff.entity";
 import { StaffLeave } from "../entities/staff-leave.entity";
 import { WorkingSchedule } from "../entities/working-schedule.entity";
@@ -36,6 +38,7 @@ import type {
   FunnelReport,
   LapsedCustomerRow,
   LossReport,
+  ProductSalesReport,
   ReportsSummary,
   ServiceCount,
   StaffReportRow,
@@ -93,6 +96,7 @@ export class ReportsService {
     @InjectRepository(Closure) private readonly closures: Repository<Closure>,
     @InjectRepository(Inquiry) private readonly inquiries: Repository<Inquiry>,
     @InjectRepository(Customer) private readonly customers: Repository<Customer>,
+    @InjectRepository(RetailSaleLine) private readonly retailSaleLines: Repository<RetailSaleLine>,
   ) {}
 
   /**
@@ -113,7 +117,7 @@ export class ReportsService {
     const on = (key: ReportPanelKey): boolean => panels?.[key] ?? true;
     const needsLosses = on("takings") || on("funnelLosses");
 
-    const [staff, services, collection, topSpenders, frequent, lapsed, busyHours, funnel, losses] =
+    const [staff, services, collection, topSpenders, frequent, lapsed, busyHours, funnel, losses, productSales] =
       await Promise.all([
         on("staff") ? this.staffRows(tenantId, range) : Promise.resolve(null),
         on("services") ? this.serviceRows(tenantId, range) : Promise.resolve(null),
@@ -124,6 +128,7 @@ export class ReportsService {
         on("busyHours") ? this.busyHours(tenantId, range) : Promise.resolve(null),
         on("funnelLosses") ? this.funnel(tenantId, range) : Promise.resolve(null),
         needsLosses ? this.losses(tenantId, range) : Promise.resolve(null),
+        on("productSales") ? this.productSalesReport(tenantId, range) : Promise.resolve(null),
       ]);
 
     return {
@@ -135,6 +140,7 @@ export class ReportsService {
       lapsedCustomers: lapsed,
       customerSpend: topSpenders && frequent ? { topSpenders, frequent } : null,
       funnelLosses: funnel && losses ? { funnel, losses } : null,
+      productSales,
     };
   }
 
@@ -349,6 +355,9 @@ export class ReportsService {
       .andWhere("p.state = :state", { state: PaymentStatus.SUCCESS })
       .andWhere('COALESCE(p."recordedAt", p."createdAt") >= :startUtc', window)
       .andWhere('COALESCE(p."recordedAt", p."createdAt") < :endUtc', window)
+      // A retail walk-in sale is a real Payment against the tenant's placeholder
+      // Customer row — it must never read as a named top spender.
+      .andWhere('c."isWalkInPlaceholder" = false')
       .groupBy('p."customerId"')
       .addGroupBy('c."firstName"')
       .addGroupBy('c."lastName"')
@@ -373,6 +382,7 @@ export class ReportsService {
       .where('a."tenantId" = :tenantId', { tenantId })
       .andWhere('a."appointmentDate" BETWEEN :from AND :to', range)
       .andWhere("a.status = :completed", { completed: AppointmentStatus.COMPLETED })
+      .andWhere('c."isWalkInPlaceholder" = false')
       .groupBy('a."customerId"')
       .addGroupBy('c."firstName"')
       .addGroupBy('c."lastName"')
@@ -406,6 +416,7 @@ export class ReportsService {
       .where('c."tenantId" = :tenantId', { tenantId })
       .andWhere("a.status = :completed", { completed: AppointmentStatus.COMPLETED })
       .andWhere('a."appointmentDate" <= :asOf', { asOf })
+      .andWhere('c."isWalkInPlaceholder" = false')
       .groupBy("c.id")
       .having('MAX(a."appointmentDate") < :cutoff', { cutoff })
       .orderBy('MAX(a."appointmentDate")', "DESC")
@@ -448,6 +459,77 @@ export class ReportsService {
       daysSince: daysApart(r.lastVisitDate, asOf),
       usualServices: byCustomer.get(r.customerId) ?? [],
     }));
+  }
+
+  /**
+   * Revenue, cost and margin on retail product sales in the range. Cost is
+   * `unitCostCentsSnapshot` — the variant's weighted-average cost frozen at
+   * sale time, never today's current cost — the same "never reconstruct
+   * history from current data" rule every other snapshot column here follows.
+   * A tenant that has never enabled the `inventory` module simply has no
+   * `RetailSale` rows to sum, so this reads as an honest empty panel rather
+   * than needing its own separate gate.
+   */
+  private async productSalesReport(tenantId: string, range: Range): Promise<ProductSalesReport> {
+    const window = utcWindowFor(range);
+
+    const rows = await this.retailSaleLines
+      .createQueryBuilder("l")
+      .innerJoin(RetailSale, "s", 's.id = l."saleId"')
+      .select('l."variantId"', "variantId")
+      .addSelect('l."nameSnapshot"', "productName")
+      .addSelect('l."skuSnapshot"', "sku")
+      .addSelect("SUM(l.quantity)::int", "unitsSold")
+      .addSelect('SUM(l."lineTotalCents")::int', "revenueCents")
+      .addSelect('SUM(l."unitCostCentsSnapshot" * l.quantity)::int', "costCents")
+      .where('s."tenantId" = :tenantId', { tenantId })
+      .andWhere('s."createdAt" >= :startUtc', window)
+      .andWhere('s."createdAt" < :endUtc', window)
+      .groupBy('l."variantId"')
+      .addGroupBy('l."nameSnapshot"')
+      .addGroupBy('l."skuSnapshot"')
+      .orderBy("5", "DESC")
+      .limit(LIST_N)
+      .getRawMany<{
+        variantId: string | null;
+        productName: string;
+        sku: string;
+        unitsSold: number;
+        revenueCents: number;
+        costCents: number;
+      }>();
+
+    const totals = await this.retailSaleLines
+      .createQueryBuilder("l")
+      .innerJoin(RetailSale, "s", 's.id = l."saleId"')
+      .select('COALESCE(SUM(l."lineTotalCents"), 0)::int', "revenueCents")
+      .addSelect('COALESCE(SUM(l."unitCostCentsSnapshot" * l.quantity), 0)::int', "costCents")
+      .where('s."tenantId" = :tenantId', { tenantId })
+      .andWhere('s."createdAt" >= :startUtc', window)
+      .andWhere('s."createdAt" < :endUtc', window)
+      .getRawOne<{ revenueCents: number; costCents: number }>();
+
+    const totalRevenueCents = Number(totals?.revenueCents ?? 0);
+    const totalCostCents = Number(totals?.costCents ?? 0);
+
+    return {
+      totalRevenueCents,
+      totalCostCents,
+      totalMarginCents: totalRevenueCents - totalCostCents,
+      byProduct: rows.map((r) => {
+        const revenueCents = Number(r.revenueCents);
+        const costCents = Number(r.costCents);
+        return {
+          variantId: r.variantId ?? "",
+          productName: r.productName,
+          sku: r.sku,
+          unitsSold: Number(r.unitsSold),
+          revenueCents,
+          costCents,
+          marginCents: revenueCents - costCents,
+        };
+      }),
+    };
   }
 
   /**

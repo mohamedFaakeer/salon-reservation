@@ -26,10 +26,24 @@ export interface ModuleOverrides {
   reports?: boolean;
   auditLog?: boolean;
   invoices?: boolean;
+  /**
+   * Retail product sales — Products/Stock/Quick Sale in apps/admin. Unlike
+   * gift cards and service packages (deliberately never gated: every salon
+   * can sell either), most salons on this platform are service-only, so
+   * inventory is genuinely opt-in rather than a Lite-vs-Pro feature split.
+   */
+  inventory?: boolean;
 }
 
 export type ModuleKey = keyof ModuleOverrides;
-export const ALL_MODULES: ModuleKey[] = ["attendance", "incentives", "reports", "auditLog", "invoices"];
+export const ALL_MODULES: ModuleKey[] = [
+  "attendance",
+  "incentives",
+  "reports",
+  "auditLog",
+  "invoices",
+  "inventory",
+];
 
 /** The seven panels the Reports page is actually built from — see reports.service.ts. */
 export interface ReportPanelOverrides {
@@ -40,6 +54,8 @@ export interface ReportPanelOverrides {
   lapsedCustomers?: boolean;
   customerSpend?: boolean;
   funnelLosses?: boolean;
+  /** Revenue/cost/margin on retail product sales — meaningless without the `inventory` module, but gated the same tier-default way as every other panel. */
+  productSales?: boolean;
 }
 
 export type ReportPanelKey = keyof ReportPanelOverrides;
@@ -51,6 +67,7 @@ export const ALL_REPORT_PANELS: ReportPanelKey[] = [
   "lapsedCustomers",
   "customerSpend",
   "funnelLosses",
+  "productSales",
 ];
 
 export interface TenantLimits {
@@ -100,6 +117,7 @@ const PRO_MODULES: Required<ModuleOverrides> = {
   reports: true,
   auditLog: true,
   invoices: true,
+  inventory: true,
 };
 
 const LITE_MODULES: Required<ModuleOverrides> = {
@@ -108,6 +126,7 @@ const LITE_MODULES: Required<ModuleOverrides> = {
   reports: false,
   auditLog: false,
   invoices: false,
+  inventory: false,
 };
 
 const PRO_REPORT_PANELS: Required<ReportPanelOverrides> = {
@@ -118,6 +137,7 @@ const PRO_REPORT_PANELS: Required<ReportPanelOverrides> = {
   lapsedCustomers: true,
   customerSpend: true,
   funnelLosses: true,
+  productSales: true,
 };
 
 const LITE_REPORT_PANELS: Required<ReportPanelOverrides> = {
@@ -128,6 +148,7 @@ const LITE_REPORT_PANELS: Required<ReportPanelOverrides> = {
   lapsedCustomers: false,
   customerSpend: false,
   funnelLosses: false,
+  productSales: false,
 };
 
 /** `null` means unlimited throughout. */

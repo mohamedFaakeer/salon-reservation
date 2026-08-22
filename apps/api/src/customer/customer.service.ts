@@ -22,6 +22,9 @@ import { Rating } from "../entities/rating.entity";
 import { isUniqueViolation } from "../common/postgres-errors.util";
 import { normalizePhone } from "./phone.util";
 
+/** Not a real phone number — just a stable value the (tenantId, phone) unique index can key the one walk-in row on. */
+const WALK_IN_PHONE = "WALKIN";
+
 export interface CustomerServiceCount {
   name: string;
   count: number;
@@ -179,13 +182,15 @@ export class CustomerService {
    */
   async search(tenantId: string, query: CustomerQueryDto): Promise<CustomerListResult> {
     const q = query.q?.trim();
+    // The walk-in placeholder is an internal retail-checkout construct, never
+    // a customer a receptionist should find while searching.
     const where = q
       ? [
-          { tenantId, firstName: ILike(`%${q}%`) },
-          { tenantId, lastName: ILike(`%${q}%`) },
-          { tenantId, phone: ILike(`%${q}%`) },
+          { tenantId, isWalkInPlaceholder: false, firstName: ILike(`%${q}%`) },
+          { tenantId, isWalkInPlaceholder: false, lastName: ILike(`%${q}%`) },
+          { tenantId, isWalkInPlaceholder: false, phone: ILike(`%${q}%`) },
         ]
-      : { tenantId };
+      : { tenantId, isWalkInPlaceholder: false };
 
     const [data, total] = await this.customers.findAndCount({
       where,
@@ -312,6 +317,46 @@ export class CustomerService {
           : Math.round(Number(ratings?.average) * 10) / 10,
       ratingCount: Number(ratings?.count ?? 0),
     };
+  }
+
+  /**
+   * The tenant's one "Walk-in customer" row — retail checkout resolves to
+   * this when no customer is attached, rather than relaxing
+   * `Payment.customerId` to nullable (see the entity's own doc comment).
+   * Matched by the boolean flag, not by phone, so there is no real phone
+   * number to collide with. A race between two concurrent first-ever
+   * checkouts is resolved by re-reading after the unique (tenantId, phone)
+   * index rejects the loser's insert — the same shape
+   * `findOrCreateForBooking` already handles for a genuine duplicate email.
+   */
+  async findOrCreateWalkIn(tenantId: string, manager?: EntityManager): Promise<Customer> {
+    const repo = manager ? manager.getRepository(Customer) : this.customers;
+    const existing = await repo.findOne({ where: { tenantId, isWalkInPlaceholder: true } });
+    if (existing) {
+      return existing;
+    }
+
+    try {
+      return await repo.save(
+        repo.create({
+          tenantId,
+          firstName: "Walk-in",
+          lastName: "customer",
+          phone: WALK_IN_PHONE,
+          email: null,
+          notes: null,
+          isWalkInPlaceholder: true,
+        }),
+      );
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        const raceWinner = await repo.findOne({ where: { tenantId, isWalkInPlaceholder: true } });
+        if (raceWinner) {
+          return raceWinner;
+        }
+      }
+      throw err;
+    }
   }
 
   private async findDuplicate(

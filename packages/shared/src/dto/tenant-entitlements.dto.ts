@@ -23,6 +23,10 @@ export class ModuleOverridesDto {
   @IsOptional()
   @IsBoolean()
   invoices?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  inventory?: boolean;
 }
 
 export class ReportPanelOverridesDto {
@@ -53,6 +57,10 @@ export class ReportPanelOverridesDto {
   @IsOptional()
   @IsBoolean()
   funnelLosses?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  productSales?: boolean;
 }
 
 /** `null` = unlimited/no ceiling; omitted = use the tier default. */

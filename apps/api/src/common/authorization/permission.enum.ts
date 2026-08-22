@@ -75,4 +75,13 @@ export enum Permission {
    * customers, their contact details) is the same owner-level surface.
    */
   SEND_MARKETING_CAMPAIGN = "SEND_MARKETING_CAMPAIGN",
+  /**
+   * The retail "back office": products, variants, stock receipts and manual
+   * adjustments. OWNER and MANAGER only — mirrors how MANAGE_GIFT_CARDS
+   * covers both issue and void rather than one permission per CRUD verb.
+   * Deliberately does NOT gate ringing up a sale: checking out a cart is an
+   * ordinary payment-taking action open to RECEPTIONIST via RECORD_PAYMENT,
+   * the same split gift cards and service packages already use.
+   */
+  MANAGE_INVENTORY = "MANAGE_INVENTORY",
 }

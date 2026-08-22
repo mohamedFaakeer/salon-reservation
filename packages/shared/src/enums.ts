@@ -224,3 +224,43 @@ export enum ServicePackageStatus {
   /** Corrected by whoever issued it — never redeemable again, whatever uses remained. */
   VOID = "VOID",
 }
+
+/**
+ * The append-only stock ledger's own vocabulary (`stock_movement.type`).
+ * Every physical or corrective change in `quantityOnHand` is exactly one of
+ * these, and the row that records it is never edited or deleted afterward —
+ * a stricter version of CLAUDE.md's "no hard deletes on business records".
+ */
+export enum StockMovementType {
+  RECEIPT = "RECEIPT",
+  SALE = "SALE",
+  RETURN_RESTOCK = "RETURN_RESTOCK",
+  RETURN_QUARANTINE = "RETURN_QUARANTINE",
+  ADJUSTMENT = "ADJUSTMENT",
+  WRITE_OFF = "WRITE_OFF",
+}
+
+/**
+ * One physical lot or serialised unit's own lifecycle. ACTIVE is sellable;
+ * DEPLETED means `quantityRemaining` reached zero through ordinary sale;
+ * QUARANTINED and WRITTEN_OFF are staff-driven corrections (a Phase B return
+ * or a manual write-off) that pull stock out of the sellable pool without
+ * pretending it was sold.
+ */
+export enum StockBatchStatus {
+  ACTIVE = "ACTIVE",
+  DEPLETED = "DEPLETED",
+  QUARANTINED = "QUARANTINED",
+  WRITTEN_OFF = "WRITTEN_OFF",
+}
+
+/**
+ * A retail checkout's own lifecycle. RETURNED/PARTIALLY_RETURNED are Phase B
+ * (`retail_return`); Phase A only ever writes COMPLETED, but the column
+ * exists now so a Phase B migration never has to touch already-written rows.
+ */
+export enum RetailSaleStatus {
+  COMPLETED = "COMPLETED",
+  RETURNED = "RETURNED",
+  PARTIALLY_RETURNED = "PARTIALLY_RETURNED",
+}

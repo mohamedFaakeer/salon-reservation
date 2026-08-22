@@ -10,6 +10,8 @@ import { Notification } from "../entities/notification.entity";
 import { Payment } from "../entities/payment.entity";
 import { Rating } from "../entities/rating.entity";
 import { Refund } from "../entities/refund.entity";
+import { RetailSale } from "../entities/retail-sale.entity";
+import { RetailSaleLine } from "../entities/retail-sale-line.entity";
 import { Staff } from "../entities/staff.entity";
 import { StaffLeave } from "../entities/staff-leave.entity";
 import { WorkingSchedule } from "../entities/working-schedule.entity";
@@ -39,6 +41,8 @@ import { WinbackService } from "./winback.service";
       Payment,
       Rating,
       Refund,
+      RetailSale,
+      RetailSaleLine,
       Staff,
       StaffLeave,
       WorkingSchedule,
