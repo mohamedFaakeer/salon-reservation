@@ -114,6 +114,8 @@ export interface StaffMember {
   specialties: string | null;
   /** The commission/incentive plan this stylist earns under. Null = unassigned. */
   incentivePlanId: string | null;
+  /** The login this stylist profile is linked to, if any — lets them see their own day. */
+  userId: string | null;
 }
 
 export interface ServiceItem {
@@ -454,6 +456,8 @@ export interface StaffInput {
   phone?: string;
   specialties?: string;
   color?: string;
+  /** Links this stylist to an existing login. `null` unlinks. */
+  userId?: string | null;
 }
 
 export function createStaff(input: StaffInput): Promise<StaffMember> {

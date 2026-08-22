@@ -4,6 +4,7 @@ import { TeamService } from "./team.service";
 import { UserStatus } from "../enums/user-status.enum";
 import type { User } from "../entities/user.entity";
 import type { UserTenantRole } from "../entities/user-tenant-role.entity";
+import type { Staff } from "../entities/staff.entity";
 import type { PasswordService } from "../auth/services/password.service";
 import type { AuditService } from "../audit/audit.service";
 
@@ -32,6 +33,7 @@ function fakeUser(overrides: Partial<User> = {}): User {
 describe("TeamService", () => {
   let users: Repository<User>;
   let roles: Repository<UserTenantRole>;
+  let staff: Repository<Staff>;
   let passwords: PasswordService;
   let audit: AuditService;
   let dataSource: DataSource;
@@ -43,6 +45,7 @@ describe("TeamService", () => {
   beforeEach(() => {
     users = mockRepo<User>();
     roles = mockRepo<UserTenantRole>();
+    staff = mockRepo<Staff>();
     txUsers = mockRepo<User>();
     txRoles = mockRepo<UserTenantRole>();
     passwords = { hash: vi.fn(async () => "argon2-hash") } as unknown as PasswordService;
@@ -55,7 +58,7 @@ describe("TeamService", () => {
         }),
       ),
     } as unknown as DataSource;
-    service = new TeamService(users, roles, passwords, audit, dataSource);
+    service = new TeamService(users, roles, staff, passwords, audit, dataSource);
   });
 
   describe("create", () => {
@@ -250,6 +253,21 @@ describe("TeamService", () => {
       const result = await service.list("tenant-1");
 
       expect(JSON.stringify(result)).not.toContain("argon2");
+    });
+
+    it("reports which staff profile a login is linked to", async () => {
+      vi.mocked(roles.find).mockResolvedValue([
+        { userId: "u1", role: UserRole.STAFF, user: fakeUser({ id: "u1" }) },
+        { userId: "u2", role: UserRole.RECEPTIONIST, user: fakeUser({ id: "u2" }) },
+      ] as Array<UserTenantRole & { user: User }>);
+      vi.mocked(staff.find).mockResolvedValue([
+        { id: "staff-1", userId: "u1" },
+      ] as Staff[]);
+
+      const result = await service.list("tenant-1");
+
+      expect(result.find((m) => m.userId === "u1")?.staffId).toBe("staff-1");
+      expect(result.find((m) => m.userId === "u2")?.staffId).toBeNull();
     });
   });
 });

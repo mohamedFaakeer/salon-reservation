@@ -71,7 +71,7 @@ export class StaffService {
   async update(tenantId: string, id: string, dto: UpdateStaffDto): Promise<Staff> {
     const staff = await this.findOwned(tenantId, id);
 
-    if (dto.userId !== undefined && dto.userId !== staff.userId) {
+    if (dto.userId != null && dto.userId !== staff.userId) {
       await this.assertUserLinkable(tenantId, dto.userId, id);
     }
 

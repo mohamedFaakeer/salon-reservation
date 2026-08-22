@@ -14,6 +14,7 @@ import {
 } from "@salon/shared";
 import { User } from "../entities/user.entity";
 import { UserTenantRole } from "../entities/user-tenant-role.entity";
+import { Staff } from "../entities/staff.entity";
 import { UserStatus } from "../enums/user-status.enum";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { PasswordService } from "../auth/services/password.service";
@@ -36,6 +37,7 @@ export class TeamService {
   constructor(
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(UserTenantRole) private readonly roles: Repository<UserTenantRole>,
+    @InjectRepository(Staff) private readonly staff: Repository<Staff>,
     private readonly passwords: PasswordService,
     private readonly audit: AuditService,
     private readonly dataSource: DataSource,
@@ -49,16 +51,19 @@ export class TeamService {
    * may ever be listed here.
    */
   async list(tenantId: string): Promise<TeamMember[]> {
-    const grants = await this.roles.find({
-      where: { tenantId },
-      relations: { user: true },
-      // UserTenantRole carries no timestamp of its own; the user's does.
-      order: { user: { createdAt: "ASC" } },
-    });
+    const [grants, linked] = await Promise.all([
+      this.roles.find({
+        where: { tenantId },
+        relations: { user: true },
+        // UserTenantRole carries no timestamp of its own; the user's does.
+        order: { user: { createdAt: "ASC" } },
+      }),
+      this.staffIdByUserId(tenantId),
+    ]);
 
     return grants
       .filter((grant) => grant.user)
-      .map((grant) => toMember(grant));
+      .map((grant) => toMember(grant, linked.get(grant.userId) ?? null));
   }
 
   /**
@@ -138,7 +143,8 @@ export class TeamService {
         manager,
       );
 
-      return toMember({ ...grant, user });
+      // Brand new — nothing could have linked to this login yet.
+      return toMember({ ...grant, user }, null);
     });
   }
 
@@ -201,7 +207,20 @@ export class TeamService {
       metadata: { role: dto.role, status: dto.status },
     });
 
-    return toMember(grant);
+    const linkedStaff = await this.staff.findOne({ where: { tenantId, userId } });
+    return toMember(grant, linkedStaff?.id ?? null);
+  }
+
+  /** One query for every login's linked staff row, keyed by userId. */
+  private async staffIdByUserId(tenantId: string): Promise<Map<string, string>> {
+    const rows = await this.staff.find({ where: { tenantId } });
+    const map = new Map<string, string>();
+    for (const row of rows) {
+      if (row.userId) {
+        map.set(row.userId, row.id);
+      }
+    }
+    return map;
   }
 }
 
@@ -223,14 +242,14 @@ function roleLabel(role: string): string {
   return role === UserRole.MANAGER ? "manager" : "receptionist";
 }
 
-function toMember(grant: UserTenantRole & { user: User }): TeamMember {
+function toMember(grant: UserTenantRole & { user: User }, staffId: string | null): TeamMember {
   return {
     userId: grant.user.id,
     name: grant.user.name,
     email: grant.user.email,
     role: grant.role,
     status: grant.user.status,
-    staffId: null,
+    staffId,
     lastLoginAt: grant.user.lastLoginAt,
     createdAt: grant.user.createdAt,
   };

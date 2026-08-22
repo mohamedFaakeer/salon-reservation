@@ -1,11 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createStaff, fetchIncentivePlans, updateStaff, type IncentivePlanView, type StaffMember } from "../lib/api-client";
+import {
+  createStaff,
+  fetchIncentivePlans,
+  fetchTeam,
+  updateStaff,
+  type IncentivePlanView,
+  type StaffMember,
+  type TeamMember,
+} from "../lib/api-client";
 import { DrawerShell } from "./drawer-shell";
 import { BusyLabel } from "./spinner";
 import { useToast } from "./toast";
 import { errorCopy } from "../lib/error-copy";
+import { useAuth } from "../context/auth-context";
+import { canManageTeam } from "../lib/permissions";
 
 /**
  * Calendar colours, offered as a fixed palette rather than a free hex field.
@@ -47,15 +57,38 @@ export function StaffDrawer({
   );
   const [incentivePlanId, setIncentivePlanId] = useState(member?.incentivePlanId ?? "");
   const [plans, setPlans] = useState<IncentivePlanView[]>([]);
+  const [userId, setUserId] = useState(member?.userId ?? "");
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const toast = useToast();
+  const { user } = useAuth();
+  const canLinkLogin = canManageTeam(user?.roles ?? []);
 
   useEffect(() => {
     fetchIncentivePlans()
       .then(setPlans)
       .catch(() => setPlans([]));
   }, []);
+
+  useEffect(() => {
+    if (!canLinkLogin) {
+      return;
+    }
+    fetchTeam()
+      .then(setTeamMembers)
+      .catch(() => setTeamMembers([]));
+    // Only the Owner can see the team roster (MANAGE_TEAM), so this is fetched
+    // once on mount for them and left empty for everyone else — canLinkLogin
+    // can't change during the drawer's lifetime.
+  }, [canLinkLogin]);
+
+  const linkableMembers = teamMembers.filter(
+    (m) =>
+      m.role === "STAFF" &&
+      (m.staffId === null || m.staffId === member?.id) &&
+      (m.status === "ACTIVE" || m.userId === member?.userId),
+  );
 
   const canSubmit = name.trim().length > 0;
 
@@ -71,7 +104,9 @@ export function StaffDrawer({
         phone: phone.trim() || undefined,
         specialties: specialties.trim() || undefined,
         color,
-        ...(editing ? { incentivePlanId: incentivePlanId || null } : {}),
+        ...(editing
+          ? { incentivePlanId: incentivePlanId || null, userId: userId || null }
+          : { userId: userId || undefined }),
       };
       const saved = member
         ? await updateStaff(member.id, payload)
@@ -149,6 +184,30 @@ export function StaffDrawer({
             })}
           </div>
         </fieldset>
+
+        {canLinkLogin ? (
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-slate-700">
+              Linked login <span className="font-normal text-slate-500">(optional)</span>
+            </span>
+            <select
+              data-testid="staff-linked-user"
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              className="min-h-11 rounded border border-slate-300 px-3 text-sm"
+            >
+              <option value="">No login — bookable only</option>
+              {linkableMembers.map((m) => (
+                <option key={m.userId} value={m.userId}>
+                  {m.name} ({m.email})
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-slate-500">
+              Lets them sign in and see their own schedule, attendance and earnings.
+            </span>
+          </label>
+        ) : null}
 
         {editing ? (
           <label className="flex flex-col gap-1 text-sm">

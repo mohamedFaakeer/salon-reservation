@@ -120,6 +120,16 @@ describe("StaffService", () => {
       expect(staff.findOne).toHaveBeenCalledTimes(1);
     });
 
+    it("unlinks a login without re-checking linkage against a null id", async () => {
+      const existing = { ...baseStaff(), userId: "user-1" } as Staff;
+      vi.mocked(staff.findOne).mockResolvedValueOnce(existing);
+
+      const result = await service.update("tenant-1", "staff-1", { userId: null });
+
+      expect(staff.findOne).toHaveBeenCalledTimes(1);
+      expect(result.userId).toBeNull();
+    });
+
     it("rejects an incentive plan id that belongs to another tenant", async () => {
       vi.mocked(staff.findOne).mockResolvedValueOnce(baseStaff());
       vi.mocked(incentivePlans.findOne).mockResolvedValueOnce(null);

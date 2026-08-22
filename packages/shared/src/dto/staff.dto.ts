@@ -57,9 +57,10 @@ export class UpdateStaffDto {
   @Matches(/^#[0-9A-Fa-f]{6}$/, { message: "color must be a hex code, e.g. #4F46E5" })
   color?: string;
 
+  /** `null` unlinks the staff member from any login. */
   @IsOptional()
   @IsUUID()
-  userId?: string;
+  userId?: string | null;
 
   @IsOptional()
   @IsBoolean()
