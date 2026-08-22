@@ -42,12 +42,16 @@ interface NavItem {
   visible: (roles: string[]) => boolean;
   /** Also hidden when the tenant's plan doesn't include this module — checked alongside `visible`. */
   module?: ModuleKey;
+  /** Opens in a new tab instead of routing within the app. */
+  external?: boolean;
 }
 
 interface NavGroup {
   label: string;
   items: NavItem[];
 }
+
+const SETUP_GUIDE_URL = "https://claude.ai/code/artifact/7845d493-545d-494f-bc61-c951e756f899";
 
 const stroke = {
   fill: "none",
@@ -295,6 +299,23 @@ const GROUPS: NavGroup[] = [
       },
     ],
   },
+  {
+    label: "Help",
+    items: [
+      {
+        href: SETUP_GUIDE_URL,
+        label: "Setup guide",
+        visible: () => true,
+        external: true,
+        icon: (
+          <Icon>
+            <path d="M8 4.2C6.8 3.3 5 3 3 3v9c2 0 3.8.3 5 1.2C9.2 12.3 11 12 13 12V3c-2 0-3.8.3-5 1.2Z" {...stroke} />
+            <path d="M8 4.2V13.2" {...stroke} />
+          </Icon>
+        ),
+      },
+    ],
+  },
 ];
 
 export function AppSidebar({
@@ -339,6 +360,25 @@ export function AppSidebar({
             </p>
             <ul className="flex flex-col">
               {group.items.map((item) => {
+                if (item.external) {
+                  return (
+                    <li key={item.href}>
+                      <a
+                        href={item.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        data-testid="nav-setup-guide"
+                        className="flex min-h-11 items-center gap-2.5 border-l-2 border-transparent px-4 text-sm text-slate-700 transition-colors hover:bg-slate-50"
+                      >
+                        <span className="text-slate-400">{item.icon}</span>
+                        {item.label}
+                        <svg viewBox="0 0 16 16" className="ml-auto h-3 w-3 shrink-0 text-slate-300" aria-hidden="true" focusable="false">
+                          <path d="M6 4h6v6M12 4 4 12" {...stroke} />
+                        </svg>
+                      </a>
+                    </li>
+                  );
+                }
                 const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
                 return (
                   <li key={item.href}>
