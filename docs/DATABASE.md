@@ -46,7 +46,7 @@
 
 ### 2.3 Customers
 
-**customer** — `id (uuid PK)`, `tenantId (FK)`, `firstName`, `lastName`, `phone (normalized, NOT NULL)`, `email (nullable)`, `notes`, `createdAt`, `updatedAt`. Unique index `(tenantId, phone)` AND `(tenantId, email)` (partial: `WHERE email IS NOT NULL`). Duplicate warning on create; no silent merges (spec §21).
+**customer** — `id (uuid PK)`, `tenantId (FK)`, `firstName`, `lastName`, `phone (normalized, NOT NULL)`, `email (nullable)`, `notes`, `marketingOptOut (boolean, default false — excludes this customer from win-back/marketing sends; never affects transactional notifications, which have no opt-out)`, `createdAt`, `updatedAt`. Unique index `(tenantId, phone)` AND `(tenantId, email)` (partial: `WHERE email IS NOT NULL`). Duplicate warning on create; no silent merges (spec §21).
 
 ### 2.4 Appointments (the heart)
 
@@ -58,7 +58,7 @@
 
 ### 2.5 Payments & refunds
 
-**payment** — `id (uuid PK)`, `tenantId (FK)`, `appointmentId (FK, nullable — filled on success; also `null` for a gift-card *purchase* payment, which has no appointment)`, `customerId (FK)`, `amountCents`, `method` (`CASH|BANK_TRANSFER|CARD_CAPTURED|ONLINE|GATEWAY|GIFT_CARD`), `state` (`PENDING|SUCCESS|FAILED|REFUNDED|PARTIALLY_REFUNDED|REQUIRES_RECONCILIATION`), `type` (`ADVANCE|FULL|BALANCE`), `idempotencyKey (uuid, UNIQUE NOT NULL)`, `provider` (`MANUAL|PAYHERE`), `providerPaymentRef (nullable)`, `recordedById (FK user)`, `recordedAt`, `giftCardId (FK → gift_card, nullable, SET NULL — set only when method is GIFT_CARD; which card a redemption drew from, see §2.13)`, `createdAt`, `updatedAt`. **Unique `(idempotencyKey)`** enforces idempotency.
+**payment** — `id (uuid PK)`, `tenantId (FK)`, `appointmentId (FK, nullable — filled on success; also `null` for a gift-card/package *purchase* payment, which has no appointment)`, `customerId (FK)`, `amountCents`, `method` (`CASH|BANK_TRANSFER|CARD_CAPTURED|ONLINE|GATEWAY|GIFT_CARD|PACKAGE_CREDIT`), `state` (`PENDING|SUCCESS|FAILED|REFUNDED|PARTIALLY_REFUNDED|REQUIRES_RECONCILIATION`), `type` (`ADVANCE|FULL|BALANCE`), `idempotencyKey (uuid, UNIQUE NOT NULL)`, `provider` (`MANUAL|PAYHERE`), `providerPaymentRef (nullable)`, `recordedById (FK user)`, `recordedAt`, `giftCardId (FK → gift_card, nullable, SET NULL — set only when method is GIFT_CARD; which card a redemption drew from, see §2.13)`, `packageRedemptionId (FK → service_package, nullable, SET NULL — set only when method is PACKAGE_CREDIT; which package a redemption drew from, see §2.14)`, `createdAt`, `updatedAt`. **Unique `(idempotencyKey)`** enforces idempotency.
 
 **payment_attempt** — `id (uuid PK)`, `paymentId (FK)`, `provider`, `providerEventHandler`, `providerEventId (unique per provider+event)`, `payload (JSONB)`, `status` (`RECEIVED|PROCESSED|FAILED`), `createdAt`. Unique `(provider, providerEventId)` absorbs duplicate callbacks.
 
@@ -66,7 +66,7 @@
 
 ### 2.6 Notifications & audit
 
-**notification** — `id (uuid PK)`, `tenantId (FK)`, `appointmentId (FK, nullable)`, `customerId (FK, nullable)`, `type` (`BOOKING_CONFIRMATION|PAYMENT_CONFIRMATION|REMINDER_24H|REMINDER_2H|CANCELLATION_CONFIRMATION|RESCHEDULE_CONFIRMATION|NO_SHOW|LATE_ARRIVAL`), `channel` (`CONSOLE|EMAIL|SMS|WHATSAPP`), `recipient`, `status` (`PENDING|SENT|FAILED`), `retryCount (int, 0)`, `nextRetryAt`, `lastError`, `providerMessageId (nullable)`, `createdAt`, `updatedAt`. Indexed `(status, nextRetryAt)` for the retry scheduler.
+**notification** — `id (uuid PK)`, `tenantId (FK)`, `appointmentId (FK, nullable)`, `customerId (FK, nullable)`, `type` (`BOOKING_CONFIRMATION|PAYMENT_CONFIRMATION|REMINDER_24H|REMINDER_2H|CANCELLATION_CONFIRMATION|RESCHEDULE_CONFIRMATION|NO_SHOW|LATE_ARRIVAL|WINBACK_OFFER`), `channel` (`CONSOLE|EMAIL|SMS|WHATSAPP`), `recipient`, `body (text, nullable — set only when the text isn't derivable from `type`+`appointmentId` on a retry, currently just WINBACK_OFFER, whose message is staff-composed free text with no appointment behind it)`, `status` (`PENDING|SENT|FAILED`), `retryCount (int, 0)`, `nextRetryAt`, `lastError`, `providerMessageId (nullable)`, `createdAt`, `updatedAt`. Indexed `(status, nextRetryAt)` for the retry scheduler.
 
 **audit_log** — `id (uuid PK)`, `tenantId (FK, nullable for platform-level)`, `actorUserId (FK, nullable)`, `action`, `entityType`, `entityId`, `metadata (JSONB)`, `ipAddress`, `userAgent`, `createdAt`.
 
@@ -256,6 +256,42 @@ daily-booking-limit flag uses, DECISIONS.md §34.6).
 `payment.giftCardId` (§2.5) is the redemption trail — a card's full history
 is `SELECT * FROM payment WHERE "giftCardId" = ?`, needing no separate
 ledger table.
+
+### 2.14 Service packages
+
+**service_package** — `id (uuid PK)`, `tenantId (FK, CASCADE)`, `code
+(varchar 24, UNIQUE — `<3-letter tenant prefix>-PKG-<10 random base32
+chars>`, e.g. `ELE-PKG-7F3K2M9PQR`)`, `customerId (FK → customer, CASCADE —
+found-or-created by phone, same identity resolution as a gift card's
+purchaser)`, `serviceId (FK → service, RESTRICT — the one service this
+package redeems against; v1 is single-service only)`, `serviceNameSnapshot`,
+`unitPriceCentsSnapshot (both frozen at purchase, same immutability rule
+`appointment_service` follows for price snapshots)`, `totalUses`,
+`remainingUses`, `purchasePriceCents (what was actually paid — may be less
+than `totalUses` × `unitPriceCentsSnapshot`; that gap is the discount, not
+separately modeled)`, `expiresAt (date)`, `status`
+(`ACTIVE|DEPLETED|VOID`), `issuedById (FK user, SET NULL)`, `issuedAt`,
+`purchasePaymentId (FK → payment, SET NULL — the payment recorded for
+buying the package itself, not a redemption)`, `voidedAt`/`voidedBy`/
+`voidReason (nullable)`.
+
+A sibling of `gift_card` (§2.13), not an extension of it — the balance here
+is **uses**, not cents, and it's scoped to one `serviceId` a gift card has
+no equivalent column for (DECISIONS.md §36). `remainingUses` is only ever
+mutated by `ServicePackageService.redeemOne`, under the same
+`SELECT ... FOR UPDATE` row lock gift-card redemption uses.
+**`CHK_service_package_uses_range`** (`remainingUses` between 0 and
+`totalUses`) is the same database-level guarantee
+`CHK_gift_card_balance_range` gives cents. **`CHK_service_package_void_has_reason`**
+mirrors the gift-card void check exactly. `serviceId` is `ON DELETE
+RESTRICT`, not `SET NULL`/`CASCADE` — an active, spendable balance with no
+resolvable service is meaningless, so deleting a service with active
+packages against it is blocked outright. No `EXPIRED` status, same live-check
+reasoning as gift cards; DEPLETED rather than REDEEMED, since hitting zero
+uses implies nothing about money.
+
+`payment.packageRedemptionId` (§2.5) is the redemption trail, same
+no-separate-ledger-table reasoning as gift cards.
 
 ---
 

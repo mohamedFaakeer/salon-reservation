@@ -9,6 +9,7 @@ import {
   canManageGiftCards,
   canManageIncentives,
   canManageNotifications,
+  canManageServicePackages,
   canManageServices,
   canManageSettings,
   canManageStaff,
@@ -253,6 +254,17 @@ const GROUPS: NavGroup[] = [
               d="M8 6.5c-1.1-2.4-3.8-2.6-3.8-1S6 6.5 8 6.5Zm0 0c1.1-2.4 3.8-2.6 3.8-1S10 6.5 8 6.5Z"
               {...stroke}
             />
+          </Icon>
+        ),
+      },
+      {
+        href: "/service-packages",
+        label: "Service packages",
+        visible: canManageServicePackages,
+        icon: (
+          <Icon>
+            <path d="M8 2 2.5 4.6v6.8L8 14l5.5-2.6V4.6L8 2Z" {...stroke} />
+            <path d="M2.5 4.6 8 7.2l5.5-2.6M8 7.2V14" {...stroke} />
           </Icon>
         ),
       },

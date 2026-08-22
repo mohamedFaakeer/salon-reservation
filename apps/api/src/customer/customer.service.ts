@@ -12,6 +12,7 @@ import {
   PaymentStatus,
   type CreateCustomerDto,
   type CustomerQueryDto,
+  type UpdateCustomerDto,
 } from "@salon/shared";
 import { Customer } from "../entities/customer.entity";
 import { Appointment } from "../entities/appointment.entity";
@@ -193,6 +194,15 @@ export class CustomerService {
       skip: query.offset,
     });
     return { data, meta: { total, limit: query.limit, offset: query.offset } };
+  }
+
+  /** PATCH /customers/:id — currently just the marketing flag, not a general customer edit. */
+  async update(tenantId: string, id: string, dto: UpdateCustomerDto): Promise<Customer> {
+    const customer = await this.findById(tenantId, id);
+    if (dto.marketingOptOut !== undefined) {
+      customer.marketingOptOut = dto.marketingOptOut;
+    }
+    return this.customers.save(customer);
   }
 
   async findById(tenantId: string, id: string): Promise<Customer> {

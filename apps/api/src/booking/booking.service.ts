@@ -58,6 +58,8 @@ import { PaymentService } from "../payment/payment.service";
 import { NotificationService } from "../notification/notification.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { GiftCardService } from "../gift-card/gift-card.service";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { ServicePackageService } from "../service-package/service-package.service";
 
 /** Never a real booking against the day's capacity — cancelled, no-show, rescheduled away, or expired before payment. */
 const DOES_NOT_COUNT_TOWARD_DAILY_LIMIT: AppointmentStatus[] = [
@@ -180,11 +182,17 @@ export class BookingService {
     private readonly serviceDiscounts: ServiceDiscountService,
     private readonly notifications: NotificationService,
     private readonly giftCards: GiftCardService,
+    private readonly servicePackages: ServicePackageService,
   ) {}
 
   /** POST /payments/:intentId/gift-card-preview — a pure read; the tenant is resolved from the hold, same as confirm/cancel. */
   async previewGiftCard(tenant: Tenant, code: string) {
     return this.giftCards.preview(tenant.id, code);
+  }
+
+  /** POST /payments/:intentId/package-preview — a pure read; same resolution as previewGiftCard. */
+  async previewPackage(tenant: Tenant, code: string) {
+    return this.servicePackages.preview(tenant.id, code);
   }
 
   /** GET /bookings/:reference?phone= — no :slug in this route; bookingReference is globally unique. */
@@ -323,6 +331,7 @@ export class BookingService {
     holdId: string,
     sessionKey: string,
     giftCardCode?: string,
+    packageCode?: string,
   ): Promise<{ appointment: Appointment & { staff: Staff; lines: AppointmentServiceLine[] }; bookingReference: string }> {
     const result = await this.dataSource.transaction(async (manager) => {
       const slotHoldRepo = manager.getRepository(SlotHold);
@@ -401,6 +410,36 @@ export class BookingService {
             recordedById: null,
             idempotencyKey: `${sessionKey}:gift-card`,
             giftCardId: redeemed.giftCardId,
+          });
+          advanceStillDue -= redeemed.appliedCents;
+        }
+      }
+
+      // Same timing/reasoning as the gift-card block above — redeemed at
+      // confirm inside this same transaction, never reserved at hold time.
+      // `snapshot.lines` (not the current Service catalog) is the eligible
+      // set: it's exactly what's being booked, priced at hold time.
+      if (packageCode && advanceStillDue > 0) {
+        const eligibleServiceIds = snapshot.lines
+          .map((l) => l.serviceId)
+          .filter((id): id is string => Boolean(id));
+        const redeemed = await this.servicePackages.redeemOne(
+          manager,
+          tenant.id,
+          packageCode,
+          eligibleServiceIds,
+          advanceStillDue,
+          { actorUserId: null, appointmentId: appointment.id },
+        );
+        if (redeemed.appliedCents > 0) {
+          await this.payments.recordPayment(manager, tenant, appointment, {
+            amountCents: redeemed.appliedCents,
+            method: PaymentMethod.PACKAGE_CREDIT,
+            type: redeemed.appliedCents >= appointment.totalCents ? PaymentType.FULL : PaymentType.ADVANCE,
+            provider: PaymentProviderName.MANUAL,
+            recordedById: null,
+            idempotencyKey: `${sessionKey}:package-credit`,
+            packageRedemptionId: redeemed.packageId,
           });
           advanceStillDue -= redeemed.appliedCents;
         }

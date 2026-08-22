@@ -8,6 +8,7 @@ import { AuditModule } from "../audit/audit.module";
 import { TenantModule } from "../tenant/tenant.module";
 import { NotificationModule } from "../notification/notification.module";
 import { GiftCardModule } from "../gift-card/gift-card.module";
+import { ServicePackageModule } from "../service-package/service-package.module";
 import { PaymentController } from "./payment.controller";
 import { PaymentService } from "./payment.service";
 import { ManualProvider } from "./providers/manual.provider";
@@ -21,6 +22,7 @@ import { PaymentProviderResolver } from "./providers/resolve-payment-provider";
     TenantModule,
     NotificationModule,
     GiftCardModule,
+    ServicePackageModule,
   ],
   controllers: [PaymentController],
   providers: [PaymentService, ManualProvider, PayHereProvider, PaymentProviderResolver],

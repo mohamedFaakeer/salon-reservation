@@ -42,6 +42,23 @@ codebase where guessing a code to find a live balance is the realistic
 threat model, rather than a genuine two-factor lookup like `GET
 /bookings/:reference`.
 
+**Service package codes follow the exact same shape** — 10 random base32
+characters, the same dedicated rate limit on their own preview endpoint
+(`POST /payments/:intentId/package-preview`, 10/min per IP), for the same
+bearer-credential reasoning.
+
+**The win-back campaign's audience is server-enforced, not client-trusted.**
+`POST /reports/lapsed-customers/winback` re-loads every `customerId` from the
+database — a client can send only ids, never names/phones/emails, and an id
+that doesn't belong to the caller's tenant is silently dropped rather than
+leaking a cross-tenant existence signal. `Customer.marketingOptOut` is
+checked server-side before every send; the endpoint additionally skips
+anyone already sent a `WINBACK_OFFER` in the last 14 days (an
+accidental-repeat-send guard) and is rate-limited to 5 requests/min per IP —
+tighter than `payment`, since a compromised OWNER/MANAGER session doing this
+repeatedly is a real spam/reputation risk to the salon's customers, not just
+an API-abuse concern.
+
 ---
 
 ## 3. Authorization (RBAC)
@@ -121,7 +138,7 @@ Rules:
 
 - Helmet headers on API (`X-Content-Type-Options`, `X-Frame-Options`, CSP where applicable).
 - CORS: restricted allow-list (admin app origin, customer app origin) from env; credentials allowed only for those origins.
-- Rate limiting: auth, booking creation, payment confirm, public availability, gift-card-code lookup (per-IP abusable) — throttled.
+- Rate limiting: auth, booking creation, payment confirm, public availability, gift-card-code lookup, service-package-code lookup, win-back campaign send (per-IP abusable) — throttled.
 - Secrets: only in env vars / Render dashboard; `.env` committed to nothing; `.env.example` documents shape with placeholders.
 - No secrets in client bundles (`NEXT_PUBLIC_*` only for non-secret config such as API base URL).
 - Request logging with `requestId`; **no PII in logs** (phones/emails redacted in error paths).

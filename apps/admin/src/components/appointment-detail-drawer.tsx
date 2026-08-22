@@ -43,7 +43,7 @@ import { InvoicePanel } from "./invoice-panel";
 import { useToast } from "./toast";
 import { errorCopy } from "../lib/error-copy";
 
-const PAYMENT_METHODS: PaymentMethod[] = ["CASH", "BANK_TRANSFER", "CARD_CAPTURED", "GIFT_CARD"];
+const PAYMENT_METHODS: PaymentMethod[] = ["CASH", "BANK_TRANSFER", "CARD_CAPTURED", "GIFT_CARD", "PACKAGE_CREDIT"];
 const PAYMENT_TYPES: PaymentType[] = ["ADVANCE", "FULL", "BALANCE"];
 const NOT_CANCELLABLE_STATUSES = new Set([
   "CANCELLED",
@@ -83,6 +83,7 @@ export function AppointmentDetailDrawer({
   const [recordMethod, setRecordMethod] = useState<PaymentMethod>("CASH");
   const [recordType, setRecordType] = useState<PaymentType>("ADVANCE");
   const [recordGiftCardCode, setRecordGiftCardCode] = useState("");
+  const [recordPackageCode, setRecordPackageCode] = useState("");
   const [recordError, setRecordError] = useState<string | null>(null);
   const [recordSubmitting, setRecordSubmitting] = useState(false);
 
@@ -169,6 +170,10 @@ export function AppointmentDetailDrawer({
       setRecordError("Enter the gift card's code.");
       return;
     }
+    if (recordMethod === "PACKAGE_CREDIT" && recordPackageCode.trim().length === 0) {
+      setRecordError("Enter the package's code.");
+      return;
+    }
     setRecordSubmitting(true);
     setRecordError(null);
     try {
@@ -179,11 +184,13 @@ export function AppointmentDetailDrawer({
           method: recordMethod,
           type: recordType,
           giftCardCode: recordMethod === "GIFT_CARD" ? recordGiftCardCode.trim() : undefined,
+          packageCode: recordMethod === "PACKAGE_CREDIT" ? recordPackageCode.trim() : undefined,
         },
         generateIdempotencyKey(),
       );
       setShowRecordForm(false);
       setRecordGiftCardCode("");
+      setRecordPackageCode("");
       load();
       onChanged();
       toast.success("Payment recorded", formatPriceCents(amountCents));
@@ -718,6 +725,19 @@ export function AppointmentDetailDrawer({
                         value={recordGiftCardCode}
                         onChange={(e) => setRecordGiftCardCode(e.target.value.toUpperCase())}
                         placeholder="ELE-GC-XXXXXXXXXX"
+                        className="mt-1 w-full rounded border border-slate-300 px-2 py-1 font-mono text-sm uppercase"
+                      />
+                    </label>
+                  ) : null}
+                  {recordMethod === "PACKAGE_CREDIT" ? (
+                    <label className="text-xs text-slate-500">
+                      Package code
+                      <input
+                        type="text"
+                        data-testid="record-payment-package-code"
+                        value={recordPackageCode}
+                        onChange={(e) => setRecordPackageCode(e.target.value.toUpperCase())}
+                        placeholder="ELE-PKG-XXXXXXXXXX"
                         className="mt-1 w-full rounded border border-slate-300 px-2 py-1 font-mono text-sm uppercase"
                       />
                     </label>

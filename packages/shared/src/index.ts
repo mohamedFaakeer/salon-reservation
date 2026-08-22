@@ -30,4 +30,6 @@ export * from "./dto/attendance.dto";
 export * from "./dto/incentive.dto";
 export * from "./dto/tenant-entitlements.dto";
 export * from "./dto/gift-card.dto";
+export * from "./dto/service-package.dto";
+export * from "./dto/campaign.dto";
 export * from "./errors/api-error";

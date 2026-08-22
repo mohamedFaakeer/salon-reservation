@@ -21,6 +21,7 @@ import {
 import { Payment } from "../entities/payment.entity";
 import { Refund } from "../entities/refund.entity";
 import { Appointment } from "../entities/appointment.entity";
+import { AppointmentServiceLine } from "../entities/appointment-service.entity";
 import type { Tenant } from "../entities/tenant.entity";
 import { isUniqueViolation } from "../common/postgres-errors.util";
 // AuditService/PaymentProviderResolver/NotificationService must stay VALUE
@@ -34,6 +35,8 @@ import { PaymentProviderResolver } from "./providers/resolve-payment-provider";
 import { NotificationService } from "../notification/notification.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { GiftCardService } from "../gift-card/gift-card.service";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { ServicePackageService } from "../service-package/service-package.service";
 
 export interface RecordPaymentInput {
   amountCents: number;
@@ -52,6 +55,10 @@ export interface RecordPaymentInput {
   giftCardId?: string | null;
   /** Set when `method` is GIFT_CARD and the caller hasn't already redeemed it (the staff-recorded path). */
   giftCardCode?: string;
+  /** Same idea as `giftCardId` — already-resolved by the caller (`BookingService.confirmHold`). */
+  packageRedemptionId?: string | null;
+  /** Set when `method` is PACKAGE_CREDIT and the caller hasn't already redeemed it (the staff-recorded path). */
+  packageCode?: string;
 }
 
 export interface PaymentListResult {
@@ -68,6 +75,7 @@ export class PaymentService {
     private readonly audit: AuditService,
     private readonly notifications: NotificationService,
     private readonly giftCards: GiftCardService,
+    private readonly servicePackages: ServicePackageService,
   ) {}
 
   /** POST /appointments/:id/payments — staff-recorded payment against an existing appointment. */
@@ -93,6 +101,7 @@ export class PaymentService {
         recordedById: actorUserId,
         idempotencyKey,
         giftCardCode: dto.giftCardCode,
+        packageCode: dto.packageCode,
       });
       return { ...recorded, appointment: foundAppointment };
     });
@@ -176,9 +185,44 @@ export class PaymentService {
       giftCardId = redeemed.giftCardId;
     }
 
+    // `finalAmountCents` may end up lower than `input.amountCents` — a
+    // package's `redeemOne` applies `min(unitPriceCentsSnapshot, maxCents)`,
+    // never a fungible balance, so what gets recorded on the row can be less
+    // than what was requested (never more). The staff-recorded path resolves
+    // that here; the booking flow (`BookingService.confirmHold`) already
+    // resolved it itself and passes the applied figure as `input.amountCents`
+    // directly, with `packageRedemptionId` pre-set.
+    let packageRedemptionId = input.packageRedemptionId ?? null;
+    let finalAmountCents = input.amountCents;
+    if (input.method === PaymentMethod.PACKAGE_CREDIT && !packageRedemptionId) {
+      if (!input.packageCode) {
+        throw new ApiError({
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "A package code is required for this payment method.",
+        });
+      }
+      const activeLines = await manager
+        .getRepository(AppointmentServiceLine)
+        .find({ where: { appointmentId: appointment.id, status: "ACTIVE" } });
+      const eligibleServiceIds = activeLines
+        .map((l) => l.serviceId)
+        .filter((id): id is string => Boolean(id));
+      const redeemed = await this.servicePackages.redeemOne(
+        manager,
+        tenant.id,
+        input.packageCode,
+        eligibleServiceIds,
+        input.amountCents,
+        { actorUserId: input.recordedById, appointmentId: appointment.id },
+      );
+      packageRedemptionId = redeemed.packageId;
+      finalAmountCents = redeemed.appliedCents;
+    }
+
     const provider = this.providers.resolve(input.provider);
     const { providerPaymentRef } = await provider.confirm({
-      amountCents: input.amountCents,
+      amountCents: finalAmountCents,
       idempotencyKey: input.idempotencyKey,
     });
 
@@ -189,7 +233,7 @@ export class PaymentService {
           tenantId: tenant.id,
           appointmentId: appointment.id,
           customerId: appointment.customerId,
-          amountCents: input.amountCents,
+          amountCents: finalAmountCents,
           method: input.method,
           state: PaymentStatus.SUCCESS,
           type: input.type,
@@ -199,6 +243,7 @@ export class PaymentService {
           recordedById: input.recordedById,
           recordedAt: new Date(),
           giftCardId,
+          packageRedemptionId,
         }),
       );
     } catch (err) {
@@ -211,8 +256,8 @@ export class PaymentService {
       throw err;
     }
 
-    appointment.advancePaidCents += input.amountCents;
-    appointment.balanceCents -= input.amountCents;
+    appointment.advancePaidCents += finalAmountCents;
+    appointment.balanceCents -= finalAmountCents;
     await manager.getRepository(Appointment).save(appointment);
 
     await this.audit.record(
@@ -224,7 +269,7 @@ export class PaymentService {
         entityId: payment.id,
         metadata: {
           appointmentId: appointment.id,
-          amountCents: input.amountCents,
+          amountCents: finalAmountCents,
           method: input.method,
           type: input.type,
         },
@@ -334,6 +379,9 @@ export class PaymentService {
     }
     if (query.giftCardId) {
       where.giftCardId = query.giftCardId;
+    }
+    if (query.packageRedemptionId) {
+      where.packageRedemptionId = query.packageRedemptionId;
     }
     const [data, total] = await this.payments.findAndCount({
       where,

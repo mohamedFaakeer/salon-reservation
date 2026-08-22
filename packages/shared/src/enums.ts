@@ -67,6 +67,7 @@ export enum PaymentMethod {
   ONLINE = "ONLINE",
   GATEWAY = "GATEWAY",
   GIFT_CARD = "GIFT_CARD",
+  PACKAGE_CREDIT = "PACKAGE_CREDIT",
 }
 
 export enum PaymentType {
@@ -112,6 +113,8 @@ export enum NotificationEvent {
   RESCHEDULE_CONFIRMATION = "RESCHEDULE_CONFIRMATION",
   NO_SHOW = "NO_SHOW",
   LATE_ARRIVAL = "LATE_ARRIVAL",
+  /** A staff-triggered win-back message to a lapsed customer — the one event with no `Appointment` behind it. */
+  WINBACK_OFFER = "WINBACK_OFFER",
 }
 /**
  * An inquiry is a question, not a reservation: "do you do bridal packages,
@@ -206,5 +209,18 @@ export enum GiftCardStatus {
   /** Balance reached zero through redemption. */
   REDEEMED = "REDEEMED",
   /** Corrected by whoever issued it — never redeemable again, whatever balance remained. */
+  VOID = "VOID",
+}
+
+/**
+ * A prepaid service package's own lifecycle — the same "no EXPIRED value"
+ * reasoning as `GiftCardStatus`, and DEPLETED rather than REDEEMED: hitting
+ * zero uses implies nothing about money, just that every visit was spent.
+ */
+export enum ServicePackageStatus {
+  ACTIVE = "ACTIVE",
+  /** Every use has been redeemed. */
+  DEPLETED = "DEPLETED",
+  /** Corrected by whoever issued it — never redeemable again, whatever uses remained. */
   VOID = "VOID",
 }

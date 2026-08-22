@@ -8,10 +8,12 @@ import {
   createBooking,
   fetchAvailability,
   previewGiftCard,
+  previewPackage,
   type AvailabilitySlot,
   type ConfirmResponse,
   type CustomerDetailsInput,
   type GiftCardPreview,
+  type PackagePreview,
   type ReserveResponse,
   type SalonProfile,
 } from "../lib/api-client";
@@ -55,6 +57,11 @@ export function useBookingWizard(salon: SalonProfile) {
   const [giftCardChecking, setGiftCardChecking] = useState(false);
   const [giftCardError, setGiftCardError] = useState<string | null>(null);
   const [giftCardApplied, setGiftCardApplied] = useState(false);
+  const [packageCode, setPackageCodeRaw] = useState("");
+  const [packagePreview, setPackagePreview] = useState<PackagePreview | null>(null);
+  const [packageChecking, setPackageChecking] = useState(false);
+  const [packageError, setPackageError] = useState<string | null>(null);
+  const [packageApplied, setPackageApplied] = useState(false);
 
   const selectedServices = useMemo(
     () => salon.services.filter((s) => selectedServiceIds.includes(s.id)),
@@ -149,13 +156,45 @@ export function useBookingWizard(salon: SalonProfile) {
     }
   }, [hold, giftCardCode]);
 
+  /** Editing the code after a successful check invalidates that check — the code shown must always match what was actually verified. */
+  const setPackageCode = useCallback((code: string) => {
+    setPackageCodeRaw(code);
+    setPackagePreview(null);
+    setPackageApplied(false);
+    setPackageError(null);
+  }, []);
+
+  /** A pure read — previews the package's remaining uses/service before anything is committed. The real deduction happens server-side, at confirm. */
+  const checkPackage = useCallback(async () => {
+    if (!hold || packageCode.trim().length === 0) {
+      return;
+    }
+    setPackageChecking(true);
+    setPackageError(null);
+    try {
+      const preview = await previewPackage(hold.paymentIntent.id, packageCode.trim());
+      setPackagePreview(preview);
+      setPackageApplied(true);
+    } catch (err) {
+      setPackagePreview(null);
+      setPackageApplied(false);
+      setPackageError(
+        err instanceof ApiRequestError
+          ? err.message
+          : "Could not check this package. Please try again.",
+      );
+    } finally {
+      setPackageChecking(false);
+    }
+  }, [hold, packageCode]);
+
   /** Shared by the payment step's button and the NO_ADVANCE auto-skip below — takes the intent id explicitly rather than reading `hold` state, which wouldn't be updated yet right after `setHold()`. */
   const runConfirm = useCallback(
-    async (paymentIntentId: string, giftCardCodeToApply?: string) => {
+    async (paymentIntentId: string, giftCardCodeToApply?: string, packageCodeToApply?: string) => {
       setSubmitting(true);
       setError(null);
       try {
-        const res = await confirmPayment(paymentIntentId, idempotencyKey, giftCardCodeToApply);
+        const res = await confirmPayment(paymentIntentId, idempotencyKey, giftCardCodeToApply, packageCodeToApply);
         setConfirmed(res);
         setStep("success");
       } catch (err) {
@@ -220,8 +259,12 @@ export function useBookingWizard(salon: SalonProfile) {
     if (!hold) {
       return;
     }
-    await runConfirm(hold.paymentIntent.id, giftCardApplied ? giftCardCode.trim() : undefined);
-  }, [hold, runConfirm, giftCardApplied, giftCardCode]);
+    await runConfirm(
+      hold.paymentIntent.id,
+      giftCardApplied ? giftCardCode.trim() : undefined,
+      packageApplied ? packageCode.trim() : undefined,
+    );
+  }, [hold, runConfirm, giftCardApplied, giftCardCode, packageApplied, packageCode]);
 
   const cancel = useCallback(async () => {
     if (!hold) {
@@ -234,9 +277,10 @@ export function useBookingWizard(salon: SalonProfile) {
       setSelectedSlot(null);
       setStep("slots");
       setGiftCardCode("");
+      setPackageCode("");
       void loadSlots();
     }
-  }, [hold, loadSlots, setGiftCardCode]);
+  }, [hold, loadSlots, setGiftCardCode, setPackageCode]);
 
   return {
     step,
@@ -274,6 +318,13 @@ export function useBookingWizard(salon: SalonProfile) {
     giftCardError,
     giftCardApplied,
     checkGiftCard,
+    packageCode,
+    setPackageCode,
+    packagePreview,
+    packageChecking,
+    packageError,
+    packageApplied,
+    checkPackage,
   };
 }
 

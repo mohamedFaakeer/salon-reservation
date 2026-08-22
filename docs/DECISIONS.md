@@ -1279,3 +1279,120 @@ inventing a look for one screen would have made it read as a different product.
     specific modules deliberately (§34); folding in a brand-new feature
     wasn't asked for. A natural, easy future extension, not built
     speculatively now.
+
+## 36. Win-back campaigns & prepaid service packages (2026-08-22)
+
+1. **Scope-boundary call, made explicitly rather than silently.**
+   CLAUDE.md §1.11's MVP out-of-scope list names *"marketing automation"*
+   and, separately, *"loyalty, memberships, gift cards"* verbatim — gift
+   cards were on that same list (§35) and got built once explicitly
+   approved. The same path applies here: a prepaid service package is the
+   closer cousin of a gift card (one purchase event, a stored balance drawn
+   down over visits), not a subscription/membership (no recurring-billing
+   infrastructure exists anywhere in this codebase) or a points-accrual
+   loyalty scheme (no accrual-on-spend mechanic exists either). The win-back
+   campaign is a narrow slice of "marketing automation" — one manual,
+   staff-triggered message to a bounded, already-computed audience of at
+   most 25 lapsed customers — not a scheduling/automation engine.
+2. **Real SMS/WhatsApp sending was not activated for win-back messages.**
+   `NotificationService.sendCampaignMessage` uses exactly the two channels
+   `fire()` already sends for real (CONSOLE, EMAIL) — the SMS/WhatsApp
+   providers stay hard-stubbed `501`s, per CLAUDE.md's explicit "real
+   payment gateway and real SMS/WhatsApp are stubbed only" rule. Activating
+   a real SMS/WhatsApp provider is a separate, larger decision than "let an
+   owner message their own lapsed customers."
+3. **`ServicePackage` is a sibling entity to `GiftCard`, not an extension
+   of it.** The balance is **N uses of one specific `Service`**, not a
+   cents balance — `GiftCard`'s `CHK_gift_card_balance_range` and
+   `redeemUpTo`'s `min(cents, cents)` math don't generalize to "N uses,"
+   and `GiftCard` has no `serviceId` column to scope eligibility against.
+   The proven mechanics were copied wholesale rather than re-invented: the
+   `Check`-constrained balance-range pattern, the
+   `lockActiveCard`/`assertRedeemable`/`debit` structure (renamed
+   `lockActivePackage`/`assertRedeemable`/inline decrement), the void
+   pattern, the `Payment.giftCardId`-style nullable FK trail (→
+   `Payment.packageRedemptionId`), and the `recordPaymentInternal`/
+   `confirmHold` integration seams.
+4. **v1 packages are single-service only** — `service_package.serviceId`
+   is one FK, not a set. This matches the "5 haircuts" style example the
+   feature was scoped from; a package spanning several services (or a
+   service *category*, which doesn't structurally exist yet — `Service`
+   has only a free-text `category` column, no `ServiceCategory` entity) is
+   a clean future extension, not built speculatively now.
+5. **One redemption method, `redeemOne`, not gift cards' exact-vs-up-to
+   split.** A package's "unit" is inherently all-or-one — you can't
+   partially consume a use — so `redeemOne` always computes
+   `appliedCents = min(unitPriceCentsSnapshot, maxCents)` and decrements
+   `remainingUses` by exactly 1 regardless of `appliedCents`, used
+   identically by both the desk payment form and the online-booking confirm
+   flow. One consequence worth naming: at the desk, the amount actually
+   recorded on the `Payment` row can be **less** than what staff typed in
+   the amount field (when `unitPriceCentsSnapshot < amountCents`) — this is
+   the one place `PaymentService.recordPaymentInternal` computes a
+   `finalAmountCents` that can diverge from the caller's requested
+   `input.amountCents`, mirrored through to the appointment's
+   paid/balance mutation and the audit metadata.
+6. **`serviceId` is `ON DELETE RESTRICT`, not `SET NULL`/`CASCADE`.**
+   Unlike `AppointmentServiceLine.serviceId` (nullable, `SET NULL` — a
+   closed historical record surviving the deleted service it once named),
+   a `ServicePackage` is an *active, spendable balance*. A package whose
+   service just vanished is not a preserved history row, it's a live
+   liability nobody can redeem correctly — so deleting a service with
+   active packages against it is blocked outright rather than silently
+   orphaning them.
+7. **`ServicePackageService.redeemOne` validates service eligibility
+   against the actual booked/appointment services, passed in by the
+   caller** (`eligibleServiceIds: string[]`), not a single `serviceId`
+   parameter — the desk payment form doesn't pin one specific
+   `AppointmentServiceLine`, and the booking-confirm flow's hold snapshot
+   can (in principle) cover more than one service. A package redeems only
+   if its own `serviceId` is among the set actually being paid for;
+   otherwise `409 PACKAGE_SERVICE_MISMATCH`, surfaced by the booking
+   controller before anything commits (the whole confirm runs in one
+   transaction, so a mismatch mid-confirm rolls back the appointment
+   insert too — nothing partially commits).
+8. **`customer.marketingOptOut` is a new boolean, default `false`, set
+   only through a new, deliberately narrow `PATCH /customers/:id { marketingOptOut? }`** —
+   not a general customer-edit endpoint. Without this column and a way to
+   set it, `WinbackService`'s opt-out check would have had nothing to
+   check; a single checkbox was added to the existing customer detail page
+   (not a fresh mockup pass — a one-control addition to an already-built
+   detail screen, not a new surface) so the feature is actually usable
+   end-to-end, not merely modeled in the schema.
+9. **A campaign message's exact text is persisted on the `Notification`
+   row (`body`, new nullable column) rather than only held in memory.**
+   Every other `NotificationEvent` rebuilds its text fresh on a manual
+   retry from `type` + `appointmentId` (`NotificationService.buildMessage`)
+   — `WINBACK_OFFER` has no appointment to rebuild from, since it's
+   staff-composed free text sent to a customer with no appointment behind
+   the message. Without persisting it, a failed-then-retried win-back send
+   would silently regress to a generic "you have a notification from your
+   salon" fallback instead of the actual offer. `sendCampaignMessage` is a
+   sibling method to `fire()`, not a special case inside it, for the same
+   reason — the two have genuinely different message-sourcing contracts.
+10. **A 14-day "already contacted" dedupe is enforced server-side in
+    `WinbackService`, not left to the UI.** A stray page refresh or a
+    second click sending the same lapsed-customer list twice is an
+    accidental-repeat-send guard, not a scheduling system — it queries the
+    `Notification` table for an existing `WINBACK_OFFER` row for that
+    customer within the window, same tenant. Paired with a dedicated
+    `winback-campaign` rate-limit rule (5/min per IP) — tighter than
+    `payment`'s 20/min, reasoned the same way `gift-card-lookup` was: this
+    is the first endpoint where a compromised or careless OWNER/MANAGER
+    session repeatedly firing it is a real reputational risk to the
+    salon's own customers, not just an API-abuse concern.
+11. **The win-back campaign is gated behind the same Reports entitlement
+    as the panel it reads from** (`@RequiresModule("reports")` on
+    `WinbackController`, alongside the new `SEND_MARKETING_CAMPAIGN`
+    permission, OWNER/MANAGER only) — a Lite-tier salon that can't see the
+    locked "Worth a call" panel can't reach the send endpoint directly
+    either. `WinbackController`/`WinbackService` are deliberately siblings
+    of `ReportsController`/`ReportsService`, not methods on them —
+    `ReportsService` stays purely read-only aggregation; the one write
+    (a `Notification` row per message, an audit row per send) lives in its
+    own service.
+12. **Neither feature was added to the Lite/Pro gated-module list itself**
+    (`packages/shared/src/tenant-entitlements.ts`) beyond piggybacking on
+    the *existing* Reports gate for win-back — same "don't silently expand
+    a five-module system" call already made and documented for gift cards
+    (§35.12).

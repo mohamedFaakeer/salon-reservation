@@ -243,10 +243,14 @@ export function confirmPayment(
   intentId: string,
   idempotencyKey: string,
   giftCardCode?: string,
+  packageCode?: string,
 ): Promise<ConfirmResponse> {
   return request<ConfirmResponse>(`/payments/${intentId}/confirm`, {
     method: "POST",
-    body: JSON.stringify(giftCardCode ? { giftCardCode } : {}),
+    body: JSON.stringify({
+      ...(giftCardCode ? { giftCardCode } : {}),
+      ...(packageCode ? { packageCode } : {}),
+    }),
     idempotencyKey,
   });
 }
@@ -259,6 +263,22 @@ export interface GiftCardPreview {
 /** A pure read — previews a gift card's balance before the customer commits to using it. */
 export function previewGiftCard(intentId: string, code: string): Promise<GiftCardPreview> {
   return request<GiftCardPreview>(`/payments/${intentId}/gift-card-preview`, {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+}
+
+export interface PackagePreview {
+  remainingUses: number;
+  unitPriceCentsSnapshot: number;
+  serviceId: string;
+  serviceNameSnapshot: string;
+  expiresAt: string;
+}
+
+/** A pure read — previews a package's remaining uses and eligible service before the customer commits to using it. */
+export function previewPackage(intentId: string, code: string): Promise<PackagePreview> {
+  return request<PackagePreview>(`/payments/${intentId}/package-preview`, {
     method: "POST",
     body: JSON.stringify({ code }),
   });

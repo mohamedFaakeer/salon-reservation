@@ -59,10 +59,27 @@ export class ConfirmPaymentDto {
   @IsString()
   @MaxLength(24)
   giftCardCode?: string;
+
+  /**
+   * Same timing as `giftCardCode` — redeemed at confirm, not at reserve.
+   * Rejected up front if none of the booked services match the package's
+   * `serviceId`.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(24)
+  packageCode?: string;
 }
 
 /** POST /payments/:intentId/gift-card-preview — a pure read, no mutation. */
 export class GiftCardPreviewDto {
+  @IsString()
+  @MaxLength(24)
+  code!: string;
+}
+
+/** POST /payments/:intentId/package-preview — a pure read, no mutation. */
+export class PackagePreviewDto {
   @IsString()
   @MaxLength(24)
   code!: string;

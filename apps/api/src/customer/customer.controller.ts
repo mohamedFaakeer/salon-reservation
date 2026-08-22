@@ -1,10 +1,10 @@
-import { Body, Controller, Get, Param, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 // DTOs must stay VALUE imports: ValidationPipe resolves them via
 // design:paramtypes metadata at runtime; `import type` would erase them.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import { CreateCustomerDto, CustomerQueryDto } from "@salon/shared";
+import { CreateCustomerDto, CustomerQueryDto, UpdateCustomerDto } from "@salon/shared";
 import { getTenantContext } from "../tenant/tenant-context";
 import { Permissions } from "../common/authorization/permissions.decorator";
 import { Permission } from "../common/authorization/permission.enum";
@@ -38,6 +38,12 @@ export class CustomerController {
   findOne(@Req() req: Request, @Param("id") id: string) {
     const ctx = getTenantContext(req);
     return this.customers.findById(ctx.tenantId, id);
+  }
+
+  @Patch(":id")
+  update(@Req() req: Request, @Param("id") id: string, @Body() dto: UpdateCustomerDto) {
+    const ctx = getTenantContext(req);
+    return this.customers.update(ctx.tenantId, id, dto);
   }
 
   /**

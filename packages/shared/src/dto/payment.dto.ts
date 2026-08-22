@@ -19,6 +19,12 @@ export class RecordPaymentDto {
   @IsString()
   @MaxLength(24)
   giftCardCode?: string;
+
+  /** Required by the service (not this decorator) only when `method` is PACKAGE_CREDIT. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(24)
+  packageCode?: string;
 }
 
 /** POST /payments/:id/refund (API.md §3) — OWNER, MANAGER only. */
@@ -51,5 +57,10 @@ export class PaymentQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsUUID("4")
   giftCardId?: string;
+
+  /** A service package's full redemption history — every payment it was drawn against. */
+  @IsOptional()
+  @IsUUID("4")
+  packageRedemptionId?: string;
 }
 

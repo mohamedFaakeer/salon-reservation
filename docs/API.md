@@ -32,9 +32,10 @@ All responses are JSON. Errors use a consistent envelope (see §7). API is docum
 |---|---|---|
 | POST | `/salons/:slug/availability` | **The engine query.** Body: `{ serviceIds[], staffId? (null = ANY), date }` → returns `{ slots: [{ staffId, staffName, start, end }] }` sorted by time, earliest first; `staffId=null` returns per-staff earliest slots with earliest highlighted. Server validates: salon open, within booking window, same-day lead time. |
 | POST | `/salons/:slug/bookings` | Create booking. Body: `{ serviceIds[], staffId, start, customer: { firstName, lastName, phone, email? }, notes?, advanceMethod? }` + header `Idempotency-Key`. Flow: hold → payment intent (manual) → `201` with `{ bookingReference, holdExpiresAt, paymentIntent: { id, amountCents, status } }`. Appointment is `PENDING_PAYMENT`. |
-| POST | `/payments/:intentId/confirm` | Confirm payment (manual provider "succeeds" in MVP). Body: `{ providerData?: { note }, giftCardCode? }` + `Idempotency-Key` (same key as booking). → `200 { appointment: {...}, bookingReference }`, appointment → `CONFIRMED`. When `giftCardCode` is present, the server redeems `min(card balance, advanceRequiredCents)` and creates a `GIFT_CARD` payment for that amount before falling back to the manual `ONLINE` placeholder for any remainder — the client never sends an amount, only the code. |
+| POST | `/payments/:intentId/confirm` | Confirm payment (manual provider "succeeds" in MVP). Body: `{ providerData?: { note }, giftCardCode?, packageCode? }` + `Idempotency-Key` (same key as booking). → `200 { appointment: {...}, bookingReference }`, appointment → `CONFIRMED`. When `giftCardCode` is present, the server redeems `min(card balance, advanceRequiredCents)` and creates a `GIFT_CARD` payment for that amount first; when `packageCode` is also/instead present, it then redeems `min(unitPriceCentsSnapshot, whatever of the advance is still due)` as a `PACKAGE_CREDIT` payment, refusing outright (`409 PACKAGE_SERVICE_MISMATCH`) if none of the booked services match the package's own service — either falls back to the manual `ONLINE` placeholder for any remainder. The client never sends an amount, only the code(s). |
 | POST | `/payments/:intentId/cancel` | Cancel payment flow → hold released, appointment `EXPIRED` (if any). |
 | POST | `/payments/:intentId/gift-card-preview` | Roles: none (customer). A pure read, no mutation. Body `{ code }` → `200 { remainingBalanceCents, expiresAt }` or `404 GIFT_CARD_NOT_FOUND` / `409 GIFT_CARD_VOID` / `409 GIFT_CARD_ALREADY_REDEEMED` / `410 GIFT_CARD_EXPIRED`. Lets the customer see a card's balance before deciding to use it on confirm. Rate-limited tighter than `payment` (10/min per IP) — a gift-card code is a bearer credential with no second factor, unlike a booking reference (SECURITY.md). |
+| POST | `/payments/:intentId/package-preview` | Roles: none (customer). A pure read, no mutation. Body `{ code }` → `200 { remainingUses, unitPriceCentsSnapshot, serviceId, serviceNameSnapshot, expiresAt }` or `404 SERVICE_PACKAGE_NOT_FOUND` / `409 SERVICE_PACKAGE_VOID` / `409 SERVICE_PACKAGE_DEPLETED` / `410 SERVICE_PACKAGE_EXPIRED`. Same bearer-credential rate limit as the gift-card preview (10/min per IP). |
 | GET | `/bookings/:reference` | Appointment by reference `ELN-XXXXXX`. Query param `phone` required (customer ownership check). |
 | POST | `/bookings/:reference/cancel` | Customer self-service cancel (within 2 h cutoff). Body `{ phone, reason }`. → refund calculation applied (server-side). |
 | POST | `/bookings/:reference/reschedule` | Customer reschedule. Body `{ phone, newStaffId?, newStart }`. Re-runs availability; original appointment untouched if new slot fails. |
@@ -93,6 +94,7 @@ All auth routes are unauthenticated in the sense that they need no bearer token;
 | GET | `/customers?q=` | OWNER, MANAGER, RECEPTIONIST | Search by name/phone; returns dupes flagged |
 | POST | `/customers` | OWNER, MANAGER, RECEPTIONIST | Create; `409 DUPLICATE_CUSTOMER` with `{ existing: {...} }` when phone/email match (no silent duplicates; explicit merge required) |
 | GET | `/customers/:id` | OWNER, MANAGER, RECEPTIONIST | Profile + appointment history |
+| PATCH | `/customers/:id` | OWNER, MANAGER, RECEPTIONIST | Currently just the marketing flag, not a general customer edit. Body `{ marketingOptOut? }` — excludes/re-includes this customer from win-back/marketing sends; never affects transactional notifications. |
 
 ### Services & Staff
 
@@ -113,7 +115,7 @@ All auth routes are unauthenticated in the sense that they need no bearer token;
 
 | Method | Path | Roles | Description |
 |---|---|---|---|
-| POST | `/appointments/:id/payments` | OWNER, MANAGER, RECEPTIONIST | Record payment/advance: `{ amountCents, method (CASH\|BANK_TRANSFER\|CARD_CAPTURED\|GIFT_CARD), type (ADVANCE\|FULL\|BALANCE), giftCardCode? }` + `Idempotency-Key`. Server validates amounts. `giftCardCode` is required when `method` is `GIFT_CARD` — the exact `amountCents` requested is redeemed from that card, refused outright (`409 GIFT_CARD_INSUFFICIENT_BALANCE`) if it can't cover it, never silently short-applied. |
+| POST | `/appointments/:id/payments` | OWNER, MANAGER, RECEPTIONIST | Record payment/advance: `{ amountCents, method (CASH\|BANK_TRANSFER\|CARD_CAPTURED\|GIFT_CARD\|PACKAGE_CREDIT), type (ADVANCE\|FULL\|BALANCE), giftCardCode?, packageCode? }` + `Idempotency-Key`. Server validates amounts. `giftCardCode` is required when `method` is `GIFT_CARD` — the exact `amountCents` requested is redeemed from that card, refused outright (`409 GIFT_CARD_INSUFFICIENT_BALANCE`) if it can't cover it, never silently short-applied. `packageCode` is required when `method` is `PACKAGE_CREDIT` — one use is consumed and `min(unitPriceCentsSnapshot, amountCents)` is what actually lands on the row (which can be less than requested, unlike a gift card); refused with `409 PACKAGE_SERVICE_MISMATCH` if the appointment has no active line for the package's own service. |
 | GET | `/payments?appointmentId&customerId` | OWNER, MANAGER, RECEPTIONIST | Payment list w/ states |
 | POST | `/payments/:id/refund` | OWNER, MANAGER | Body `{ amountCents, reason }` → RefundCalculator (policy), create Refund record; external refund documented in notes |
 
@@ -128,6 +130,24 @@ All auth routes are unauthenticated in the sense that they need no bearer token;
 
 A card's redemption history is `Payment` rows where `giftCardId` matches —
 no separate endpoint; `GET /payments?...` already lists them.
+
+### Service packages
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| POST | `/service-packages` | OWNER, MANAGER | Issue a package. Body `{ serviceId, totalUses (≥2), purchasePriceCents, expiresAt, customer: { firstName, lastName, phone, email? }, paymentMethod (CASH\|BANK_TRANSFER\|CARD_CAPTURED) }` + `Idempotency-Key`. `serviceId`'s current name/price are snapshotted at issue time. `customer` is found-or-created the same way a booking's inline customer is. Always records a real payment for the sale; idempotent the same way an appointment payment is. |
+| GET | `/service-packages?q=` | OWNER, MANAGER | List, optionally matching code/customer name/phone. |
+| GET | `/service-packages/:id` | OWNER, MANAGER | One package, including its live-computed `expired` flag (never a stored status). |
+| PATCH | `/service-packages/:id/void` | OWNER, MANAGER | Body `{ reason }` (≥3 chars). Refuses only an already-void package; a partially-used package can still be voided as a correction. |
+
+A package's redemption history is `Payment` rows where `packageRedemptionId`
+matches — `GET /payments?packageRedemptionId=...`, same as gift cards.
+
+### Reports actions
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| POST | `/reports/lapsed-customers/winback` | OWNER, MANAGER (`SEND_MARKETING_CAMPAIGN`, gated behind the Reports entitlement same as the panel it reads from) | Turns the "Worth a call" report's lapsed-customer list into a sent message. Body `{ customerIds[] (1–25), message (10–500 chars, `{firstName}`/`{salonName}` tokens substituted server-side per recipient), giftCardCode? }`. Every recipient is re-loaded from the database — never trusted from the request beyond their id. Skips (without erroring the batch) any customer with `marketingOptOut = true`, and any customer already sent a `WINBACK_OFFER` within the last 14 days. → `200 { sent: string[], skippedOptedOut: string[], skippedRecentlyContacted: string[] }`. Rate-limited to 5/min per IP — an accidental-repeat-send guard, not an everyday-use ceiling. |
 
 ### Settings & Config (tenant)
 

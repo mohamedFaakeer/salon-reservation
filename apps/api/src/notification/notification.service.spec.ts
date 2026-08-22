@@ -137,6 +137,58 @@ describe("NotificationService", () => {
     });
   });
 
+  describe("sendCampaignMessage", () => {
+    it("always creates + sends a CONSOLE notification with the caller's exact text persisted as body", async () => {
+      const tenant = fakeTenant();
+      const customer = fakeCustomer({ email: null });
+
+      await service.sendCampaignMessage(tenant, customer, "Come back soon!");
+
+      expect(notificationsRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          appointmentId: null,
+          type: NotificationEvent.WINBACK_OFFER,
+          channel: NotificationChannel.CONSOLE,
+          recipient: customer.phone,
+          body: "Come back soon!",
+        }),
+      );
+      expect(sendMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("also creates + sends an EMAIL notification when the customer has an email", async () => {
+      const tenant = fakeTenant();
+      const customer = fakeCustomer({ email: "a@b.com" });
+
+      await service.sendCampaignMessage(tenant, customer, "Come back soon!");
+
+      expect(notificationsRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ channel: NotificationChannel.EMAIL, recipient: "a@b.com", body: "Come back soon!" }),
+      );
+      expect(sendMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("a retry sends the persisted body, not a generic fallback, even though there is no appointment", async () => {
+      const notification = {
+        id: "notif-1",
+        tenantId: "tenant-1",
+        appointmentId: null,
+        channel: NotificationChannel.EMAIL,
+        type: NotificationEvent.WINBACK_OFFER,
+        recipient: "a@b.com",
+        body: "Come back soon!",
+        retryCount: 0,
+      } as Notification;
+      vi.mocked(notificationsRepo.findOne).mockResolvedValue(notification);
+
+      await service.retry("tenant-1", "notif-1");
+
+      expect(sendMock).toHaveBeenCalledWith(
+        expect.objectContaining({ subject: "A message from your salon", body: "Come back soon!" }),
+      );
+    });
+  });
+
   describe("retry", () => {
     it("404s when the notification doesn't exist for this tenant", async () => {
       vi.mocked(notificationsRepo.findOne).mockResolvedValue(null);

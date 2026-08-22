@@ -46,6 +46,10 @@ export class Customer {
   @Column({ type: "text", nullable: true })
   notes!: string | null;
 
+  /** Staff-set: excludes this customer from win-back/marketing sends. Never affects transactional notifications (booking/payment/reminder). */
+  @Column({ type: "boolean", default: false })
+  marketingOptOut!: boolean;
+
   @CreateDateColumn({ type: "timestamptz" })
   createdAt!: Date;
 

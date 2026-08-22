@@ -56,6 +56,10 @@ export class Notification {
   @Column({ type: "varchar", length: 255 })
   recipient!: string;
 
+  /** Set only when the text isn't derivable from `type`+`appointmentId` on retry — currently just WINBACK_OFFER. */
+  @Column({ type: "text", nullable: true })
+  body!: string | null;
+
   @Index()
   @Column({ type: "varchar", length: 10, default: NotificationStatus.PENDING })
   status!: NotificationStatus;

@@ -57,9 +57,22 @@ export enum Permission {
    * but creating new stored value is not.
    */
   MANAGE_GIFT_CARDS = "MANAGE_GIFT_CARDS",
+  /**
+   * Issue and void prepaid service packages. OWNER and MANAGER only, same
+   * scope as MANAGE_GIFT_CARDS and for the same reason — redeeming one is an
+   * ordinary payment-method choice open to RECEPTIONIST too (via
+   * RECORD_PAYMENT), but creating new stored value is not.
+   */
+  MANAGE_SERVICE_PACKAGES = "MANAGE_SERVICE_PACKAGES",
   /** Read your own live incentive estimate and your own payout history. STAFF — not payroll access, just your own figure. */
   VIEW_OWN_INCENTIVE_EARNINGS = "VIEW_OWN_INCENTIVE_EARNINGS",
   VIEW_OWN_SCHEDULE = "VIEW_OWN_SCHEDULE",
   VIEW_AUDIT_LOG = "VIEW_AUDIT_LOG",
   VIEW_NOTIFICATIONS = "VIEW_NOTIFICATIONS",
+  /**
+   * Send a win-back message to lapsed customers. OWNER and MANAGER only,
+   * same scope as VIEW_REPORTS — the audience this reaches into (named
+   * customers, their contact details) is the same owner-level surface.
+   */
+  SEND_MARKETING_CAMPAIGN = "SEND_MARKETING_CAMPAIGN",
 }

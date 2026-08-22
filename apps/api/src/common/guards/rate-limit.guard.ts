@@ -83,6 +83,24 @@ const RULES: RateLimitRule[] = [
     max: 10,
     windowMs: 60_000,
   },
+  {
+    // Same bearer-credential reasoning as "gift-card-lookup".
+    name: "package-lookup",
+    method: "POST",
+    pattern: /^\/payments\/[^/]+\/package-preview$/,
+    max: 10,
+    windowMs: 60_000,
+  },
+  {
+    // Guards against a repeated accidental mass-send, not everyday use — an
+    // owner sending one campaign to a handful of lapsed customers a day
+    // never comes close to this.
+    name: "winback-campaign",
+    method: "POST",
+    pattern: /^\/reports\/lapsed-customers\/winback$/,
+    max: 5,
+    windowMs: 60_000,
+  },
 ];
 
 /** Health checks must never be throttled — a 429 here reads as an outage. */

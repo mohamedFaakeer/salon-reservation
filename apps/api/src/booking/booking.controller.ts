@@ -6,6 +6,7 @@ import {
   ConfirmPaymentDto,
   CreateBookingDto,
   GiftCardPreviewDto,
+  PackagePreviewDto,
   SelfServiceCancelDto,
   SelfServiceRescheduleDto,
   SubmitRatingDto,
@@ -70,6 +71,7 @@ export class BookingController {
       intentId,
       sessionKey,
       dto.giftCardCode,
+      dto.packageCode,
     );
     return { appointment, bookingReference };
   }
@@ -80,6 +82,14 @@ export class BookingController {
   async previewGiftCard(@Param("intentId") intentId: string, @Body() dto: GiftCardPreviewDto) {
     const tenant = await this.resolveTenantForHold(intentId);
     return this.bookings.previewGiftCard(tenant, dto.code);
+  }
+
+  /** A pure read — previews a package's remaining uses/eligible service before the customer commits to using it. */
+  @Post("payments/:intentId/package-preview")
+  @HttpCode(200)
+  async previewPackage(@Param("intentId") intentId: string, @Body() dto: PackagePreviewDto) {
+    const tenant = await this.resolveTenantForHold(intentId);
+    return this.bookings.previewPackage(tenant, dto.code);
   }
 
   @Post("payments/:intentId/cancel")

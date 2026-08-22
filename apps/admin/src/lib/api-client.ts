@@ -195,7 +195,14 @@ export interface AppointmentDetail extends AppointmentRecord {
   lines: AppointmentServiceLineView[];
 }
 
-export type PaymentMethod = "CASH" | "BANK_TRANSFER" | "CARD_CAPTURED" | "ONLINE" | "GATEWAY" | "GIFT_CARD";
+export type PaymentMethod =
+  | "CASH"
+  | "BANK_TRANSFER"
+  | "CARD_CAPTURED"
+  | "ONLINE"
+  | "GATEWAY"
+  | "GIFT_CARD"
+  | "PACKAGE_CREDIT";
 export type PaymentType = "ADVANCE" | "FULL" | "BALANCE";
 
 export interface PaymentRecord {
@@ -647,6 +654,12 @@ export interface ListMeta {
 export interface CustomerDetail extends CustomerRecord {
   notes: string | null;
   createdAt: string;
+  /** Excludes this customer from win-back/marketing sends. Never affects transactional notifications. */
+  marketingOptOut: boolean;
+}
+
+export function updateCustomer(id: string, patch: { marketingOptOut?: boolean }): Promise<CustomerDetail> {
+  return request<CustomerDetail>(`/customers/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
 }
 
 /**
@@ -858,6 +871,8 @@ export interface PaymentQuery {
   state?: string;
   /** A gift card's full redemption history — every payment it was drawn against. */
   giftCardId?: string;
+  /** A service package's full redemption history — every payment it was drawn against. */
+  packageRedemptionId?: string;
   limit?: number;
   offset?: number;
 }
@@ -877,6 +892,9 @@ export function fetchPaymentsList(
   }
   if (params.giftCardId) {
     qs.set("giftCardId", params.giftCardId);
+  }
+  if (params.packageRedemptionId) {
+    qs.set("packageRedemptionId", params.packageRedemptionId);
   }
   qs.set("limit", String(params.limit ?? 25));
   qs.set("offset", String(params.offset ?? 0));
@@ -928,7 +946,13 @@ export function fetchAudit(
 
 export function recordPayment(
   appointmentId: string,
-  input: { amountCents: number; method: PaymentMethod; type: PaymentType; giftCardCode?: string },
+  input: {
+    amountCents: number;
+    method: PaymentMethod;
+    type: PaymentType;
+    giftCardCode?: string;
+    packageCode?: string;
+  },
   idempotencyKey: string,
 ): Promise<PaymentRecord> {
   return request<PaymentRecord>(`/appointments/${appointmentId}/payments`, {
@@ -1825,4 +1849,101 @@ export function createGiftCard(input: CreateGiftCardInput, idempotencyKey: strin
 
 export function voidGiftCard(id: string, reason: string): Promise<GiftCardView> {
   return request<GiftCardView>(`/gift-cards/${id}/void`, { method: "PATCH", body: JSON.stringify({ reason }) });
+}
+
+/* -----------------------------------------------------------------------
+ * Service packages
+ *
+ * A bundle of prepaid uses of one specific service, sold once and drawn
+ * down one use per visit. Sibling to gift cards, above — same create/void
+ * shape, a service picker in place of a cents amount.
+ * ------------------------------------------------------------------ */
+
+export type ServicePackageStatus = "ACTIVE" | "DEPLETED" | "VOID";
+
+export interface ServicePackageView {
+  id: string;
+  code: string;
+  customer: { name: string; phone: string } | null;
+  serviceId: string;
+  serviceNameSnapshot: string;
+  unitPriceCentsSnapshot: number;
+  totalUses: number;
+  remainingUses: number;
+  purchasePriceCents: number;
+  expiresAt: string;
+  expired: boolean;
+  status: ServicePackageStatus;
+  issuedByName: string | null;
+  issuedAt: string;
+  voidedAt: string | null;
+  voidReason: string | null;
+}
+
+export interface CreateServicePackageInput {
+  serviceId: string;
+  totalUses: number;
+  purchasePriceCents: number;
+  expiresAt: string;
+  customer: { firstName: string; lastName: string; phone: string; email?: string };
+  paymentMethod: "CASH" | "BANK_TRANSFER" | "CARD_CAPTURED";
+}
+
+export function fetchServicePackages(
+  params: { q?: string; limit?: number; offset?: number } = {},
+): Promise<ServicePackageView[]> {
+  const qs = new URLSearchParams();
+  if (params.q) {
+    qs.set("q", params.q);
+  }
+  qs.set("limit", String(params.limit ?? 100));
+  qs.set("offset", String(params.offset ?? 0));
+  return request<ServicePackageView[]>(`/service-packages?${qs.toString()}`);
+}
+
+export function fetchServicePackage(id: string): Promise<ServicePackageView> {
+  return request<ServicePackageView>(`/service-packages/${id}`);
+}
+
+export function createServicePackage(
+  input: CreateServicePackageInput,
+  idempotencyKey: string,
+): Promise<ServicePackageView> {
+  return request<ServicePackageView>("/service-packages", {
+    method: "POST",
+    body: JSON.stringify(input),
+    idempotencyKey,
+  });
+}
+
+export function voidServicePackage(id: string, reason: string): Promise<ServicePackageView> {
+  return request<ServicePackageView>(`/service-packages/${id}/void`, {
+    method: "PATCH",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+/* -----------------------------------------------------------------------
+ * Win-back campaigns
+ *
+ * Turns the "Worth a call" report's lapsed-customer list into an actual
+ * message. The audience is exactly the customerIds passed in — never an
+ * open recipient picker.
+ * ------------------------------------------------------------------ */
+
+export interface WinbackResult {
+  sent: string[];
+  skippedOptedOut: string[];
+  skippedRecentlyContacted: string[];
+}
+
+export function sendWinbackCampaign(input: {
+  customerIds: string[];
+  message: string;
+  giftCardCode?: string;
+}): Promise<WinbackResult> {
+  return request<WinbackResult>("/reports/lapsed-customers/winback", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }

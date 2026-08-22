@@ -28,6 +28,7 @@ import { ServiceDiscountService } from "../pricing/service-discount.service";
 import type { PaymentService } from "../payment/payment.service";
 import type { NotificationService } from "../notification/notification.service";
 import type { GiftCardService } from "../gift-card/gift-card.service";
+import type { ServicePackageService } from "../service-package/service-package.service";
 
 function mockRepo<T extends ObjectLiteral>() {
   return {
@@ -98,6 +99,7 @@ describe("BookingService", () => {
   let payments: PaymentService;
   let notifications: NotificationService;
   let giftCards: GiftCardService;
+  let servicePackages: ServicePackageService;
   let service: BookingService;
 
   beforeEach(() => {
@@ -162,6 +164,16 @@ describe("BookingService", () => {
       redeemUpTo: vi.fn(async () => ({ giftCardId: "gift-card-1", appliedCents: 0 })),
       preview: vi.fn(async () => ({ remainingBalanceCents: 0, expiresAt: "2027-01-01" })),
     } as unknown as GiftCardService;
+    servicePackages = {
+      redeemOne: vi.fn(async () => ({ packageId: "package-1", appliedCents: 0 })),
+      preview: vi.fn(async () => ({
+        remainingUses: 0,
+        unitPriceCentsSnapshot: 0,
+        serviceId: "service-1",
+        serviceNameSnapshot: "Service",
+        expiresAt: "2027-01-01",
+      })),
+    } as unknown as ServicePackageService;
 
     service = new BookingService(
       dataSource,
@@ -178,6 +190,7 @@ describe("BookingService", () => {
       new ServiceDiscountService(),
       notifications,
       giftCards,
+      servicePackages,
     );
   });
 
@@ -446,6 +459,60 @@ describe("BookingService", () => {
         expect.anything(),
         expect.objectContaining({ method: PaymentMethod.ONLINE }),
       );
+    });
+
+    it("applies a package up to the advance due, covering the remainder with the ONLINE placeholder", async () => {
+      vi.mocked(slotHoldsRepo.findOne).mockResolvedValue(fullPaymentHold());
+      vi.mocked(servicePackages.redeemOne).mockResolvedValueOnce({ packageId: "package-9", appliedCents: 3000 });
+
+      await service.confirmHold(fullPaymentTenant(), "hold-1", "session-1", undefined, "ELE-PKG-1234567890");
+
+      expect(servicePackages.redeemOne).toHaveBeenCalledWith(
+        expect.anything(),
+        "tenant-1",
+        "ELE-PKG-1234567890",
+        ["svc-1"],
+        5000,
+        expect.objectContaining({ actorUserId: null }),
+      );
+      expect(payments.recordPayment).toHaveBeenCalledTimes(2);
+      expect(payments.recordPayment).toHaveBeenNthCalledWith(
+        1,
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ amountCents: 3000, method: PaymentMethod.PACKAGE_CREDIT, packageRedemptionId: "package-9" }),
+      );
+      expect(payments.recordPayment).toHaveBeenNthCalledWith(
+        2,
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ amountCents: 2000, method: PaymentMethod.ONLINE }),
+      );
+    });
+
+    it("fully covers the advance with a package — no ONLINE placeholder payment", async () => {
+      vi.mocked(slotHoldsRepo.findOne).mockResolvedValue(fullPaymentHold());
+      vi.mocked(servicePackages.redeemOne).mockResolvedValueOnce({ packageId: "package-9", appliedCents: 5000 });
+
+      await service.confirmHold(fullPaymentTenant(), "hold-1", "session-1", undefined, "ELE-PKG-1234567890");
+
+      expect(payments.recordPayment).toHaveBeenCalledTimes(1);
+      expect(payments.recordPayment).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ amountCents: 5000, method: PaymentMethod.PACKAGE_CREDIT }),
+      );
+    });
+
+    it("never touches packages when no code is supplied", async () => {
+      vi.mocked(slotHoldsRepo.findOne).mockResolvedValue(fullPaymentHold());
+
+      await service.confirmHold(fullPaymentTenant(), "hold-1", "session-1");
+
+      expect(servicePackages.redeemOne).not.toHaveBeenCalled();
     });
   });
 

@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
+import { IsBoolean, IsEmail, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 import { PaginationQueryDto } from "./common.dto";
 
 /** POST /customers (API.md §3) and the inline `customer` object on bookings. */
@@ -30,4 +30,11 @@ export class CustomerQueryDto extends PaginationQueryDto {
   @IsString()
   @MaxLength(120)
   q?: string;
+}
+
+/** PATCH /customers/:id (API.md §3) — currently just the marketing flag; not a general customer edit. */
+export class UpdateCustomerDto {
+  @IsOptional()
+  @IsBoolean()
+  marketingOptOut?: boolean;
 }

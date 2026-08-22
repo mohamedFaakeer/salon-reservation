@@ -88,6 +88,11 @@ export class Payment {
   @Column({ type: "uuid", nullable: true })
   giftCardId!: string | null;
 
+  /** Set only when `method` is PACKAGE_CREDIT — which package's uses this payment drew from. */
+  @Index()
+  @Column({ type: "uuid", nullable: true })
+  packageRedemptionId!: string | null;
+
   @CreateDateColumn({ type: "timestamptz" })
   createdAt!: Date;
 

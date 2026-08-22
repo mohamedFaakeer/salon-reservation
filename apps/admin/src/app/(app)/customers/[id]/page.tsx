@@ -8,6 +8,7 @@ import {
   fetchCustomer,
   fetchCustomerAppointments,
   fetchCustomerStats,
+  updateCustomer,
   type AppointmentRecord,
   type CustomerDetail,
   type CustomerStats,
@@ -49,6 +50,7 @@ export default function CustomerDetailPage() {
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [optOutSaving, setOptOutSaving] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -71,6 +73,23 @@ export default function CustomerDetailPage() {
   }, [customerId, offset]);
 
   useEffect(load, [load]);
+
+  async function toggleMarketingOptOut(): Promise<void> {
+    if (!customer) {
+      return;
+    }
+    const next = !customer.marketingOptOut;
+    setOptOutSaving(true);
+    setCustomer({ ...customer, marketingOptOut: next });
+    try {
+      await updateCustomer(customer.id, { marketingOptOut: next });
+    } catch {
+      // Revert on failure — nothing to say beyond the checkbox itself flipping back.
+      setCustomer((prev) => (prev ? { ...prev, marketingOptOut: !next } : prev));
+    } finally {
+      setOptOutSaving(false);
+    }
+  }
 
   if (!canManage) {
     return (
@@ -131,6 +150,18 @@ export default function CustomerDetailPage() {
             <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{customer.notes}</p>
           </div>
         ) : null}
+
+        <label className="mt-4 flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            data-testid="customer-marketing-opt-out"
+            checked={customer.marketingOptOut}
+            disabled={optOutSaving}
+            onChange={() => void toggleMarketingOptOut()}
+            className="h-4 w-4 rounded border-slate-300 accent-teal-600"
+          />
+          Don&apos;t send marketing messages (win-back etc.) to this customer
+        </label>
       </div>
 
       {stats ? <CustomerHistory stats={stats} /> : null}

@@ -12,6 +12,7 @@ import { PricingModule } from "../pricing/pricing.module";
 import { PaymentModule } from "../payment/payment.module";
 import { NotificationModule } from "../notification/notification.module";
 import { GiftCardModule } from "../gift-card/gift-card.module";
+import { ServicePackageModule } from "../service-package/service-package.module";
 import { BookingController } from "./booking.controller";
 import { BookingService } from "./booking.service";
 import { RatingModule } from "../rating/rating.module";
@@ -28,6 +29,7 @@ import { RatingModule } from "../rating/rating.module";
     NotificationModule,
     RatingModule,
     GiftCardModule,
+    ServicePackageModule,
   ],
   controllers: [BookingController],
   providers: [BookingService],

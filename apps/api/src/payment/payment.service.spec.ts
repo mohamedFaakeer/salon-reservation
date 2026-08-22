@@ -4,11 +4,13 @@ import { PaymentService } from "./payment.service";
 import { Payment } from "../entities/payment.entity";
 import { Refund } from "../entities/refund.entity";
 import { Appointment } from "../entities/appointment.entity";
+import { AppointmentServiceLine } from "../entities/appointment-service.entity";
 import type { Tenant } from "../entities/tenant.entity";
 import type { AuditService } from "../audit/audit.service";
 import type { PaymentProviderResolver } from "./providers/resolve-payment-provider";
 import type { NotificationService } from "../notification/notification.service";
 import type { GiftCardService } from "../gift-card/gift-card.service";
+import type { ServicePackageService } from "../service-package/service-package.service";
 
 function mockRepo<T extends ObjectLiteral>() {
   return {
@@ -32,6 +34,7 @@ describe("PaymentService", () => {
   let audit: AuditService;
   let notifications: NotificationService;
   let giftCards: GiftCardService;
+  let servicePackages: ServicePackageService;
   let service: PaymentService;
 
   beforeEach(() => {
@@ -65,8 +68,11 @@ describe("PaymentService", () => {
       redeemExact: vi.fn(async () => ({ giftCardId: "gift-card-1" })),
       redeemUpTo: vi.fn(async () => ({ giftCardId: "gift-card-1", appliedCents: 0 })),
     } as unknown as GiftCardService;
+    servicePackages = {
+      redeemOne: vi.fn(async () => ({ packageId: "package-1", appliedCents: 0 })),
+    } as unknown as ServicePackageService;
 
-    service = new PaymentService(dataSource, paymentsRepo, providers, audit, notifications, giftCards);
+    service = new PaymentService(dataSource, paymentsRepo, providers, audit, notifications, giftCards, servicePackages);
   });
 
   function fakeAppointment(overrides: Partial<Appointment> = {}): Appointment {
@@ -249,6 +255,92 @@ describe("PaymentService", () => {
           provider: PaymentProviderName.MANUAL,
           recordedById: "user-1",
           idempotencyKey: "11111111-1111-4111-8111-111111111114",
+        }),
+      ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    });
+
+    it("resolves a raw package code via ServicePackageService.redeemOne, using the applied (not requested) amount", async () => {
+      const appointment = fakeAppointment({ balanceCents: 10000 });
+      vi.mocked(servicePackages.redeemOne).mockResolvedValueOnce({ packageId: "package-1", appliedCents: 2200 });
+      const lineRepo = mockRepo<AppointmentServiceLine>();
+      vi.mocked(lineRepo.find).mockResolvedValueOnce([{ serviceId: "service-1" } as AppointmentServiceLine]);
+      const manager = {
+        getRepository: (entity: unknown) => {
+          if (entity === Payment) return paymentsRepo;
+          if (entity === Appointment) return appointmentsRepo;
+          if (entity === AppointmentServiceLine) return lineRepo;
+          throw new Error("unexpected entity");
+        },
+      } as unknown as EntityManager;
+
+      const payment = await service.recordPayment(manager, fakeTenant(), appointment, {
+        amountCents: 3000,
+        method: PaymentMethod.PACKAGE_CREDIT,
+        type: PaymentType.ADVANCE,
+        provider: PaymentProviderName.MANUAL,
+        recordedById: "user-1",
+        idempotencyKey: "11111111-1111-4111-8111-111111111115",
+        packageCode: "ELE-PKG-1234567890",
+      });
+
+      expect(servicePackages.redeemOne).toHaveBeenCalledWith(
+        manager,
+        "tenant-1",
+        "ELE-PKG-1234567890",
+        ["service-1"],
+        3000,
+        { actorUserId: "user-1", appointmentId: appointment.id },
+      );
+      // The applied amount (2200) — not the 3000 requested — is what actually lands on the row and the balance.
+      expect(payment.packageRedemptionId).toBe("package-1");
+      expect(payment.amountCents).toBe(2200);
+      expect(appointment.advancePaidCents).toBe(2200);
+      expect(appointment.balanceCents).toBe(7800);
+    });
+
+    it("skips redemption when packageRedemptionId is already resolved by the caller (the online-booking path)", async () => {
+      const appointment = fakeAppointment({ balanceCents: 10000 });
+      const manager = {
+        getRepository: (entity: unknown) => {
+          if (entity === Payment) return paymentsRepo;
+          if (entity === Appointment) return appointmentsRepo;
+          throw new Error("unexpected entity");
+        },
+      } as unknown as EntityManager;
+
+      const payment = await service.recordPayment(manager, fakeTenant(), appointment, {
+        amountCents: 2200,
+        method: PaymentMethod.PACKAGE_CREDIT,
+        type: PaymentType.ADVANCE,
+        provider: PaymentProviderName.MANUAL,
+        recordedById: null,
+        idempotencyKey: "11111111-1111-4111-8111-111111111116",
+        packageRedemptionId: "package-pre-resolved",
+      });
+
+      expect(servicePackages.redeemOne).not.toHaveBeenCalled();
+      expect(payment.packageRedemptionId).toBe("package-pre-resolved");
+      expect(payment.amountCents).toBe(2200);
+    });
+
+    it("rejects a PACKAGE_CREDIT payment with no code and no pre-resolved id", async () => {
+      const appointment = fakeAppointment({ balanceCents: 10000 });
+      const manager = {
+        getRepository: (entity: unknown) => {
+          if (entity === Payment) return paymentsRepo;
+          if (entity === Appointment) return appointmentsRepo;
+          throw new Error("unexpected entity");
+        },
+      } as unknown as EntityManager;
+
+      await expect(
+        service.recordPayment(manager, fakeTenant(), appointment, {
+          amountCents: 2200,
+          method: PaymentMethod.PACKAGE_CREDIT,
+          type: PaymentType.ADVANCE,
+          provider: PaymentProviderName.MANUAL,
+          recordedById: "user-1",
+          idempotencyKey: "11111111-1111-4111-8111-111111111117",
         }),
       ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
     });

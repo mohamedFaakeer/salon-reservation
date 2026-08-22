@@ -49,6 +49,26 @@ export class NotificationService {
     }
   }
 
+  /**
+   * A staff-triggered message with no `Appointment` behind it and
+   * caller-supplied text, unlike every other event `buildMessage()` derives
+   * from a stored appointment. Same "always CONSOLE, plus EMAIL if the
+   * customer has one, never throws" shape as `fire()`. The text is persisted
+   * on the row (`body`) so a later manual retry can still send the exact
+   * message rather than falling back to a generic one.
+   */
+  async sendCampaignMessage(tenant: Tenant, customer: Customer, message: string): Promise<Notification[]> {
+    const sent = [
+      await this.recordCampaignAndSend(tenant.id, customer, NotificationChannel.CONSOLE, customer.phone, message),
+    ];
+    if (customer.email) {
+      sent.push(
+        await this.recordCampaignAndSend(tenant.id, customer, NotificationChannel.EMAIL, customer.email, message),
+      );
+    }
+    return sent;
+  }
+
   /** POST /notifications/:id/retry — attempts delivery again immediately, regardless of `nextRetryAt`. */
   async retry(tenantId: string, notificationId: string): Promise<Notification> {
     const notification = await this.notifications.findOne({ where: { id: notificationId, tenantId } });
@@ -146,6 +166,29 @@ export class NotificationService {
     await this.attemptDelivery(notification);
   }
 
+  private async recordCampaignAndSend(
+    tenantId: string,
+    customer: Customer,
+    channel: NotificationChannel,
+    recipient: string,
+    body: string,
+  ): Promise<Notification> {
+    const notification = await this.notifications.save(
+      this.notifications.create({
+        tenantId,
+        appointmentId: null,
+        customerId: customer.id,
+        type: NotificationEvent.WINBACK_OFFER,
+        channel,
+        recipient,
+        body,
+        status: NotificationStatus.PENDING,
+        retryCount: 0,
+      }),
+    );
+    return this.attemptDelivery(notification);
+  }
+
   private async attemptDelivery(notification: Notification): Promise<Notification> {
     const provider = this.providers.resolve(notification.channel);
     const { subject, body } = await this.buildMessage(notification);
@@ -179,6 +222,11 @@ export class NotificationService {
    * message from a fresh read, not replay stale in-memory text.
    */
   private async buildMessage(notification: Notification): Promise<{ subject: string; body: string }> {
+    // Campaign messages (WINBACK_OFFER) persist their exact text on the row
+    // itself — there's no appointment to rebuild it from.
+    if (notification.body) {
+      return { subject: "A message from your salon", body: notification.body };
+    }
     if (!notification.appointmentId) {
       return { subject: "Salon notification", body: "You have a notification from your salon." };
     }
