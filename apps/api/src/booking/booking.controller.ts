@@ -5,6 +5,7 @@ import { Body, Controller, Get, Headers, HttpCode, Param, Post, Query } from "@n
 import {
   ConfirmPaymentDto,
   CreateBookingDto,
+  GiftCardPreviewDto,
   SelfServiceCancelDto,
   SelfServiceRescheduleDto,
   SubmitRatingDto,
@@ -59,13 +60,26 @@ export class BookingController {
   @HttpCode(200)
   async confirm(
     @Param("intentId") intentId: string,
-    @Body() _dto: ConfirmPaymentDto,
+    @Body() dto: ConfirmPaymentDto,
     @Headers("idempotency-key") idempotencyKey?: string,
   ) {
     const sessionKey = requireIdempotencyKey(idempotencyKey);
     const tenant = await this.resolveTenantForHold(intentId);
-    const { appointment, bookingReference } = await this.bookings.confirmHold(tenant, intentId, sessionKey);
+    const { appointment, bookingReference } = await this.bookings.confirmHold(
+      tenant,
+      intentId,
+      sessionKey,
+      dto.giftCardCode,
+    );
     return { appointment, bookingReference };
+  }
+
+  /** A pure read — previews a gift card's balance before the customer commits to using it. */
+  @Post("payments/:intentId/gift-card-preview")
+  @HttpCode(200)
+  async previewGiftCard(@Param("intentId") intentId: string, @Body() dto: GiftCardPreviewDto) {
+    const tenant = await this.resolveTenantForHold(intentId);
+    return this.bookings.previewGiftCard(tenant, dto.code);
   }
 
   @Post("payments/:intentId/cancel")

@@ -83,6 +83,11 @@ export class Payment {
   @Column({ type: "timestamptz", nullable: true })
   recordedAt!: Date | null;
 
+  /** Set only when `method` is GIFT_CARD — which card's balance this payment drew from. */
+  @Index()
+  @Column({ type: "uuid", nullable: true })
+  giftCardId!: string | null;
+
   @CreateDateColumn({ type: "timestamptz" })
   createdAt!: Date;
 

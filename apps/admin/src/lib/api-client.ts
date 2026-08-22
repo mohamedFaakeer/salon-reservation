@@ -37,6 +37,7 @@ export interface TenantMe {
     status: string;
     currency: string;
     timezone: string;
+    logoUrl: string | null;
   };
   /** The caller's resolved Lite/Pro entitlements for this tenant — same object `TenantGuard` attaches server-side. */
   context: {
@@ -80,6 +81,8 @@ export interface TenantSettingsView {
   reminderOffsets: number[];
   /** Whole percent a receptionist may discount unaided. 0 = owner/manager only. */
   discountCapPercent?: number;
+  /** Set via POST/DELETE /tenant/me/logo, not this PATCH — read-only here. */
+  logoUrl?: string | null;
 }
 
 export interface TenantSettingsPatch {
@@ -192,7 +195,7 @@ export interface AppointmentDetail extends AppointmentRecord {
   lines: AppointmentServiceLineView[];
 }
 
-export type PaymentMethod = "CASH" | "BANK_TRANSFER" | "CARD_CAPTURED" | "ONLINE" | "GATEWAY";
+export type PaymentMethod = "CASH" | "BANK_TRANSFER" | "CARD_CAPTURED" | "ONLINE" | "GATEWAY" | "GIFT_CARD";
 export type PaymentType = "ADVANCE" | "FULL" | "BALANCE";
 
 export interface PaymentRecord {
@@ -368,9 +371,9 @@ export function updateTenantSettings(patch: TenantSettingsPatch): Promise<Tenant
  * old name on screen until the next full page load — the same reason
  * `setUnauthorizedHandler` exists rather than each call site handling a 401.
  */
-let tenantProfileListener: ((tenant: TenantMe["tenant"]) => void) | null = null;
+let tenantProfileListener: ((tenant: Partial<TenantMe["tenant"]>) => void) | null = null;
 export function setTenantProfileListener(
-  handler: ((tenant: TenantMe["tenant"]) => void) | null,
+  handler: ((tenant: Partial<TenantMe["tenant"]>) => void) | null,
 ): void {
   tenantProfileListener = handler;
 }
@@ -383,6 +386,40 @@ export async function updateTenantProfile(patch: { name: string }): Promise<Tena
   });
   tenantProfileListener?.(tenant);
   return tenant;
+}
+
+/**
+ * Multipart upload — deliberately bypasses `request()`, which always sets
+ * `Content-Type: application/json`. The browser must set its own
+ * `multipart/form-data` boundary, so no Content-Type header is set here at
+ * all. Reuses `tenantProfileListener` so the sidebar's logo updates without
+ * a full reload, same mechanism a name change already uses.
+ */
+export async function uploadTenantLogo(file: File): Promise<TenantSettingsView> {
+  const form = new FormData();
+  form.append("file", file);
+
+  const headers: Record<string, string> = {};
+  if (currentToken) {
+    headers.Authorization = `Bearer ${currentToken}`;
+  }
+  const res = await fetch(`${apiBaseUrl()}/tenant/me/logo`, { method: "POST", headers, body: form, cache: "no-store" });
+  if (res.status === 401) {
+    unauthorizedHandler?.();
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}) as { code?: string; message?: string });
+    throw new ApiRequestError(res.status, body.code ?? "UNKNOWN_ERROR", body.message ?? "Something went wrong. Please try again.");
+  }
+  const settings = (await res.json()) as TenantSettingsView;
+  tenantProfileListener?.({ logoUrl: settings.logoUrl ?? null });
+  return settings;
+}
+
+export async function removeTenantLogo(): Promise<TenantSettingsView> {
+  const settings = await request<TenantSettingsView>("/tenant/me/logo", { method: "DELETE" });
+  tenantProfileListener?.({ logoUrl: settings.logoUrl ?? null });
+  return settings;
 }
 
 export function fetchBranch(): Promise<BranchRecord> {
@@ -819,6 +856,8 @@ export interface PaymentQuery {
   appointmentId?: string;
   customerId?: string;
   state?: string;
+  /** A gift card's full redemption history — every payment it was drawn against. */
+  giftCardId?: string;
   limit?: number;
   offset?: number;
 }
@@ -835,6 +874,9 @@ export function fetchPaymentsList(
   }
   if (params.state) {
     qs.set("state", params.state);
+  }
+  if (params.giftCardId) {
+    qs.set("giftCardId", params.giftCardId);
   }
   qs.set("limit", String(params.limit ?? 25));
   qs.set("offset", String(params.offset ?? 0));
@@ -886,7 +928,7 @@ export function fetchAudit(
 
 export function recordPayment(
   appointmentId: string,
-  input: { amountCents: number; method: PaymentMethod; type: PaymentType },
+  input: { amountCents: number; method: PaymentMethod; type: PaymentType; giftCardCode?: string },
   idempotencyKey: string,
 ): Promise<PaymentRecord> {
   return request<PaymentRecord>(`/appointments/${appointmentId}/payments`, {
@@ -1370,6 +1412,7 @@ export interface InvoiceSnapshot {
     city: string | null;
     phone: string | null;
     businessRegNo: string | null;
+    logoUrl: string | null;
   };
   customer: { name: string; phone: string; email: string | null };
   appointment: { bookingReference: string; startTime: string; staffName: string };
@@ -1718,4 +1761,68 @@ export function voidIncentivePayout(id: string, reason: string): Promise<Incenti
     method: "PATCH",
     body: JSON.stringify({ reason }),
   });
+}
+
+/* -----------------------------------------------------------------------
+ * Gift cards
+ *
+ * Stored value a salon sold, redeemable across one or more visits until the
+ * balance runs out. Creating one always records how it was paid for
+ * (cash/bank/card); redeeming it is just another payment method on the
+ * existing appointment-payment endpoint (`recordPayment`, above).
+ * ------------------------------------------------------------------ */
+
+export type GiftCardStatus = "ACTIVE" | "REDEEMED" | "VOID";
+
+export interface GiftCardView {
+  id: string;
+  code: string;
+  initialValueCents: number;
+  remainingBalanceCents: number;
+  currency: string;
+  purchaser: { name: string; phone: string } | null;
+  recipientName: string | null;
+  recipientPhone: string | null;
+  recipientEmail: string | null;
+  message: string | null;
+  expiresAt: string;
+  expired: boolean;
+  status: GiftCardStatus;
+  issuedByName: string | null;
+  issuedAt: string;
+  voidedAt: string | null;
+  voidReason: string | null;
+}
+
+export interface CreateGiftCardInput {
+  amountCents: number;
+  expiresAt: string;
+  purchaser: { firstName: string; lastName: string; phone: string; email?: string };
+  recipientName?: string;
+  recipientPhone?: string;
+  recipientEmail?: string;
+  message?: string;
+  paymentMethod: "CASH" | "BANK_TRANSFER" | "CARD_CAPTURED";
+}
+
+export function fetchGiftCards(params: { q?: string; limit?: number; offset?: number } = {}): Promise<GiftCardView[]> {
+  const qs = new URLSearchParams();
+  if (params.q) {
+    qs.set("q", params.q);
+  }
+  qs.set("limit", String(params.limit ?? 100));
+  qs.set("offset", String(params.offset ?? 0));
+  return request<GiftCardView[]>(`/gift-cards?${qs.toString()}`);
+}
+
+export function fetchGiftCard(id: string): Promise<GiftCardView> {
+  return request<GiftCardView>(`/gift-cards/${id}`);
+}
+
+export function createGiftCard(input: CreateGiftCardInput, idempotencyKey: string): Promise<GiftCardView> {
+  return request<GiftCardView>("/gift-cards", { method: "POST", body: JSON.stringify(input), idempotencyKey });
+}
+
+export function voidGiftCard(id: string, reason: string): Promise<GiftCardView> {
+  return request<GiftCardView>(`/gift-cards/${id}/void`, { method: "PATCH", body: JSON.stringify({ reason }) });
 }

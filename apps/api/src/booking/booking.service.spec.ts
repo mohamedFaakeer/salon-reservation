@@ -4,6 +4,7 @@ import {
   DiscountType,
   AppointmentStatus,
   BookingSource,
+  PaymentMethod,
   SlotHoldStatus,
   DEFAULT_TENANT_ENTITLEMENTS,
   type CreateBookingDto,
@@ -26,6 +27,7 @@ import { RefundCalculator } from "../pricing/refund-calculator";
 import { ServiceDiscountService } from "../pricing/service-discount.service";
 import type { PaymentService } from "../payment/payment.service";
 import type { NotificationService } from "../notification/notification.service";
+import type { GiftCardService } from "../gift-card/gift-card.service";
 
 function mockRepo<T extends ObjectLiteral>() {
   return {
@@ -95,6 +97,7 @@ describe("BookingService", () => {
   let audit: AuditService;
   let payments: PaymentService;
   let notifications: NotificationService;
+  let giftCards: GiftCardService;
   let service: BookingService;
 
   beforeEach(() => {
@@ -154,6 +157,11 @@ describe("BookingService", () => {
       refundWithManager: vi.fn(async () => ({ id: "refund-1" })),
     } as unknown as PaymentService;
     notifications = { fire: vi.fn(async () => undefined) } as unknown as NotificationService;
+    giftCards = {
+      redeemExact: vi.fn(async () => ({ giftCardId: "gift-card-1" })),
+      redeemUpTo: vi.fn(async () => ({ giftCardId: "gift-card-1", appliedCents: 0 })),
+      preview: vi.fn(async () => ({ remainingBalanceCents: 0, expiresAt: "2027-01-01" })),
+    } as unknown as GiftCardService;
 
     service = new BookingService(
       dataSource,
@@ -169,6 +177,7 @@ describe("BookingService", () => {
       new RefundCalculator(),
       new ServiceDiscountService(),
       notifications,
+      giftCards,
     );
   });
 
@@ -343,6 +352,99 @@ describe("BookingService", () => {
       expect(audit.record).toHaveBeenCalledWith(
         expect.objectContaining({ action: "APPOINTMENT_CREATED" }),
         expect.anything(),
+      );
+    });
+
+    function fullPaymentHold() {
+      const start = new Date(BOOKING_START);
+      const end = new Date(start.getTime() + 30 * 60_000);
+      return {
+        id: "hold-1",
+        status: SlotHoldStatus.HELD,
+        expiresAt: new Date(Date.now() + 60_000),
+        staffId: "staff-1",
+        startTime: start,
+        endTime: end,
+        bookingSnapshot: {
+          bookingReference: "ELE-PRE02",
+          customerId: "customer-1",
+          notes: null,
+          lines: [
+            {
+              serviceId: "svc-1",
+              nameSnapshot: "Cut",
+              durationMinSnapshot: 30,
+              priceCentsSnapshot: 5000,
+              discountCentsSnapshot: 0,
+              discountLabelSnapshot: null,
+            },
+          ],
+        } satisfies BookingSnapshot,
+      } as unknown as SlotHold;
+    }
+
+    function fullPaymentTenant(): Tenant {
+      const tenant = fakeTenant();
+      return { ...tenant, settings: { ...tenant.settings, advanceRule: AdvanceRule.FULL_PAYMENT } };
+    }
+
+    it("applies a gift card up to the advance due, covering the remainder with the ONLINE placeholder", async () => {
+      vi.mocked(slotHoldsRepo.findOne).mockResolvedValue(fullPaymentHold());
+      vi.mocked(giftCards.redeemUpTo).mockResolvedValueOnce({ giftCardId: "gift-card-9", appliedCents: 3000 });
+
+      await service.confirmHold(fullPaymentTenant(), "hold-1", "session-1", "ELE-GC-1234567890");
+
+      expect(giftCards.redeemUpTo).toHaveBeenCalledWith(
+        expect.anything(),
+        "tenant-1",
+        "ELE-GC-1234567890",
+        5000,
+        expect.objectContaining({ actorUserId: null }),
+      );
+      expect(payments.recordPayment).toHaveBeenCalledTimes(2);
+      expect(payments.recordPayment).toHaveBeenNthCalledWith(
+        1,
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ amountCents: 3000, method: PaymentMethod.GIFT_CARD, giftCardId: "gift-card-9" }),
+      );
+      expect(payments.recordPayment).toHaveBeenNthCalledWith(
+        2,
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ amountCents: 2000, method: PaymentMethod.ONLINE }),
+      );
+    });
+
+    it("fully covers the advance with a gift card — no ONLINE placeholder payment", async () => {
+      vi.mocked(slotHoldsRepo.findOne).mockResolvedValue(fullPaymentHold());
+      vi.mocked(giftCards.redeemUpTo).mockResolvedValueOnce({ giftCardId: "gift-card-9", appliedCents: 5000 });
+
+      await service.confirmHold(fullPaymentTenant(), "hold-1", "session-1", "ELE-GC-1234567890");
+
+      expect(payments.recordPayment).toHaveBeenCalledTimes(1);
+      expect(payments.recordPayment).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ amountCents: 5000, method: PaymentMethod.GIFT_CARD }),
+      );
+    });
+
+    it("never touches gift cards when no code is supplied", async () => {
+      vi.mocked(slotHoldsRepo.findOne).mockResolvedValue(fullPaymentHold());
+
+      await service.confirmHold(fullPaymentTenant(), "hold-1", "session-1");
+
+      expect(giftCards.redeemUpTo).not.toHaveBeenCalled();
+      expect(payments.recordPayment).toHaveBeenCalledTimes(1);
+      expect(payments.recordPayment).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ method: PaymentMethod.ONLINE }),
       );
     });
   });

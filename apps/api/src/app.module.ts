@@ -27,6 +27,7 @@ import { AttendanceModule } from "./attendance/attendance.module";
 import { IncentiveModule } from "./incentive/incentive.module";
 import { ReportsModule } from "./reports/reports.module";
 import { InvoiceModule } from "./invoice/invoice.module";
+import { GiftCardModule } from "./gift-card/gift-card.module";
 import { SalonModule } from "./salon/salon.module";
 import { PaymentModule } from "./payment/payment.module";
 import { NotificationModule } from "./notification/notification.module";
@@ -88,6 +89,7 @@ import { RequestLoggingMiddleware } from "./common/middleware/request-logging.mi
     IncentiveModule,
     ReportsModule,
     InvoiceModule,
+    GiftCardModule,
     SalonModule,
     PaymentModule,
     NotificationModule,

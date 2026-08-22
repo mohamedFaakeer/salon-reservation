@@ -1179,3 +1179,103 @@ inventing a look for one screen would have made it read as a different product.
    a known, accepted gap between what the pricing page promises and what is
    technically enforced today, to close in a later pass rather than rushed
    into this one.
+
+## 35. Salon logo branding & gift cards (2026-08-22)
+
+1. **Logo storage is Cloudinary, chosen with the product owner over
+   base64-in-Postgres.** The codebase had zero upload infrastructure, and
+   `docs/DEPLOYMENT.md` already warned against media in Neon's 0.5 GB free
+   quota. A data: URI stored in `tenant.settings.logoUrl` would have needed
+   no new vendor, but a real hosted URL is also the safer choice for the
+   invoice HTML email — several mail clients strip inline `data:` images —
+   so Cloudinary's free tier won on both grounds. Replacing a logo does not
+   delete the old Cloudinary asset; an orphaned free-tier asset is an
+   accepted, documented gap rather than added delete-tracking complexity.
+2. **The four upload constraints are enforced server-side, in a fixed
+   order, before anything reaches Cloudinary**: size (≤1MB) → real file type
+   (magic bytes, not the client-supplied `mimetype`) → pixel dimensions
+   (200–4000px per side) → aspect ratio (within 2:1). A rejected upload never
+   spends a Cloudinary credit. File-type and dimension detection is
+   hand-rolled (`apps/api/src/tenant/logo-image.util.ts`) rather than a
+   general image-parsing dependency — the one plausible candidate
+   (`image-size`) carries unfixed high-severity DoS advisories in parsers
+   (ICNS/JXL/HEIF) this endpoint never accepts, and CLAUDE.md requires a
+   clean `npm audit`. Reading three well-documented, stable binary headers
+   (PNG/JPEG/WebP) is a small, closed amount of code by comparison, and
+   doubles as the real content-based type check.
+3. **Every surface that renders the logo wraps it in a fixed, padded
+   container** (~9% internal padding, `object-fit: contain`) rather than
+   trusting each upload to already carry margin — the sidebar badge, the
+   invoice header cell (both the React print view and the inline-styled
+   HTML email), and the Settings preview all share this rule, per explicit
+   product-owner direction during planning.
+4. **`tenant.settings.logoUrl` is frozen into `InvoiceSnapshot.salon` at
+   issue time**, exactly like `businessRegNo` and `salon.name` already are —
+   a later logo change never rewrites an invoice already sent.
+5. **Gift cards carry a rechargeable balance, not a single-use full
+   claim** — a deliberate product-owner call, closer to how a real prepaid
+   gift card behaves than a one-shot voucher. `GiftCard.remainingBalanceCents`
+   is drawn down by `GiftCardService.redeem*` under a DB row lock
+   (`SELECT ... FOR UPDATE`), the same "DB is the final arbiter" posture the
+   availability engine uses; a `CHECK` constraint
+   (`CHK_gift_card_balance_range`) makes "never negative, never above the
+   initial value" a database guarantee rather than something the service is
+   merely trusted to get right under concurrency.
+6. **Two redemption modes, not one, because the two surfaces have
+   different contracts.** `redeemExact` (the admin-recorded payment form,
+   where staff types a specific amount) refuses outright
+   (`GIFT_CARD_INSUFFICIENT_BALANCE`) rather than silently applying less than
+   asked. `redeemUpTo` (the public online-booking confirm) applies
+   `min(balance, amount due)` and lets the existing placeholder `ONLINE`
+   payment cover any remainder — the server decides the real figure in both
+   cases; the client only ever sends a code, never an amount to deduct.
+7. **A gift card is applied at confirm, not at reserve** — the same moment
+   `BookingService.confirmHold` already creates the real advance `Payment`
+   row, inside the same transaction. This avoids needing to provisionally
+   reserve part of a card's balance at hold time and restore it if the hold
+   expires unconfirmed — the existing hold-expiry path is untouched. The
+   accepted UX trade-off: the "amount due now" figure on the payment step
+   doesn't live-update from the preview check; the actual breakdown only
+   appears after "Book it" is pressed. A public preview endpoint
+   (`POST /payments/:intentId/gift-card-preview`) is a pure read with no
+   side effect, so a customer can still see the balance before committing.
+8. **A gift card code is a deliberate bearer credential, unlike a booking
+   reference.** A booking reference is always paired with a phone-number
+   second factor before it unlocks anything (SECURITY.md); a gift card code
+   alone redeems real stored value, the same way a physical gift card
+   works, so it carries materially more entropy on its own (10 random
+   base32 characters vs. a booking reference's 5) plus its own dedicated,
+   tighter rate-limit rule (`gift-card-lookup`, 10/min per IP vs. the
+   existing `payment` rule's 20/min) — this codebase's first public
+   endpoint where guessing codes to find a live balance is the realistic
+   threat model.
+9. **The purchaser is a real `Customer` record, found-or-created by phone —
+   the same identity resolution the booking flow already uses — rather than
+   free-text fields on the gift card itself.** This folds a gift-card sale
+   into the salon's existing CRM data for free, and reuses
+   `CustomerService.findOrCreateForBooking` instead of inventing a second
+   "customer-ish" shape. The recipient, by contrast, stays purely
+   descriptive (optional name/phone/email) — there is no reason a gift
+   recipient needs their own CRM record before the card is even redeemed.
+10. **Creating a gift card always records a real payment** (cash/bank/card,
+    the same three methods the appointment-payment form already offers) —
+    a product-owner call, so issued value is never untracked revenue. The
+    `Payment` row is created directly by `GiftCardService.create` rather
+    than through `PaymentService.recordPaymentInternal`, since that method
+    is appointment-balance-coupled and a gift-card purchase has no
+    appointment; `appointmentId` is simply `null` (already nullable).
+    Creation is idempotent the same way appointment payments are — a
+    retried `Idempotency-Key` is deduplicated via the `Payment` row's own
+    unique index, with the matching gift card found via
+    `purchasePaymentId`, rather than a second key on `gift_card` itself.
+11. **Voiding mirrors `IncentivePayout`'s void pattern exactly** — the same
+    `voidedAt`/`voidedBy`/`voidReason` columns, the same
+    `CHK_..._void_has_reason` constraint shape, and the same posture that
+    only an already-void row blocks a second void; a partially-redeemed
+    card can still be voided as a correction, the same way a paid-but-wrong
+    incentive payout can.
+12. **Gift cards are not added as a sixth Lite/Pro gated module in this
+    pass.** `packages/shared/src/tenant-entitlements.ts` was scoped to five
+    specific modules deliberately (§34); folding in a brand-new feature
+    wasn't asked for. A natural, easy future extension, not built
+    speculatively now.

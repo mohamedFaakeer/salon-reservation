@@ -292,6 +292,7 @@ export class InvoiceService {
         city: branch?.city ?? null,
         phone: branch?.phone ?? null,
         businessRegNo: tenant.settings.businessRegNo ?? null,
+        logoUrl: tenant.settings.logoUrl ?? null,
       },
       customer: {
         name: `${appointment.customer.firstName} ${appointment.customer.lastName}`.trim(),

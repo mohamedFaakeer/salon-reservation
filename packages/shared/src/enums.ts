@@ -66,6 +66,7 @@ export enum PaymentMethod {
   CARD_CAPTURED = "CARD_CAPTURED",
   ONLINE = "ONLINE",
   GATEWAY = "GATEWAY",
+  GIFT_CARD = "GIFT_CARD",
 }
 
 export enum PaymentType {
@@ -190,5 +191,20 @@ export enum IncentivePayoutStatus {
   FINALISED = "FINALISED",
   PAID = "PAID",
   /** Corrected by a later payout for the same staff and period. */
+  VOID = "VOID",
+}
+
+/**
+ * A gift card's own lifecycle. Deliberately has no EXPIRED value: expiry is
+ * checked live against `expiresAt` at redemption time, never written back to
+ * this column — the same reasoning `AttendanceDayStatus` and the daily
+ * booking-limit flag use for anything time-derived, so nothing needs a
+ * scheduled job to keep this column honest.
+ */
+export enum GiftCardStatus {
+  ACTIVE = "ACTIVE",
+  /** Balance reached zero through redemption. */
+  REDEEMED = "REDEEMED",
+  /** Corrected by whoever issued it — never redeemable again, whatever balance remained. */
   VOID = "VOID",
 }

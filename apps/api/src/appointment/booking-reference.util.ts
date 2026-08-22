@@ -1,7 +1,7 @@
 // No 0/O/1/I/L — avoids visually ambiguous characters when read aloud/typed.
-const BASE32_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+export const BASE32_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
-function randomBase32(length: number): string {
+export function randomBase32(length: number): string {
   let out = "";
   for (let i = 0; i < length; i++) {
     out += BASE32_ALPHABET[Math.floor(Math.random() * BASE32_ALPHABET.length)];

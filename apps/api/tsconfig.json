@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": ["vitest/globals", "node"]
+    "types": ["vitest/globals", "node", "multer"]
   },
   "include": ["src/**/*.ts", "vitest.config.mts", "test/**/*.ts"]
 }

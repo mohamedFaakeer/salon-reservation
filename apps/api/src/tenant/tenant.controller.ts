@@ -1,6 +1,8 @@
-import { Body, Controller, Get, Param, Patch, Req } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import type { Request } from "express";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { ApiError } from "@salon/shared";
 // TenantService/BranchService must stay VALUE imports: NestJS resolves
 // constructor injection via design:paramtypes metadata at runtime;
 // `import type` would erase them and break DI.
@@ -38,6 +40,7 @@ export class TenantController {
         status: tenant.status,
         currency: tenant.currency,
         timezone: tenant.timezone,
+        logoUrl: tenant.settings.logoUrl ?? null,
       },
       context: ctx,
     };
@@ -69,6 +72,30 @@ export class TenantController {
   async patchSettings(@Req() req: Request, @Body() patch: TenantSettingsUpdateDto) {
     const ctx = getTenantContext(req);
     return this.tenants.updateSettings(ctx.tenantId, patch);
+  }
+
+  /**
+   * A hard multer ceiling well above the real 1MB limit — just a backstop
+   * against an enormous upload occupying memory before it's even read.
+   * `TenantService.uploadLogo` runs the real, precisely-coded constraints
+   * (size/type/dimensions/aspect ratio) and owns every rejection message.
+   */
+  @Post("me/logo")
+  @Permissions(Permission.MANAGE_TENANT_SETTINGS)
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 5_000_000 } }))
+  async uploadLogo(@Req() req: Request, @UploadedFile() file: Express.Multer.File | undefined) {
+    const ctx = getTenantContext(req);
+    if (!file) {
+      throw new ApiError({ statusCode: 400, code: "VALIDATION_ERROR", message: "No file was uploaded." });
+    }
+    return this.tenants.uploadLogo(ctx.tenantId, file.buffer);
+  }
+
+  @Delete("me/logo")
+  @Permissions(Permission.MANAGE_TENANT_SETTINGS)
+  async removeLogo(@Req() req: Request) {
+    const ctx = getTenantContext(req);
+    return this.tenants.removeLogo(ctx.tenantId);
   }
 
   @Get("me/branch")

@@ -239,11 +239,28 @@ export function createBooking(
   });
 }
 
-export function confirmPayment(intentId: string, idempotencyKey: string): Promise<ConfirmResponse> {
+export function confirmPayment(
+  intentId: string,
+  idempotencyKey: string,
+  giftCardCode?: string,
+): Promise<ConfirmResponse> {
   return request<ConfirmResponse>(`/payments/${intentId}/confirm`, {
     method: "POST",
-    body: JSON.stringify({}),
+    body: JSON.stringify(giftCardCode ? { giftCardCode } : {}),
     idempotencyKey,
+  });
+}
+
+export interface GiftCardPreview {
+  remainingBalanceCents: number;
+  expiresAt: string;
+}
+
+/** A pure read — previews a gift card's balance before the customer commits to using it. */
+export function previewGiftCard(intentId: string, code: string): Promise<GiftCardPreview> {
+  return request<GiftCardPreview>(`/payments/${intentId}/gift-card-preview`, {
+    method: "POST",
+    body: JSON.stringify({ code }),
   });
 }
 

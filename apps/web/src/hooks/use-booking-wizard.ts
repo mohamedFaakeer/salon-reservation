@@ -7,9 +7,11 @@ import {
   confirmPayment,
   createBooking,
   fetchAvailability,
+  previewGiftCard,
   type AvailabilitySlot,
   type ConfirmResponse,
   type CustomerDetailsInput,
+  type GiftCardPreview,
   type ReserveResponse,
   type SalonProfile,
 } from "../lib/api-client";
@@ -48,6 +50,11 @@ export function useBookingWizard(salon: SalonProfile) {
   const [confirmed, setConfirmed] = useState<ConfirmResponse | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [giftCardCode, setGiftCardCodeRaw] = useState("");
+  const [giftCardPreview, setGiftCardPreview] = useState<GiftCardPreview | null>(null);
+  const [giftCardChecking, setGiftCardChecking] = useState(false);
+  const [giftCardError, setGiftCardError] = useState<string | null>(null);
+  const [giftCardApplied, setGiftCardApplied] = useState(false);
 
   const selectedServices = useMemo(
     () => salon.services.filter((s) => selectedServiceIds.includes(s.id)),
@@ -110,13 +117,45 @@ export function useBookingWizard(salon: SalonProfile) {
     setStep("details");
   }, []);
 
+  /** Editing the code after a successful check invalidates that check — the code shown must always match what was actually verified. */
+  const setGiftCardCode = useCallback((code: string) => {
+    setGiftCardCodeRaw(code);
+    setGiftCardPreview(null);
+    setGiftCardApplied(false);
+    setGiftCardError(null);
+  }, []);
+
+  /** A pure read — previews the card's balance before anything is committed. The real deduction happens server-side, at confirm. */
+  const checkGiftCard = useCallback(async () => {
+    if (!hold || giftCardCode.trim().length === 0) {
+      return;
+    }
+    setGiftCardChecking(true);
+    setGiftCardError(null);
+    try {
+      const preview = await previewGiftCard(hold.paymentIntent.id, giftCardCode.trim());
+      setGiftCardPreview(preview);
+      setGiftCardApplied(true);
+    } catch (err) {
+      setGiftCardPreview(null);
+      setGiftCardApplied(false);
+      setGiftCardError(
+        err instanceof ApiRequestError
+          ? err.message
+          : "Could not check this gift card. Please try again.",
+      );
+    } finally {
+      setGiftCardChecking(false);
+    }
+  }, [hold, giftCardCode]);
+
   /** Shared by the payment step's button and the NO_ADVANCE auto-skip below — takes the intent id explicitly rather than reading `hold` state, which wouldn't be updated yet right after `setHold()`. */
   const runConfirm = useCallback(
-    async (paymentIntentId: string) => {
+    async (paymentIntentId: string, giftCardCodeToApply?: string) => {
       setSubmitting(true);
       setError(null);
       try {
-        const res = await confirmPayment(paymentIntentId, idempotencyKey);
+        const res = await confirmPayment(paymentIntentId, idempotencyKey, giftCardCodeToApply);
         setConfirmed(res);
         setStep("success");
       } catch (err) {
@@ -181,8 +220,8 @@ export function useBookingWizard(salon: SalonProfile) {
     if (!hold) {
       return;
     }
-    await runConfirm(hold.paymentIntent.id);
-  }, [hold, runConfirm]);
+    await runConfirm(hold.paymentIntent.id, giftCardApplied ? giftCardCode.trim() : undefined);
+  }, [hold, runConfirm, giftCardApplied, giftCardCode]);
 
   const cancel = useCallback(async () => {
     if (!hold) {
@@ -194,9 +233,10 @@ export function useBookingWizard(salon: SalonProfile) {
       setHold(null);
       setSelectedSlot(null);
       setStep("slots");
+      setGiftCardCode("");
       void loadSlots();
     }
-  }, [hold, loadSlots]);
+  }, [hold, loadSlots, setGiftCardCode]);
 
   return {
     step,
@@ -227,6 +267,13 @@ export function useBookingWizard(salon: SalonProfile) {
     confirmed,
     submitting,
     error,
+    giftCardCode,
+    setGiftCardCode,
+    giftCardPreview,
+    giftCardChecking,
+    giftCardError,
+    giftCardApplied,
+    checkGiftCard,
   };
 }
 

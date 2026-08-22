@@ -27,6 +27,21 @@
 - Reference codes are 6-char base32 (case-insensitive; excludes similar chars like O/0/I/1) — ~2³⁰ space, unguessable for practical purposes.
 - Phone verification is not performed (no OTP — cost decision); the phone field is normalized/validated (`E.164`-ish) and rate-limited.
 
+**Gift-card codes are a different credential shape, deliberately.** A booking
+reference is never trusted alone — it's always paired with the phone number
+it was booked under, a genuine second factor. A gift-card code has no such
+pairing: whoever holds the code can redeem the balance, the same way a real
+physical gift card works, so the code itself has to carry the weight a
+booking reference offloads onto the phone check. It is 10 random base32
+characters (vs. a booking reference's 5) — materially more entropy — plus
+its own dedicated rate-limit rule, tighter than the general `payment` rule,
+on the one public endpoint that exposes anything about a card before
+redemption (`POST /payments/:intentId/gift-card-preview`, 10 requests/min
+per IP vs. `payment`'s 20). This is the first public endpoint in this
+codebase where guessing a code to find a live balance is the realistic
+threat model, rather than a genuine two-factor lookup like `GET
+/bookings/:reference`.
+
 ---
 
 ## 3. Authorization (RBAC)
@@ -106,7 +121,7 @@ Rules:
 
 - Helmet headers on API (`X-Content-Type-Options`, `X-Frame-Options`, CSP where applicable).
 - CORS: restricted allow-list (admin app origin, customer app origin) from env; credentials allowed only for those origins.
-- Rate limiting: auth, booking creation, payment confirm, public availability (per-IP abusable) — throttled.
+- Rate limiting: auth, booking creation, payment confirm, public availability, gift-card-code lookup (per-IP abusable) — throttled.
 - Secrets: only in env vars / Render dashboard; `.env` committed to nothing; `.env.example` documents shape with placeholders.
 - No secrets in client bundles (`NEXT_PUBLIC_*` only for non-secret config such as API base URL).
 - Request logging with `requestId`; **no PII in logs** (phones/emails redacted in error paths).

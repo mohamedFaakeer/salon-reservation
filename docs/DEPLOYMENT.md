@@ -97,6 +97,7 @@ Browser (any device)
    | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | unset | Email notifications; blank is fine for a demo — the console provider always works |
    | `SUPER_ADMIN_EMAIL` | `super.admin@salon.local` | Address for the seeded platform administrator |
    | `DEMO_OWNER_PASSWORD` | unset | Set it to also seed the `elegance` demo salon and its four staff logins. Left unset in production, those accounts are **not created** — they are known addresses on a public URL |
+   | `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | unset | Salon logo uploads. Unset means `POST /tenant/me/logo` returns `503 LOGO_UPLOAD_NOT_CONFIGURED` — an honest failure, not a silent no-op — everything else in the app works fine without them |
 
    > **Verified against the code (P19).** Earlier revisions of this table listed
    > `PAYMENTS_PROVIDER`, `NOTIFICATIONS_CHANNELS`, `RATE_LIMIT_ENABLED` and

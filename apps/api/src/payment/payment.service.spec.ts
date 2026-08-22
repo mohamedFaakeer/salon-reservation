@@ -8,6 +8,7 @@ import type { Tenant } from "../entities/tenant.entity";
 import type { AuditService } from "../audit/audit.service";
 import type { PaymentProviderResolver } from "./providers/resolve-payment-provider";
 import type { NotificationService } from "../notification/notification.service";
+import type { GiftCardService } from "../gift-card/gift-card.service";
 
 function mockRepo<T extends ObjectLiteral>() {
   return {
@@ -30,6 +31,7 @@ describe("PaymentService", () => {
   let providers: PaymentProviderResolver;
   let audit: AuditService;
   let notifications: NotificationService;
+  let giftCards: GiftCardService;
   let service: PaymentService;
 
   beforeEach(() => {
@@ -59,8 +61,12 @@ describe("PaymentService", () => {
 
     audit = { record: vi.fn() } as unknown as AuditService;
     notifications = { fire: vi.fn(async () => undefined) } as unknown as NotificationService;
+    giftCards = {
+      redeemExact: vi.fn(async () => ({ giftCardId: "gift-card-1" })),
+      redeemUpTo: vi.fn(async () => ({ giftCardId: "gift-card-1", appliedCents: 0 })),
+    } as unknown as GiftCardService;
 
-    service = new PaymentService(dataSource, paymentsRepo, providers, audit, notifications);
+    service = new PaymentService(dataSource, paymentsRepo, providers, audit, notifications, giftCards);
   });
 
   function fakeAppointment(overrides: Partial<Appointment> = {}): Appointment {
@@ -172,6 +178,79 @@ describe("PaymentService", () => {
 
       expect(result).toBe(existing);
       expect(appointmentsRepo.save).not.toHaveBeenCalled();
+    });
+
+    it("resolves a raw gift-card code via GiftCardService.redeemExact and stamps giftCardId onto the row", async () => {
+      const appointment = fakeAppointment({ balanceCents: 10000 });
+      const manager = {
+        getRepository: (entity: unknown) => {
+          if (entity === Payment) return paymentsRepo;
+          if (entity === Appointment) return appointmentsRepo;
+          throw new Error("unexpected entity");
+        },
+      } as unknown as EntityManager;
+
+      const payment = await service.recordPayment(manager, fakeTenant(), appointment, {
+        amountCents: 3000,
+        method: PaymentMethod.GIFT_CARD,
+        type: PaymentType.ADVANCE,
+        provider: PaymentProviderName.MANUAL,
+        recordedById: "user-1",
+        idempotencyKey: "11111111-1111-4111-8111-111111111112",
+        giftCardCode: "ELE-GC-1234567890",
+      });
+
+      expect(giftCards.redeemExact).toHaveBeenCalledWith(manager, "tenant-1", "ELE-GC-1234567890", 3000, {
+        actorUserId: "user-1",
+        appointmentId: appointment.id,
+      });
+      expect(payment.giftCardId).toBe("gift-card-1");
+    });
+
+    it("skips redemption when giftCardId is already resolved by the caller (the online-booking path)", async () => {
+      const appointment = fakeAppointment({ balanceCents: 10000 });
+      const manager = {
+        getRepository: (entity: unknown) => {
+          if (entity === Payment) return paymentsRepo;
+          if (entity === Appointment) return appointmentsRepo;
+          throw new Error("unexpected entity");
+        },
+      } as unknown as EntityManager;
+
+      const payment = await service.recordPayment(manager, fakeTenant(), appointment, {
+        amountCents: 3000,
+        method: PaymentMethod.GIFT_CARD,
+        type: PaymentType.ADVANCE,
+        provider: PaymentProviderName.MANUAL,
+        recordedById: null,
+        idempotencyKey: "11111111-1111-4111-8111-111111111113",
+        giftCardId: "gift-card-pre-resolved",
+      });
+
+      expect(giftCards.redeemExact).not.toHaveBeenCalled();
+      expect(payment.giftCardId).toBe("gift-card-pre-resolved");
+    });
+
+    it("rejects a GIFT_CARD payment with no code and no pre-resolved id", async () => {
+      const appointment = fakeAppointment({ balanceCents: 10000 });
+      const manager = {
+        getRepository: (entity: unknown) => {
+          if (entity === Payment) return paymentsRepo;
+          if (entity === Appointment) return appointmentsRepo;
+          throw new Error("unexpected entity");
+        },
+      } as unknown as EntityManager;
+
+      await expect(
+        service.recordPayment(manager, fakeTenant(), appointment, {
+          amountCents: 3000,
+          method: PaymentMethod.GIFT_CARD,
+          type: PaymentType.ADVANCE,
+          provider: PaymentProviderName.MANUAL,
+          recordedById: "user-1",
+          idempotencyKey: "11111111-1111-4111-8111-111111111114",
+        }),
+      ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
     });
   });
 

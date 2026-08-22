@@ -71,6 +71,18 @@ const RULES: RateLimitRule[] = [
     max: 60,
     windowMs: 60_000,
   },
+  {
+    // Tighter than "payment": a gift-card code is a bearer credential with
+    // no second factor (unlike a booking reference, always paired with a
+    // phone number), so this is this codebase's first public endpoint where
+    // guessing codes to find a live balance is the realistic threat
+    // (SECURITY.md).
+    name: "gift-card-lookup",
+    method: "POST",
+    pattern: /^\/payments\/[^/]+\/gift-card-preview$/,
+    max: 10,
+    windowMs: 60_000,
+  },
 ];
 
 /** Health checks must never be throttled — a 429 here reads as an outage. */

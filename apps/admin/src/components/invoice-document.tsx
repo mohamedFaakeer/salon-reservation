@@ -40,25 +40,32 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceRecord }) {
       ) : null}
 
       <header className="flex flex-wrap items-start justify-between gap-6 border-b border-slate-200 pb-5">
-        <div>
-          <h2 className="text-lg font-semibold tracking-[-0.01em]">{salon.name}</h2>
-          <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
-            {[salon.address, salon.city].filter(Boolean).join(", ")}
-            {salon.phone ? (
-              <>
-                <br />
-                {salon.phone}
-              </>
-            ) : null}
-            {/* Printed only when the salon has one. An empty label is worse
-                than no label. */}
-            {salon.businessRegNo ? (
-              <>
-                <br />
-                Business reg. {salon.businessRegNo}
-              </>
-            ) : null}
-          </p>
+        <div className="flex items-start gap-3">
+          {salon.logoUrl ? (
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-slate-200 p-1">
+              <img src={salon.logoUrl} alt="" className="h-full w-full object-contain" />
+            </span>
+          ) : null}
+          <div>
+            <h2 className="text-lg font-semibold tracking-[-0.01em]">{salon.name}</h2>
+            <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+              {[salon.address, salon.city].filter(Boolean).join(", ")}
+              {salon.phone ? (
+                <>
+                  <br />
+                  {salon.phone}
+                </>
+              ) : null}
+              {/* Printed only when the salon has one. An empty label is worse
+                  than no label. */}
+              {salon.businessRegNo ? (
+                <>
+                  <br />
+                  Business reg. {salon.businessRegNo}
+                </>
+              ) : null}
+            </p>
+          </div>
         </div>
         <div className="text-right">
           <p className="text-[10px] font-medium uppercase tracking-[0.11em] text-slate-500">

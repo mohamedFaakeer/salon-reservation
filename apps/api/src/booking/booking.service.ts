@@ -56,6 +56,8 @@ import { RefundCalculator } from "../pricing/refund-calculator";
 import { PaymentService } from "../payment/payment.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { NotificationService } from "../notification/notification.service";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { GiftCardService } from "../gift-card/gift-card.service";
 
 /** Never a real booking against the day's capacity — cancelled, no-show, rescheduled away, or expired before payment. */
 const DOES_NOT_COUNT_TOWARD_DAILY_LIMIT: AppointmentStatus[] = [
@@ -177,7 +179,13 @@ export class BookingService {
     private readonly refundCalculator: RefundCalculator,
     private readonly serviceDiscounts: ServiceDiscountService,
     private readonly notifications: NotificationService,
+    private readonly giftCards: GiftCardService,
   ) {}
+
+  /** POST /payments/:intentId/gift-card-preview — a pure read; the tenant is resolved from the hold, same as confirm/cancel. */
+  async previewGiftCard(tenant: Tenant, code: string) {
+    return this.giftCards.preview(tenant.id, code);
+  }
 
   /** GET /bookings/:reference?phone= — no :slug in this route; bookingReference is globally unique. */
   async findByReferenceAndPhone(
@@ -314,6 +322,7 @@ export class BookingService {
     tenant: Tenant,
     holdId: string,
     sessionKey: string,
+    giftCardCode?: string,
   ): Promise<{ appointment: Appointment & { staff: Staff; lines: AppointmentServiceLine[] }; bookingReference: string }> {
     const result = await this.dataSource.transaction(async (manager) => {
       const slotHoldRepo = manager.getRepository(SlotHold);
@@ -369,11 +378,39 @@ export class BookingService {
       // Same transaction as the appointment insert — either both commit or
       // neither does (payment matrix P1: no orphan payment/booking possible
       // with this synchronous, in-transaction ManualProvider).
-      if (appointment.advanceRequiredCents > 0) {
+      //
+      // A gift card is applied here — at confirm, not at reserve — for the
+      // same reason the real advance payment is only recorded here: nothing
+      // needs to be provisionally reserved and then restored if the hold
+      // expires unconfirmed. `redeemUpTo` computes the real figure
+      // server-side; the client only ever sends the code. Retrying this same
+      // `sessionKey` never re-redeems, because a retry short-circuits at the
+      // `hold.status === CONSUMED` branch above, before this code runs again.
+      let advanceStillDue = appointment.advanceRequiredCents;
+      if (giftCardCode && advanceStillDue > 0) {
+        const redeemed = await this.giftCards.redeemUpTo(manager, tenant.id, giftCardCode, advanceStillDue, {
+          actorUserId: null,
+          appointmentId: appointment.id,
+        });
+        if (redeemed.appliedCents > 0) {
+          await this.payments.recordPayment(manager, tenant, appointment, {
+            amountCents: redeemed.appliedCents,
+            method: PaymentMethod.GIFT_CARD,
+            type: redeemed.appliedCents >= appointment.totalCents ? PaymentType.FULL : PaymentType.ADVANCE,
+            provider: PaymentProviderName.MANUAL,
+            recordedById: null,
+            idempotencyKey: `${sessionKey}:gift-card`,
+            giftCardId: redeemed.giftCardId,
+          });
+          advanceStillDue -= redeemed.appliedCents;
+        }
+      }
+
+      if (advanceStillDue > 0) {
         await this.payments.recordPayment(manager, tenant, appointment, {
-          amountCents: appointment.advanceRequiredCents,
+          amountCents: advanceStillDue,
           method: PaymentMethod.ONLINE,
-          type: appointment.advanceRequiredCents >= appointment.totalCents ? PaymentType.FULL : PaymentType.ADVANCE,
+          type: advanceStillDue >= appointment.totalCents ? PaymentType.FULL : PaymentType.ADVANCE,
           provider: PaymentProviderName.MANUAL,
           recordedById: null,
           idempotencyKey: sessionKey,

@@ -148,6 +148,8 @@ export interface InvoiceSnapshot {
     phone: string | null;
     /** Optional; printed only when the salon has filled it in. */
     businessRegNo: string | null;
+    /** Frozen at issue time, same as everything else here — a later logo change never rewrites an already-sent invoice. */
+    logoUrl: string | null;
   };
   customer: {
     name: string;

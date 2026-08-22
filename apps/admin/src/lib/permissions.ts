@@ -103,6 +103,11 @@ export function canManageIncentives(roles: string[]): boolean {
   return roles.some((r) => r === "OWNER" || r === "MANAGER");
 }
 
+/** Mirrors MANAGE_GIFT_CARDS (OWNER, MANAGER only) — issuing and voiding, not redeeming. */
+export function canManageGiftCards(roles: string[]): boolean {
+  return roles.some((r) => r === "OWNER" || r === "MANAGER");
+}
+
 /**
  * STAFF holding only that one role — a stylist with no elevated grant at this
  * salon. Used to route a login toward the floor kiosk instead of the desk
@@ -129,6 +134,7 @@ export const MODULES: Array<{ label: string; can: (roles: string[]) => boolean }
   { label: "Services", can: canManageServices },
   { label: "Staff & availability", can: canManageStaff },
   { label: "Incentives", can: canManageIncentives },
+  { label: "Gift cards", can: canManageGiftCards },
   { label: "Settings", can: canManageSettings },
   { label: "Reports", can: canViewReports },
   { label: "Audit", can: canViewAudit },

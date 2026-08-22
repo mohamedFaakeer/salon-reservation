@@ -18,6 +18,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
   const [salonName, setSalonName] = useState<string | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [modules, setModules] = useState<Record<ModuleKey, boolean> | null>(null);
   const [reportPanels, setReportPanels] = useState<Record<ReportPanelKey, boolean> | null>(null);
 
@@ -41,6 +42,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     fetchTenantMe()
       .then((res) => {
         setSalonName(res.tenant.name);
+        setLogoUrl(res.tenant.logoUrl);
         setModules(res.context.modules);
         setReportPanels(res.context.reportPanels);
       })
@@ -54,7 +56,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   // Settings can rename the salon; the name in the rail is fetched once on
   // mount, so it hears about the change rather than going stale until reload.
   useEffect(() => {
-    setTenantProfileListener((tenant) => setSalonName(tenant.name));
+    setTenantProfileListener((tenant) => {
+      if (tenant.name !== undefined) {
+        setSalonName(tenant.name);
+      }
+      if (tenant.logoUrl !== undefined) {
+        setLogoUrl(tenant.logoUrl);
+      }
+    });
     return () => setTenantProfileListener(null);
   }, []);
 
@@ -70,6 +79,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <AppSidebar
           roles={user.roles}
           salonName={salonName}
+          logoUrl={logoUrl}
           userName={user.name}
           onLogout={() => void logout()}
         />

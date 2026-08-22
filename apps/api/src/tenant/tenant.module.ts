@@ -4,6 +4,7 @@ import { APP_GUARD } from "@nestjs/core";
 import { Tenant } from "../entities/tenant.entity";
 import { UserTenantRole } from "../entities/user-tenant-role.entity";
 import { BranchModule } from "../branch/branch.module";
+import { CloudinaryModule } from "../cloudinary/cloudinary.module";
 import { TenantService } from "./tenant.service";
 import { TenantController } from "./tenant.controller";
 import { TenantGuard } from "./tenant.guard";
@@ -14,7 +15,7 @@ const globalGuard: Provider = {
 };
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Tenant, UserTenantRole]), BranchModule],
+  imports: [TypeOrmModule.forFeature([Tenant, UserTenantRole]), BranchModule, CloudinaryModule],
   controllers: [TenantController],
   providers: [TenantService, TenantGuard, globalGuard],
   exports: [TenantService],

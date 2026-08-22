@@ -32,8 +32,9 @@ All responses are JSON. Errors use a consistent envelope (see §7). API is docum
 |---|---|---|
 | POST | `/salons/:slug/availability` | **The engine query.** Body: `{ serviceIds[], staffId? (null = ANY), date }` → returns `{ slots: [{ staffId, staffName, start, end }] }` sorted by time, earliest first; `staffId=null` returns per-staff earliest slots with earliest highlighted. Server validates: salon open, within booking window, same-day lead time. |
 | POST | `/salons/:slug/bookings` | Create booking. Body: `{ serviceIds[], staffId, start, customer: { firstName, lastName, phone, email? }, notes?, advanceMethod? }` + header `Idempotency-Key`. Flow: hold → payment intent (manual) → `201` with `{ bookingReference, holdExpiresAt, paymentIntent: { id, amountCents, status } }`. Appointment is `PENDING_PAYMENT`. |
-| POST | `/payments/:intentId/confirm` | Confirm payment (manual provider "succeeds" in MVP). Body: `{ providerData?: { note } }` + `Idempotency-Key` (same key as booking). → `200 { appointment: {...}, bookingReference }`, appointment → `CONFIRMED`. |
+| POST | `/payments/:intentId/confirm` | Confirm payment (manual provider "succeeds" in MVP). Body: `{ providerData?: { note }, giftCardCode? }` + `Idempotency-Key` (same key as booking). → `200 { appointment: {...}, bookingReference }`, appointment → `CONFIRMED`. When `giftCardCode` is present, the server redeems `min(card balance, advanceRequiredCents)` and creates a `GIFT_CARD` payment for that amount before falling back to the manual `ONLINE` placeholder for any remainder — the client never sends an amount, only the code. |
 | POST | `/payments/:intentId/cancel` | Cancel payment flow → hold released, appointment `EXPIRED` (if any). |
+| POST | `/payments/:intentId/gift-card-preview` | Roles: none (customer). A pure read, no mutation. Body `{ code }` → `200 { remainingBalanceCents, expiresAt }` or `404 GIFT_CARD_NOT_FOUND` / `409 GIFT_CARD_VOID` / `409 GIFT_CARD_ALREADY_REDEEMED` / `410 GIFT_CARD_EXPIRED`. Lets the customer see a card's balance before deciding to use it on confirm. Rate-limited tighter than `payment` (10/min per IP) — a gift-card code is a bearer credential with no second factor, unlike a booking reference (SECURITY.md). |
 | GET | `/bookings/:reference` | Appointment by reference `ELN-XXXXXX`. Query param `phone` required (customer ownership check). |
 | POST | `/bookings/:reference/cancel` | Customer self-service cancel (within 2 h cutoff). Body `{ phone, reason }`. → refund calculation applied (server-side). |
 | POST | `/bookings/:reference/reschedule` | Customer reschedule. Body `{ phone, newStaffId?, newStart }`. Re-runs availability; original appointment untouched if new slot fails. |
@@ -112,15 +113,29 @@ All auth routes are unauthenticated in the sense that they need no bearer token;
 
 | Method | Path | Roles | Description |
 |---|---|---|---|
-| POST | `/appointments/:id/payments` | OWNER, MANAGER, RECEPTIONIST | Record payment/advance: `{ amountCents, method (CASH\|BANK_TRANSFER\|CARD_CAPTURED), type (ADVANCE\|FULL\|BALANCE) }` + `Idempotency-Key`. Server validates amounts. |
+| POST | `/appointments/:id/payments` | OWNER, MANAGER, RECEPTIONIST | Record payment/advance: `{ amountCents, method (CASH\|BANK_TRANSFER\|CARD_CAPTURED\|GIFT_CARD), type (ADVANCE\|FULL\|BALANCE), giftCardCode? }` + `Idempotency-Key`. Server validates amounts. `giftCardCode` is required when `method` is `GIFT_CARD` — the exact `amountCents` requested is redeemed from that card, refused outright (`409 GIFT_CARD_INSUFFICIENT_BALANCE`) if it can't cover it, never silently short-applied. |
 | GET | `/payments?appointmentId&customerId` | OWNER, MANAGER, RECEPTIONIST | Payment list w/ states |
 | POST | `/payments/:id/refund` | OWNER, MANAGER | Body `{ amountCents, reason }` → RefundCalculator (policy), create Refund record; external refund documented in notes |
+
+### Gift cards
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| POST | `/gift-cards` | OWNER, MANAGER | Issue a card. Body `{ amountCents, expiresAt, purchaser: { firstName, lastName, phone, email? }, recipientName?, recipientPhone?, recipientEmail?, message? (≤120 chars), paymentMethod (CASH\|BANK_TRANSFER\|CARD_CAPTURED) }` + `Idempotency-Key`. Purchaser is found-or-created the same way a booking's inline customer is. Always records a real payment for the sale; idempotent the same way an appointment payment is. |
+| GET | `/gift-cards?q=` | OWNER, MANAGER | List, optionally matching code/purchaser name/phone. |
+| GET | `/gift-cards/:id` | OWNER, MANAGER | One card, including its live-computed `expired` flag (never a stored status). |
+| PATCH | `/gift-cards/:id/void` | OWNER, MANAGER | Body `{ reason }` (≥3 chars). Refuses only an already-void card; a partially-redeemed card can still be voided as a correction. |
+
+A card's redemption history is `Payment` rows where `giftCardId` matches —
+no separate endpoint; `GET /payments?...` already lists them.
 
 ### Settings & Config (tenant)
 
 | Method | Path | Roles | Description |
 |---|---|---|---|
 | GET/PATCH | `/settings` | read all · write OWNER, MANAGER | `{ advanceRule, advanceValueCents?, cancellationPolicy, bookingWindowDays, sameDayLeadMinutes, noShowGraceMinutes, reminderOffsets }` |
+| POST | `/tenant/me/logo` | OWNER, MANAGER | `multipart/form-data`, field `file`. PNG/JPEG/WebP only (checked by real content, not the client's claimed type), ≤1MB, 200–4000px per side, within a 2:1 aspect ratio — checked server-side in that order, before anything reaches Cloudinary. → the updated settings, `{ ..., logoUrl }`. Errors: `LOGO_FILE_TOO_LARGE`, `LOGO_INVALID_FILE_TYPE`, `LOGO_DIMENSIONS_OUT_OF_RANGE`, `LOGO_ASPECT_RATIO_INVALID`, `LOGO_UPLOAD_NOT_CONFIGURED` (503, no Cloudinary env vars), `LOGO_UPLOAD_FAILED` (502). |
+| DELETE | `/tenant/me/logo` | OWNER, MANAGER | Clears `logoUrl`. No Cloudinary-side delete (DECISIONS.md §35.1). |
 
 ### Notifications
 

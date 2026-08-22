@@ -9,10 +9,10 @@ import { Repository } from "typeorm";
 import {
   ApiError,
   NotificationEvent,
+  PaymentMethod,
   PaymentProviderName,
   PaymentStatus,
   RefundStatus,
-  type PaymentMethod,
   type PaymentQueryDto,
   type PaymentType,
   type RecordPaymentDto,
@@ -32,6 +32,8 @@ import { AuditService } from "../audit/audit.service";
 import { PaymentProviderResolver } from "./providers/resolve-payment-provider";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { NotificationService } from "../notification/notification.service";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { GiftCardService } from "../gift-card/gift-card.service";
 
 export interface RecordPaymentInput {
   amountCents: number;
@@ -41,6 +43,15 @@ export interface RecordPaymentInput {
   /** Null for customer-initiated online payments. */
   recordedById: string | null;
   idempotencyKey: string;
+  /**
+   * Already-resolved (the caller — e.g. `BookingService.confirmHold` — has
+   * already redeemed the card via `GiftCardService.redeemUpTo`). Takes
+   * precedence over `giftCardCode`: when set, no redemption happens here,
+   * the id is only stamped onto the created row.
+   */
+  giftCardId?: string | null;
+  /** Set when `method` is GIFT_CARD and the caller hasn't already redeemed it (the staff-recorded path). */
+  giftCardCode?: string;
 }
 
 export interface PaymentListResult {
@@ -56,6 +67,7 @@ export class PaymentService {
     private readonly providers: PaymentProviderResolver,
     private readonly audit: AuditService,
     private readonly notifications: NotificationService,
+    private readonly giftCards: GiftCardService,
   ) {}
 
   /** POST /appointments/:id/payments — staff-recorded payment against an existing appointment. */
@@ -80,6 +92,7 @@ export class PaymentService {
         provider: PaymentProviderName.MANUAL,
         recordedById: actorUserId,
         idempotencyKey,
+        giftCardCode: dto.giftCardCode,
       });
       return { ...recorded, appointment: foundAppointment };
     });
@@ -141,6 +154,28 @@ export class PaymentService {
       });
     }
 
+    // Redeemed only after the balance check passes — a request that would
+    // overcharge the appointment must never touch the card's balance.
+    // `giftCardId` already set means the caller (BookingService.confirmHold)
+    // redeemed it themselves via `redeemUpTo` before calling here; only the
+    // staff-recorded path resolves it from a raw code, and only for the
+    // exact amount requested.
+    let giftCardId = input.giftCardId ?? null;
+    if (input.method === PaymentMethod.GIFT_CARD && !giftCardId) {
+      if (!input.giftCardCode) {
+        throw new ApiError({
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "A gift card code is required for this payment method.",
+        });
+      }
+      const redeemed = await this.giftCards.redeemExact(manager, tenant.id, input.giftCardCode, input.amountCents, {
+        actorUserId: input.recordedById,
+        appointmentId: appointment.id,
+      });
+      giftCardId = redeemed.giftCardId;
+    }
+
     const provider = this.providers.resolve(input.provider);
     const { providerPaymentRef } = await provider.confirm({
       amountCents: input.amountCents,
@@ -163,6 +198,7 @@ export class PaymentService {
           providerPaymentRef,
           recordedById: input.recordedById,
           recordedAt: new Date(),
+          giftCardId,
         }),
       );
     } catch (err) {
@@ -295,6 +331,9 @@ export class PaymentService {
     }
     if (query.state) {
       where.state = query.state;
+    }
+    if (query.giftCardId) {
+      where.giftCardId = query.giftCardId;
     }
     const [data, total] = await this.payments.findAndCount({
       where,

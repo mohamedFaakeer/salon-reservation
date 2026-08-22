@@ -50,6 +50,13 @@ export enum Permission {
   APPROVE_ATTENDANCE_EDIT = "APPROVE_ATTENDANCE_EDIT",
   /** Configure commission plans, assign them, and run payouts. OWNER and MANAGER only — this is payroll. */
   MANAGE_INCENTIVES = "MANAGE_INCENTIVES",
+  /**
+   * Issue and void gift cards. OWNER and MANAGER only. Deliberately
+   * narrower than RECORD_PAYMENT: redeeming a gift card someone already
+   * holds is an ordinary payment-method choice open to RECEPTIONIST too,
+   * but creating new stored value is not.
+   */
+  MANAGE_GIFT_CARDS = "MANAGE_GIFT_CARDS",
   /** Read your own live incentive estimate and your own payout history. STAFF — not payroll access, just your own figure. */
   VIEW_OWN_INCENTIVE_EARNINGS = "VIEW_OWN_INCENTIVE_EARNINGS",
   VIEW_OWN_SCHEDULE = "VIEW_OWN_SCHEDULE",

@@ -24,6 +24,7 @@ const OWNER_MANAGER_PERMISSIONS: Permission[] = [
   Permission.VIEW_ATTENDANCE,
   Permission.APPROVE_ATTENDANCE_EDIT,
   Permission.MANAGE_INCENTIVES,
+  Permission.MANAGE_GIFT_CARDS,
   Permission.VIEW_AUDIT_LOG,
   Permission.VIEW_NOTIFICATIONS,
 ];

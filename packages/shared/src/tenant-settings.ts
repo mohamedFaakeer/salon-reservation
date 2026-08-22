@@ -52,6 +52,13 @@ export interface TenantSettings {
    * empty label.
    */
   businessRegNo?: string | null;
+  /**
+   * The Cloudinary URL of the salon's uploaded logo. Shown on the admin
+   * navbar and printed on invoices (frozen into the invoice snapshot at
+   * issue time, same as `businessRegNo`); `null` falls back to a text-only
+   * treatment wherever it would otherwise appear.
+   */
+  logoUrl?: string | null;
 }
 
 /** DECISIONS.md Q5/Q9 defaults; advanceRule defaults to NO_ADVANCE. */
@@ -74,4 +81,5 @@ export const DEFAULT_TENANT_SETTINGS: TenantSettings = {
   attendanceGraceMinutes: 10,
   earlyDepartureGraceMinutes: 10,
   businessRegNo: null,
+  logoUrl: null,
 };

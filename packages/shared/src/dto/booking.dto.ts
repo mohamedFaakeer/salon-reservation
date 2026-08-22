@@ -48,4 +48,22 @@ export class ConfirmPaymentDto {
   @ValidateNested()
   @Type(() => ProviderDataDto)
   providerData?: ProviderDataDto;
+
+  /**
+   * Applied against the advance due, server-computed (never a client-sent
+   * amount) — `min(card balance, advanceRequiredCents)`. Validated and
+   * redeemed for real inside the same transaction as the appointment/payment
+   * insert, not reserved at hold time.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(24)
+  giftCardCode?: string;
+}
+
+/** POST /payments/:intentId/gift-card-preview — a pure read, no mutation. */
+export class GiftCardPreviewDto {
+  @IsString()
+  @MaxLength(24)
+  code!: string;
 }

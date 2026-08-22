@@ -61,7 +61,11 @@ export default function FloorLayout({ children }: { children: ReactNode }) {
   }, [user]);
 
   useEffect(() => {
-    setTenantProfileListener((tenant) => setSalonName(tenant.name));
+    setTenantProfileListener((tenant) => {
+      if (tenant.name !== undefined) {
+        setSalonName(tenant.name);
+      }
+    });
     return () => setTenantProfileListener(null);
   }, []);
 

@@ -18,7 +18,7 @@
 
 ### 2.1 Platform / Identity
 
-**tenant** — `id (uuid PK)`, `slug (unique, used in public URL)`, `name`, `status` (`ACTIVE|SUSPENDED|TRIAL`), `currency` (default `LKR`, always LKR in MVP), `timezone` (default `Asia/Colombo`), `settings` (JSONB: advance rule, cancellation policy, booking window days, same-day lead minutes, no-show grace minutes, reminder offsets), `entitlements` (JSONB: `tier` LITE/PRO plus per-module, per-report-panel and numeric-limit overrides — SUPER_ADMIN-only to write, deliberately a separate column from `settings`; see DECISIONS.md §34), `createdAt`, `updatedAt`.
+**tenant** — `id (uuid PK)`, `slug (unique, used in public URL)`, `name`, `status` (`ACTIVE|SUSPENDED|TRIAL`), `currency` (default `LKR`, always LKR in MVP), `timezone` (default `Asia/Colombo`), `settings` (JSONB: advance rule, cancellation policy, booking window days, same-day lead minutes, no-show grace minutes, reminder offsets, `businessRegNo`, `logoUrl` — the salon's uploaded logo, a Cloudinary URL or `null`; shown on the admin navbar and frozen into every invoice's snapshot at issue time, see DECISIONS.md §35), `entitlements` (JSONB: `tier` LITE/PRO plus per-module, per-report-panel and numeric-limit overrides — SUPER_ADMIN-only to write, deliberately a separate column from `settings`; see DECISIONS.md §34), `createdAt`, `updatedAt`.
 
 **branch** — `id (uuid PK)`, `tenantId (FK, NOT NULL)`, `name`, `address`, `phone`, `active`. MVP uses a single default branch per tenant; present in schema to avoid later table surgery.
 
@@ -58,7 +58,7 @@
 
 ### 2.5 Payments & refunds
 
-**payment** — `id (uuid PK)`, `tenantId (FK)`, `appointmentId (FK, nullable — filled on success)`, `customerId (FK)`, `amountCents`, `method` (`CASH|BANK_TRANSFER|CARD_CAPTURED|ONLINE|GATEWAY`), `state` (`PENDING|SUCCESS|FAILED|REFUNDED|PARTIALLY_REFUNDED|REQUIRES_RECONCILIATION`), `type` (`ADVANCE|FULL|BALANCE`), `idempotencyKey (uuid, UNIQUE NOT NULL)`, `provider` (`MANUAL|PAYHERE`), `providerPaymentRef (nullable)`, `recordedById (FK user)`, `recordedAt`, `createdAt`, `updatedAt`. **Unique `(idempotencyKey)`** enforces idempotency.
+**payment** — `id (uuid PK)`, `tenantId (FK)`, `appointmentId (FK, nullable — filled on success; also `null` for a gift-card *purchase* payment, which has no appointment)`, `customerId (FK)`, `amountCents`, `method` (`CASH|BANK_TRANSFER|CARD_CAPTURED|ONLINE|GATEWAY|GIFT_CARD`), `state` (`PENDING|SUCCESS|FAILED|REFUNDED|PARTIALLY_REFUNDED|REQUIRES_RECONCILIATION`), `type` (`ADVANCE|FULL|BALANCE`), `idempotencyKey (uuid, UNIQUE NOT NULL)`, `provider` (`MANUAL|PAYHERE`), `providerPaymentRef (nullable)`, `recordedById (FK user)`, `recordedAt`, `giftCardId (FK → gift_card, nullable, SET NULL — set only when method is GIFT_CARD; which card a redemption drew from, see §2.13)`, `createdAt`, `updatedAt`. **Unique `(idempotencyKey)`** enforces idempotency.
 
 **payment_attempt** — `id (uuid PK)`, `paymentId (FK)`, `provider`, `providerEventHandler`, `providerEventId (unique per provider+event)`, `payload (JSONB)`, `status` (`RECEIVED|PROCESSED|FAILED`), `createdAt`. Unique `(provider, providerEventId)` absorbs duplicate callbacks.
 
@@ -222,6 +222,40 @@ implementation detail. `CHK_incentive_payout_total` requires
 `CHK_incentive_payout_paid_has_timestamp` and
 `CHK_incentive_payout_void_has_reason` require their respective actor +
 timestamp (+ reason, for void) columns exactly when the status says so.
+
+### 2.13 Gift cards
+
+**gift_card** — `id (uuid PK)`, `tenantId (FK, CASCADE)`, `code (varchar 24,
+UNIQUE — `<3-letter tenant prefix>-GC-<10 random base32 chars>`, e.g.
+`ELE-GC-7F3K2M9PQR`)`, `initialValueCents`, `remainingBalanceCents`,
+`currency (varchar 3, default LKR)`, `purchaserCustomerId (FK → customer,
+CASCADE — found-or-created by phone, the same identity resolution the
+booking flow already uses)`, `recipientName`/`recipientPhone`/
+`recipientEmail (all nullable, purely descriptive)`, `message (varchar 120,
+nullable — the personal note)`, `expiresAt (date)`, `status`
+(`ACTIVE|REDEEMED|VOID`), `issuedById (FK user, SET NULL)`, `issuedAt`,
+`purchasePaymentId (FK → payment, SET NULL — the payment recorded for
+buying the card itself, not a redemption)`, `voidedAt`/`voidedBy`/
+`voidReason (nullable)`.
+
+A stored balance drawn down across one or more redemptions until it reaches
+zero (DECISIONS.md §35.5), not a single-use voucher. `remainingBalanceCents`
+is only ever mutated by `GiftCardService.redeemExact`/`redeemUpTo`, under a
+`SELECT ... FOR UPDATE` row lock — the same DB-is-the-final-arbiter posture
+the availability engine uses for concurrency. **`CHK_gift_card_balance_range`**
+(`remainingBalanceCents` between 0 and `initialValueCents`) makes that a
+database guarantee, not just a service-layer promise.
+**`CHK_gift_card_void_has_reason`** mirrors `incentive_payout`'s void check
+exactly — the same posture that only an already-void row blocks a second
+void, and a partially-redeemed card can still be voided as a correction.
+There is deliberately no `EXPIRED` status: expiry is checked live against
+`expiresAt` at redemption time, never written back to this column, so
+nothing needs a scheduled job to keep it honest (the same reasoning the
+daily-booking-limit flag uses, DECISIONS.md §34.6).
+
+`payment.giftCardId` (§2.5) is the redemption trail — a card's full history
+is `SELECT * FROM payment WHERE "giftCardId" = ?`, needing no separate
+ledger table.
 
 ---
 

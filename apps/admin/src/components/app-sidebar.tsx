@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import {
   canManageAppointments,
   canManageCustomers,
+  canManageGiftCards,
   canManageIncentives,
   canManageNotifications,
   canManageServices,
@@ -241,6 +242,21 @@ const GROUPS: NavGroup[] = [
         ),
       },
       {
+        href: "/gift-cards",
+        label: "Gift cards",
+        visible: canManageGiftCards,
+        icon: (
+          <Icon>
+            <rect x="2.5" y="6.5" width="11" height="7" rx="1" {...stroke} />
+            <path d="M2.5 6.5h11M8 6.5v7" {...stroke} />
+            <path
+              d="M8 6.5c-1.1-2.4-3.8-2.6-3.8-1S6 6.5 8 6.5Zm0 0c1.1-2.4 3.8-2.6 3.8-1S10 6.5 8 6.5Z"
+              {...stroke}
+            />
+          </Icon>
+        ),
+      },
+      {
         href: "/settings",
         label: "Settings",
         visible: canManageSettings,
@@ -272,11 +288,13 @@ const GROUPS: NavGroup[] = [
 export function AppSidebar({
   roles,
   salonName,
+  logoUrl,
   userName,
   onLogout,
 }: {
   roles: string[];
   salonName: string | null;
+  logoUrl?: string | null;
   userName: string;
   onLogout: () => void;
 }) {
@@ -289,9 +307,16 @@ export function AppSidebar({
 
   return (
     <aside className="flex w-full shrink-0 flex-col border-b border-slate-200 bg-white lg:h-screen lg:w-56 lg:border-b-0 lg:border-r">
-      <div className="border-b border-slate-200 px-4 py-3">
-        <p className="truncate text-sm font-semibold text-slate-900">{salonName ?? "Salon Admin"}</p>
-        <p className="truncate text-xs text-slate-500">{roles.join(", ")}</p>
+      <div className="flex items-center gap-2.5 border-b border-slate-200 px-4 py-3">
+        {logoUrl ? (
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white p-0.5">
+            <img src={logoUrl} alt="" className="h-full w-full object-contain" />
+          </span>
+        ) : null}
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-slate-900">{salonName ?? "Salon Admin"}</p>
+          <p className="truncate text-xs text-slate-500">{roles.join(", ")}</p>
+        </div>
       </div>
 
       <nav aria-label="Main" className="flex-1 overflow-y-auto py-3">

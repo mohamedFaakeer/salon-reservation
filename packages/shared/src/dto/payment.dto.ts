@@ -13,6 +13,12 @@ export class RecordPaymentDto {
 
   @IsEnum(PaymentType)
   type!: PaymentType;
+
+  /** Required by the service (not this decorator) only when `method` is GIFT_CARD. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(24)
+  giftCardCode?: string;
 }
 
 /** POST /payments/:id/refund (API.md §3) — OWNER, MANAGER only. */
@@ -40,5 +46,10 @@ export class PaymentQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsEnum(PaymentStatus)
   state?: PaymentStatus;
+
+  /** A gift card's full redemption history — every payment it was drawn against. */
+  @IsOptional()
+  @IsUUID("4")
+  giftCardId?: string;
 }
 

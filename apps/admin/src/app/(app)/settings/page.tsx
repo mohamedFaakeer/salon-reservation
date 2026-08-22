@@ -19,6 +19,7 @@ import { canManageSettings } from "../../../lib/permissions";
 import { useAuth } from "../../../context/auth-context";
 import { AdvanceRuleField } from "../../../components/advance-rule-field";
 import { ReminderOffsetsField } from "../../../components/reminder-offsets-field";
+import { LogoUploadField } from "../../../components/logo-upload-field";
 import {
   NumberField,
   ReadOnlyFact,
@@ -162,6 +163,7 @@ export default function SettingsPage() {
   const [baseline, setBaseline] = useState<FormState | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
   const [meta, setMeta] = useState<{ slug: string; currency: string; timezone: string } | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -181,6 +183,7 @@ export default function SettingsPage() {
           currency: settings.currency,
           timezone: settings.timezone,
         });
+        setLogoUrl(settings.logoUrl ?? null);
       })
       .catch((err: unknown) => {
         setError(err instanceof ApiRequestError ? err.message : "Could not load settings.");
@@ -423,6 +426,13 @@ export default function SettingsPage() {
           The link, currency and timezone are fixed when the salon is set up — changing them would
           break links customers already have.
         </p>
+      </Section>
+
+      <Section
+        title="Branding"
+        description="Shown on the navigation bar and printed on every invoice you send."
+      >
+        <LogoUploadField logoUrl={logoUrl} disabled={!canManage} onChanged={setLogoUrl} />
       </Section>
 
       <Section

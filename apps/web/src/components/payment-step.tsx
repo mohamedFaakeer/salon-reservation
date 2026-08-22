@@ -37,6 +37,64 @@ function useHold(expiresAt: string): { label: string; fraction: number; state: H
   return { label, fraction, state };
 }
 
+/**
+ * Checking is a pure read — the balance shown here is a preview, not a
+ * commitment. The real deduction happens server-side when "Book it" is
+ * pressed, which is also why the "To confirm" figure above doesn't
+ * live-update from this check: recalculating it here would mean the client
+ * computing a discount, which CLAUDE.md rules out.
+ */
+function GiftCardEntry({ wizard }: { wizard: BookingWizard }) {
+  return (
+    <div className="mt-3 rounded-[var(--radius-sm)] bg-[var(--dye-mid)] p-3.5">
+      <p className="text-[13px] font-bold text-[var(--resist)]">Have a gift card?</p>
+      <div className="mt-2 flex gap-2">
+        <input
+          data-testid="gift-card-code-input"
+          value={wizard.giftCardCode}
+          onChange={(e) => wizard.setGiftCardCode(e.target.value.toUpperCase())}
+          placeholder="ELE-GC-XXXXXXXXXX"
+          className="min-h-11 flex-1 rounded-[var(--radius-sm)] border-[1.5px] border-[rgba(240,231,214,0.18)] bg-[var(--dye-deep)] px-3 font-mono text-[13px] uppercase tracking-wide text-[var(--resist)] placeholder:font-sans placeholder:normal-case placeholder:tracking-normal placeholder:text-[var(--resist-dim)]"
+        />
+        <DyeButton
+          testId="gift-card-check"
+          onClick={() => void wizard.checkGiftCard()}
+          disabled={wizard.giftCardChecking || wizard.giftCardCode.trim().length === 0}
+          className="!min-h-11 !px-4 !text-[12.5px]"
+        >
+          <BusyLabel busy={wizard.giftCardChecking} busyText="Checking…">
+            Check
+          </BusyLabel>
+        </DyeButton>
+      </div>
+
+      {wizard.giftCardApplied && wizard.giftCardPreview ? (
+        <div className="mt-2.5 rounded-[var(--radius-sm)] border border-[rgba(123,227,208,0.35)] bg-[rgba(15,163,150,0.1)] p-2.5">
+          <p className="display tabular text-[18px] text-[var(--bloom)]">
+            {formatPriceCents(wizard.giftCardPreview.remainingBalanceCents)}{" "}
+            <span className="text-[11px] font-normal text-[var(--resist-dim)]">available</span>
+          </p>
+          <p className="mt-0.5 text-[11px] text-[var(--resist-dim)]">
+            Will be applied when you book — expires{" "}
+            {new Date(wizard.giftCardPreview.expiresAt).toLocaleDateString("en-LK", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            })}
+            .
+          </p>
+        </div>
+      ) : null}
+
+      {wizard.giftCardError ? (
+        <p role="alert" className="mt-2.5 text-[12px] text-[var(--alarm)]">
+          {wizard.giftCardError}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function PaymentStep({ wizard }: { wizard: BookingWizard }) {
   // Hooks run unconditionally — fall back to now when there is no hold yet.
   const hold = useHold(wizard.hold?.holdExpiresAt ?? new Date().toISOString());
@@ -105,6 +163,8 @@ export function PaymentStep({ wizard }: { wizard: BookingWizard }) {
           Demo build — no card is charged. The salon records payment when you arrive.
         </p>
       </div>
+
+      {!expired ? <GiftCardEntry wizard={wizard} /> : null}
 
       {wizard.error && !expired ? (
         <p
