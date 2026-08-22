@@ -2201,12 +2201,17 @@ export function adjustStock(input: CreateStockAdjustmentInput): Promise<ProductV
 export interface RetailSaleLineView {
   id: string;
   variantId: string | null;
+  /** Set (and `variantId` null) when the line was a bundle sold as one unit. */
+  bundleId: string | null;
   nameSnapshot: string;
-  skuSnapshot: string;
+  /** Null for a bundle line — a bundle has no SKU of its own in Phase B. */
+  skuSnapshot: string | null;
   quantity: number;
   unitPriceCentsSnapshot: number;
   unitCostCentsSnapshot: number;
   lineTotalCents: number;
+  /** How many units of this line have already been returned (any disposition) — what's left to return. */
+  returnedQuantity: number;
 }
 
 export interface RetailSaleView {
@@ -2227,7 +2232,7 @@ export interface RetailSaleListResult {
 }
 
 export interface RetailSaleCheckoutInput {
-  lines: Array<{ variantId: string; quantity: number }>;
+  lines: Array<{ variantId?: string; bundleId?: string; quantity: number }>;
   customer?: { firstName: string; lastName: string; phone: string; email?: string };
   paymentMethod: PaymentMethod;
 }
@@ -2252,4 +2257,140 @@ export function fetchRetailSales(
 
 export function fetchRetailSale(id: string): Promise<RetailSaleView> {
   return request<RetailSaleView>(`/retail-sales/${id}`);
+}
+
+// ---------------------------------------------------------------------------
+// Phase B — product bundles (kits) and retail returns
+// ---------------------------------------------------------------------------
+
+export interface BundleComponentView {
+  id: string;
+  variantId: string;
+  sku: string;
+  productName: string;
+  quantityPerBundle: number;
+  quantityOnHand: number;
+}
+
+export interface BundleView {
+  id: string;
+  name: string;
+  priceCents: number;
+  active: boolean;
+  /** min(floor(variant.quantityOnHand / quantityPerBundle)) across every component — 0 for a bundle with no components. */
+  availableCount: number;
+  components: BundleComponentView[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BundleListResult {
+  data: BundleView[];
+  meta: { total: number; limit: number; offset: number };
+}
+
+/** `GET /product-bundles` — reads open to RECORD_PAYMENT too (Quick Sale browses bundles). */
+export function fetchBundles(
+  params: { q?: string; includeInactive?: boolean; limit?: number; offset?: number } = {},
+): Promise<BundleListResult> {
+  const qs = new URLSearchParams();
+  if (params.q) qs.set("q", params.q);
+  if (params.includeInactive) qs.set("includeInactive", "true");
+  if (params.limit) qs.set("limit", String(params.limit));
+  if (params.offset) qs.set("offset", String(params.offset));
+  return request<BundleListResult>(`/product-bundles?${qs.toString()}`);
+}
+
+export function fetchBundle(id: string): Promise<BundleView> {
+  return request<BundleView>(`/product-bundles/${id}`);
+}
+
+export interface BundleComponentInput {
+  variantId: string;
+  quantityPerBundle: number;
+}
+
+export interface CreateBundleInput {
+  name: string;
+  priceCents: number;
+  components: BundleComponentInput[];
+}
+
+export function createBundle(input: CreateBundleInput): Promise<BundleView> {
+  return request<BundleView>("/product-bundles", { method: "POST", body: JSON.stringify(input) });
+}
+
+export interface UpdateBundleInput {
+  name?: string;
+  priceCents?: number;
+  active?: boolean;
+}
+
+export function updateBundle(id: string, input: UpdateBundleInput): Promise<BundleView> {
+  return request<BundleView>(`/product-bundles/${id}`, { method: "PATCH", body: JSON.stringify(input) });
+}
+
+export function addBundleComponent(bundleId: string, input: BundleComponentInput): Promise<BundleView> {
+  return request<BundleView>(`/product-bundles/${bundleId}/components`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateBundleComponent(
+  bundleId: string,
+  componentId: string,
+  quantityPerBundle: number,
+): Promise<BundleView> {
+  return request<BundleView>(`/product-bundles/${bundleId}/components/${componentId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ quantityPerBundle }),
+  });
+}
+
+export function removeBundleComponent(bundleId: string, componentId: string): Promise<BundleView> {
+  return request<BundleView>(`/product-bundles/${bundleId}/components/${componentId}`, { method: "DELETE" });
+}
+
+export type RetailReturnDisposition = "RESTOCK" | "QUARANTINE";
+
+export interface RetailReturnLineInput {
+  saleLineId: string;
+  quantity: number;
+  disposition: RetailReturnDisposition;
+  /** Only for RESTOCK on an expiry-tracked product — the fresh batch the returned units land in. */
+  lotCode?: string;
+  expiresAt?: string;
+  /** Only for RESTOCK on a serialised product — reactivates the exact original serial. */
+  serialNumber?: string;
+}
+
+export interface CreateRetailReturnInput {
+  reason: string;
+  lines: RetailReturnLineInput[];
+  /** Staff-entered and optional — omit (or 0) for an even exchange with no money moving. */
+  refundCents?: number;
+}
+
+export interface RetailReturnLineView {
+  id: string;
+  saleLineId: string;
+  quantity: number;
+  disposition: RetailReturnDisposition;
+}
+
+export interface RetailReturnView {
+  id: string;
+  saleId: string;
+  processedByName: string | null;
+  reason: string;
+  refundedCents: number;
+  lines: RetailReturnLineView[];
+  createdAt: string;
+}
+
+/** `POST /retail-sales/:saleId/returns` — OWNER/MANAGER only (ISSUE_REFUND). */
+export function processRetailReturn(saleId: string, input: CreateRetailReturnInput): Promise<RetailReturnView> {
+  return request<RetailReturnView>(`/retail-sales/${saleId}/returns`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export function fetchRetailReturns(saleId: string): Promise<RetailReturnView[]> {
+  return request<RetailReturnView[]>(`/retail-sales/${saleId}/returns`);
 }
