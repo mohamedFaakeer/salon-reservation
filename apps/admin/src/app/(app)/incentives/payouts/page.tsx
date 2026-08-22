@@ -21,6 +21,7 @@ import { useToast } from "../../../../components/toast";
 import { BusyLabel } from "../../../../components/spinner";
 import { EmptyState } from "../../../../components/empty-state";
 import { Cell, DataTable, Row, RowActions } from "../../../../components/data-table";
+import { ModuleGate } from "../../../../components/module-gate";
 
 function firstOfMonth(): string {
   const now = new Date();
@@ -33,7 +34,15 @@ const STATUS_STYLE: Record<IncentivePayoutView["status"], { fill: string; fg: st
   VOID: { fill: "#E2E8F0", fg: "#475569", label: "Void" },
 };
 
-export default function IncentivePayoutsPage() {
+export default function IncentivePayoutsPageGated() {
+  return (
+    <ModuleGate module="incentives" label="Incentives">
+      <IncentivePayoutsPage />
+    </ModuleGate>
+  );
+}
+
+function IncentivePayoutsPage() {
   const toast = useToast();
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [plans, setPlans] = useState<IncentivePlanView[]>([]);

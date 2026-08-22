@@ -1107,3 +1107,75 @@ inventing a look for one screen would have made it read as a different product.
     range. A full punctuality breakdown already exists on the dedicated
     Attendance screen — duplicating it here would be two places that could
     quietly disagree about the same number.
+
+## 34. Tenant entitlements — Lite/Pro plan gating (2026-08-22)
+
+1. **A tier plus overrides, not a fixed two-plan system.** `Tenant.tier`
+   (`LITE`/`PRO`) sets a default bundle for every module, report panel and
+   numeric limit; a super-admin can still flip an individual one for a
+   specific salon without inventing a third plan. `resolveModules` /
+   `resolveReportPanels` / `resolveLimits` (`@salon/shared`) are the one place
+   tier-default-unless-overridden is decided — every enforcement point and
+   every screen goes through them rather than re-deriving the rule.
+
+2. **A sibling jsonb column, not a merge into `settings`.** `Tenant.settings`
+   is already the established "flexible per-tenant config" shape, but it is
+   OWNER/MANAGER-writable (`PATCH /tenant/me/settings`). Entitlements must
+   only ever be SUPER_ADMIN-writable, so they get their own column
+   (`entitlements`) with the same defensive-transformer precedent
+   (`withEntitlementsDefaults`, mirroring `withDefaults`) rather than one
+   config blob two different authorities can write to.
+
+3. **Every existing tenant is `PRO` the moment this ships.** The column
+   defaults to `'{}'`, and the transformer fills in `{tier: "PRO", ...}` for
+   any row missing the key entirely — the same "absent, not null" situation
+   `withDefaults` was already built to handle. Nothing anyone was already
+   using disappears on deploy; only tenants a super-admin deliberately moves
+   to `LITE` (or overrides) are ever restricted.
+
+4. **A fourth global guard, not a check bolted onto `RolesGuard`.**
+   `ModuleGuard`/`@RequiresModule` is registered as a second `APP_GUARD` in
+   `AuthorizationModule`, after `RolesGuard` — a permission failure ("you
+   can't do this") is always resolved before an entitlements failure ("your
+   salon doesn't have this"), and the two concerns stay independently
+   testable. Attendance, Incentives, Reports, the audit log and Invoices are
+   each gated at controller-class level, the same place `@Permissions`
+   already sits on `InvoiceController`.
+
+5. **Reports panels are gated for real, not just hidden in the UI.** Each of
+   the seven panels (`ReportPanelKey`) is computed independently in
+   `ReportsService.summary` — a locked panel's query is never even run, so a
+   Lite tenant's browser receives `null` for it, not real numbers blurred by
+   CSS. The admin app renders a locked panel in place, with a "Pro feature"
+   badge, so the page never reflows or looks broken — but what makes it safe
+   is that the server never sent the data, not that the client chose not to
+   show it.
+
+6. **Two different things share the word "limit," decided with the product
+   owner rather than picked unilaterally.** Seat caps (max managers /
+   receptionists / stylists / services / incentive plans) are hard: refused
+   outright, because creating a login or a profile is a deliberate action,
+   not something that overflows by accident. The daily-booking cap is soft:
+   a salon may run `BOOKING_LIMIT_GRACE` (2) bookings over it before the next
+   one is actually refused, because organic daily volume shouldn't turn away
+   a paying customer on a genuinely busy day. Crossing the limit itself
+   raises no stored flag — the platform tenant list computes `bookingsToday`
+   live against real appointments every time it loads, so there is nothing to
+   reset at midnight and nothing that can drift from what actually happened.
+
+7. **A ceiling on a setting the tenant already edits themselves, not a new
+   toggle.** `bookingWindowDays`, `reminderOffsets` and `discountCapPercent`
+   were already 100% self-service via `PATCH /tenant/me/settings`, with no
+   upper bound but validation. Rather than a fourth kind of control,
+   `TenantService.updateSettings` refuses a value past the plan's own ceiling
+   — refused outright, not silently clamped, since a salon that asked for a
+   90-day window and quietly got 14 would never know their own setting didn't
+   take.
+
+8. **Multi-role staff logins and service offers/discounts are deliberately
+   not gated in this pass.** Both cut across many existing routes rather than
+   living behind one controller or one creation call, which is exactly the
+   "5 clean modules" scope boundary chosen with the product owner up front —
+   a known, accepted gap between what the pricing page promises and what is
+   technically enforced today, to close in a later pass rather than rushed
+   into this one.

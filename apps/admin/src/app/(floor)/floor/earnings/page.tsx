@@ -8,6 +8,7 @@ import {
   type IncentivePreviewRow,
 } from "../../../../lib/api-client";
 import { formatPriceCents, todayLocalDate } from "../../../../lib/format";
+import { ModuleGate } from "../../../../components/module-gate";
 
 function firstOfMonth(): string {
   const now = new Date();
@@ -20,7 +21,15 @@ const STATUS_LABEL: Record<IncentivePayoutView["status"], string> = {
   VOID: "Void",
 };
 
-export default function FloorEarningsPage() {
+export default function FloorEarningsPageGated() {
+  return (
+    <ModuleGate module="incentives" label="Incentives">
+      <FloorEarningsPage />
+    </ModuleGate>
+  );
+}
+
+function FloorEarningsPage() {
   const [loading, setLoading] = useState(true);
   const [live, setLive] = useState<IncentivePreviewRow | null>(null);
   const [payouts, setPayouts] = useState<IncentivePayoutView[]>([]);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ApiRequestError, provisionTenant, type ProvisionTenantResult } from "../lib/api-client";
+import { ApiRequestError, provisionTenant, type PlanTier, type ProvisionTenantResult } from "../lib/api-client";
 import { DrawerShell } from "./drawer-shell";
 import { BusyLabel } from "./spinner";
 
@@ -40,6 +40,7 @@ export function ProvisionTenantDrawer({
   const [ownerName, setOwnerName] = useState("");
   const [ownerEmail, setOwnerEmail] = useState("");
   const [ownerPassword, setOwnerPassword] = useState("");
+  const [tier, setTier] = useState<PlanTier>("PRO");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,6 +68,7 @@ export function ProvisionTenantDrawer({
         ownerName: ownerName.trim(),
         ownerEmail: ownerEmail.trim(),
         ownerPassword,
+        tier,
       });
       onProvisioned(result, ownerPassword);
     } catch (err) {
@@ -111,6 +113,35 @@ export function ProvisionTenantDrawer({
               : "At least 3 characters: lowercase letters, numbers and single hyphens."}
           </span>
         </label>
+
+        <fieldset>
+          <legend className="mb-1.5 text-sm font-medium text-slate-700">Plan</legend>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              data-testid="provision-tier-lite"
+              aria-pressed={tier === "LITE"}
+              onClick={() => setTier("LITE")}
+              className={`flex-1 rounded-lg border-[1.5px] px-3 py-2 text-left text-sm font-semibold ${
+                tier === "LITE" ? "border-teal-600 bg-teal-50 text-teal-900" : "border-slate-200 text-slate-700"
+              }`}
+            >
+              Lite
+            </button>
+            <button
+              type="button"
+              data-testid="provision-tier-pro"
+              aria-pressed={tier === "PRO"}
+              onClick={() => setTier("PRO")}
+              className={`flex-1 rounded-lg border-[1.5px] px-3 py-2 text-left text-sm font-semibold ${
+                tier === "PRO" ? "border-teal-600 bg-teal-50 text-teal-900" : "border-slate-200 text-slate-700"
+              }`}
+            >
+              Pro
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">Adjustable any time from "Manage plan" on the salon list.</p>
+        </fieldset>
 
         <div className="rounded border border-slate-200 bg-slate-50 p-3">
           <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-slate-500">

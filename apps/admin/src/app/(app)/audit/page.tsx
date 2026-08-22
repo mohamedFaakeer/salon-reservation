@@ -14,6 +14,7 @@ import { TableSkeleton } from "../../../components/loading-skeleton";
 import { Cell, DataTable, Row } from "../../../components/data-table";
 import { Pager } from "../../../components/pager";
 import { formatDate, formatTime } from "../../../lib/format";
+import { ModuleGate } from "../../../components/module-gate";
 
 /**
  * Audit trail — who changed what, and when.
@@ -44,7 +45,15 @@ function humanAction(action: string): string {
   return action.replace(/_/g, " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
 }
 
-export default function AuditPage() {
+export default function AuditPageGated() {
+  return (
+    <ModuleGate module="auditLog" label="The audit log">
+      <AuditPage />
+    </ModuleGate>
+  );
+}
+
+function AuditPage() {
   const { user } = useAuth();
   const canView = canViewAudit(user?.roles ?? []);
 

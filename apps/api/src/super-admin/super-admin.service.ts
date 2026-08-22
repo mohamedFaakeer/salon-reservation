@@ -11,6 +11,7 @@ import {
   UserRole,
   resolveLimits,
   resolveModules,
+  resolveReportPanels,
   type PaginationQueryDto,
   type TenantEntitlements,
   type UpdateTenantEntitlementsDto,
@@ -42,6 +43,7 @@ export interface TenantEntitlementsView {
   reportPanelOverrides: TenantEntitlements["reportPanelOverrides"];
   limitOverrides: TenantEntitlements["limitOverrides"];
   modules: ReturnType<typeof resolveModules>;
+  reportPanels: ReturnType<typeof resolveReportPanels>;
   limits: ReturnType<typeof resolveLimits>;
 }
 
@@ -244,6 +246,7 @@ export class SuperAdminService {
       reportPanelOverrides: tenant.entitlements.reportPanelOverrides,
       limitOverrides: tenant.entitlements.limitOverrides,
       modules: resolveModules(tenant.entitlements),
+      reportPanels: resolveReportPanels(tenant.entitlements),
       limits: resolveLimits(tenant.entitlements),
     };
   }

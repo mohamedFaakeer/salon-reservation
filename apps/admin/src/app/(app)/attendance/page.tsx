@@ -15,13 +15,22 @@ import { canApproveAttendanceEdit } from "../../../lib/permissions";
 import { useToast } from "../../../components/toast";
 import { TableSkeleton } from "../../../components/loading-skeleton";
 import { EmptyState } from "../../../components/empty-state";
+import { ModuleGate } from "../../../components/module-gate";
+
+export default function AttendancePageGated() {
+  return (
+    <ModuleGate module="attendance" label="Attendance">
+      <AttendancePage />
+    </ModuleGate>
+  );
+}
 
 /**
  * The front desk's punch board. One day, every staff member, one action per
  * row — check anyone in or out who has no login of their own, without
  * leaving the desk.
  */
-export default function AttendancePage() {
+function AttendancePage() {
   const { user } = useAuth();
   const toast = useToast();
   const [date, setDate] = useState(todayLocalDate());

@@ -14,6 +14,7 @@ import { DrawerShell } from "./drawer-shell";
 import { InvoiceDocument } from "./invoice-document";
 import { BusyLabel } from "./spinner";
 import { useToast } from "./toast";
+import { useModules } from "../context/modules-context";
 
 /**
  * The invoice for a finished visit: whether it went out, and how to send it
@@ -21,8 +22,15 @@ import { useToast } from "./toast";
  *
  * Older versions are listed but folded away. They matter when somebody asks
  * "what did you actually send me in September?", and clutter every other day.
+ *
+ * Renders nothing at all — not a locked teaser — when the tenant's plan
+ * doesn't include invoices. An invoice record may still exist internally
+ * (issued automatically on completion regardless of plan), but a Lite desk
+ * has no business seeing the document itself.
  */
 export function InvoicePanel({ appointment }: { appointment: AppointmentDetail }) {
+  const { modules } = useModules();
+  const locked = modules !== null && modules.invoices === false;
   const [invoices, setInvoices] = useState<InvoiceRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -33,12 +41,16 @@ export function InvoicePanel({ appointment }: { appointment: AppointmentDetail }
   const toast = useToast();
 
   const load = useCallback(() => {
+    if (locked) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     fetchInvoices(appointment.id)
       .then(setInvoices)
       .catch(() => setInvoices([]))
       .finally(() => setLoading(false));
-  }, [appointment.id]);
+  }, [appointment.id, locked]);
 
   useEffect(load, [load]);
 
@@ -78,7 +90,7 @@ export function InvoicePanel({ appointment }: { appointment: AppointmentDetail }
     }
   }
 
-  if (loading) {
+  if (loading || locked) {
     return null;
   }
 

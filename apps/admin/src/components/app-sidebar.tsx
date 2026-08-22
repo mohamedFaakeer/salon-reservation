@@ -17,6 +17,8 @@ import {
   canViewDashboard,
   canViewReports,
 } from "../lib/permissions";
+import { useModules } from "../context/modules-context";
+import type { ModuleKey } from "../lib/api-client";
 
 /**
  * Primary navigation.
@@ -36,6 +38,8 @@ interface NavItem {
   label: string;
   icon: ReactNode;
   visible: (roles: string[]) => boolean;
+  /** Also hidden when the tenant's plan doesn't include this module — checked alongside `visible`. */
+  module?: ModuleKey;
 }
 
 interface NavGroup {
@@ -101,6 +105,7 @@ const GROUPS: NavGroup[] = [
         href: "/attendance",
         label: "Attendance",
         visible: canRecordAttendance,
+        module: "attendance",
         icon: (
           <Icon>
             <circle cx="8" cy="8" r="6" {...stroke} />
@@ -117,6 +122,7 @@ const GROUPS: NavGroup[] = [
         href: "/reports",
         label: "Reports",
         visible: canViewReports,
+        module: "reports",
         icon: (
           <Icon>
             <path d="M2.5 13.5V2.5M2.5 13.5h11" {...stroke} />
@@ -128,6 +134,7 @@ const GROUPS: NavGroup[] = [
         href: "/audit",
         label: "Audit",
         visible: canViewAudit,
+        module: "auditLog",
         icon: (
           <Icon>
             <path d="M3 13V3M3 13h10" {...stroke} />
@@ -184,6 +191,7 @@ const GROUPS: NavGroup[] = [
         href: "/incentives",
         label: "Incentives",
         visible: canManageIncentives,
+        module: "incentives",
         icon: (
           <Icon>
             <circle cx="8" cy="8" r="6" {...stroke} />
@@ -273,9 +281,10 @@ export function AppSidebar({
   onLogout: () => void;
 }) {
   const pathname = usePathname();
+  const { modules } = useModules();
   const groups = GROUPS.map((g) => ({
     ...g,
-    items: g.items.filter((i) => i.visible(roles)),
+    items: g.items.filter((i) => i.visible(roles) && (!i.module || !modules || modules[i.module])),
   })).filter((g) => g.items.length > 0);
 
   return (

@@ -18,7 +18,7 @@
 
 ### 2.1 Platform / Identity
 
-**tenant** — `id (uuid PK)`, `slug (unique, used in public URL)`, `name`, `status` (`ACTIVE|SUSPENDED|TRIAL`), `currency` (default `LKR`, always LKR in MVP), `timezone` (default `Asia/Colombo`), `settings` (JSONB: advance rule, cancellation policy, booking window days, same-day lead minutes, no-show grace minutes, reminder offsets), `createdAt`, `updatedAt`.
+**tenant** — `id (uuid PK)`, `slug (unique, used in public URL)`, `name`, `status` (`ACTIVE|SUSPENDED|TRIAL`), `currency` (default `LKR`, always LKR in MVP), `timezone` (default `Asia/Colombo`), `settings` (JSONB: advance rule, cancellation policy, booking window days, same-day lead minutes, no-show grace minutes, reminder offsets), `entitlements` (JSONB: `tier` LITE/PRO plus per-module, per-report-panel and numeric-limit overrides — SUPER_ADMIN-only to write, deliberately a separate column from `settings`; see DECISIONS.md §34), `createdAt`, `updatedAt`.
 
 **branch** — `id (uuid PK)`, `tenantId (FK, NOT NULL)`, `name`, `address`, `phone`, `active`. MVP uses a single default branch per tenant; present in schema to avoid later table surgery.
 

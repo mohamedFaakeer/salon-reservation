@@ -12,6 +12,7 @@ import {
 } from "../../../lib/api-client";
 import { Pager } from "../../../components/pager";
 import { ProvisionTenantDrawer } from "../../../components/provision-tenant-drawer";
+import { TenantEntitlementsDrawer } from "../../../components/tenant-entitlements-drawer";
 import { BusyLabel } from "../../../components/spinner";
 import { formatDate } from "../../../lib/format";
 
@@ -50,6 +51,7 @@ export default function PlatformPage() {
   const [seedResult, setSeedResult] = useState<{ slug: string; result: DemoSeedResult } | null>(
     null,
   );
+  const [managingPlan, setManagingPlan] = useState<PlatformTenant | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -192,26 +194,51 @@ export default function PlatformPage() {
                 className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-700 bg-slate-800 p-3"
               >
                 <div className="min-w-0">
-                  <p className="flex items-center gap-2">
+                  <p className="flex flex-wrap items-center gap-2">
                     <span className="font-medium text-white">{tenant.name}</span>
                     <StatusPill status={tenant.status} />
+                    <TierPill tier={tenant.tier} />
+                    {tenant.overBookingLimit ? (
+                      <span className="flex items-center gap-1 rounded bg-amber-900 px-2 py-0.5 text-xs font-medium text-amber-200">
+                        <svg viewBox="0 0 16 16" width="11" height="11" fill="none" aria-hidden="true">
+                          <path
+                            d="M8 2.5 14 13H2L8 2.5Z"
+                            stroke="currentColor"
+                            strokeWidth="1.4"
+                            strokeLinejoin="round"
+                          />
+                          <path d="M8 6.3v3M8 11.3h.01" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                        </svg>
+                        {tenant.bookingsToday} bookings today
+                      </span>
+                    ) : null}
                   </p>
                   <p className="mt-0.5 text-xs text-slate-400 tabular">
                     /salon/{tenant.slug} · {tenant.currency} · {tenant.timezone} · added{" "}
                     {formatDate(tenant.createdAt)}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  data-testid={`seed-${tenant.slug}`}
-                  onClick={() => void seed(tenant)}
-                  disabled={seedingId === tenant.id}
-                  className="min-h-11 shrink-0 rounded border border-slate-600 px-3 text-xs font-medium text-slate-200 hover:bg-slate-700 disabled:opacity-60"
-                >
-                  <BusyLabel busy={seedingId === tenant.id} busyText="Seeding…">
-                    Add demo data
-                  </BusyLabel>
-                </button>
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    type="button"
+                    data-testid={`manage-plan-${tenant.slug}`}
+                    onClick={() => setManagingPlan(tenant)}
+                    className="min-h-11 rounded border border-teal-500 px-3 text-xs font-medium text-teal-300 hover:bg-teal-950"
+                  >
+                    Manage plan
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`seed-${tenant.slug}`}
+                    onClick={() => void seed(tenant)}
+                    disabled={seedingId === tenant.id}
+                    className="min-h-11 rounded border border-slate-600 px-3 text-xs font-medium text-slate-200 hover:bg-slate-700 disabled:opacity-60"
+                  >
+                    <BusyLabel busy={seedingId === tenant.id} busyText="Seeding…">
+                      Add demo data
+                    </BusyLabel>
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -237,6 +264,17 @@ export default function PlatformPage() {
           onProvisioned={handleProvisioned}
         />
       ) : null}
+
+      {managingPlan ? (
+        <TenantEntitlementsDrawer
+          tenant={managingPlan}
+          onClose={() => setManagingPlan(null)}
+          onSaved={() => {
+            setManagingPlan(null);
+            load();
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -253,5 +291,16 @@ function StatusPill({ status }: { status: string }) {
     <span className="rounded bg-amber-900 px-2 py-0.5 text-xs font-medium text-amber-200">
       {status.toLowerCase()}
     </span>
+  );
+}
+
+function TierPill({ tier }: { tier: "LITE" | "PRO" }) {
+  if (tier === "PRO") {
+    return (
+      <span className="rounded bg-teal-900 px-2 py-0.5 text-xs font-medium text-teal-200">Pro</span>
+    );
+  }
+  return (
+    <span className="rounded bg-slate-700 px-2 py-0.5 text-xs font-medium text-slate-300">Lite</span>
   );
 }

@@ -14,6 +14,7 @@ import { BusyHoursPanel } from "../../../components/reports/busy-hours-panel";
 import { CustomersPanel, LapsedPanel } from "../../../components/reports/customers-panel";
 import { FunnelPanel } from "../../../components/reports/funnel-panel";
 import { formatDateRange } from "../../../lib/format";
+import { ModuleGate } from "../../../components/module-gate";
 
 /**
  * Reports — one range, twelve panels, one request.
@@ -27,7 +28,15 @@ import { formatDateRange } from "../../../lib/format";
  * dims the numbers rather than replacing the whole screen with skeletons. On a
  * surface people compare periods on, blanking the page loses their place.
  */
-export default function ReportsPage() {
+export default function ReportsPageGated() {
+  return (
+    <ModuleGate module="reports" label="Reports">
+      <ReportsPage />
+    </ModuleGate>
+  );
+}
+
+function ReportsPage() {
   const { user } = useAuth();
   const canView = canViewReports(user?.roles ?? []);
 

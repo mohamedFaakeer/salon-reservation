@@ -238,9 +238,16 @@ via `PATCH /staff/:id`, validated against the caller's own tenant.
 
 | Method | Path | Roles | Description |
 |---|---|---|---|
-| POST | `/super-admin/tenants` | SUPER_ADMIN | Provision tenant + owner user `{ salonName, slug, ownerName, ownerEmail, ownerPassword }` |
+| POST | `/super-admin/tenants` | SUPER_ADMIN | Provision tenant + owner user `{ salonName, slug, ownerName, ownerEmail, ownerPassword, tier? }` — `tier` defaults to `PRO` |
 | POST | `/super-admin/tenants/:id/demo-seed` | SUPER_ADMIN | One-click demo seed: services, staff, staff–service, schedules, sample customers, sample appointments |
-| GET | `/super-admin/tenants` | SUPER_ADMIN | List tenants |
+| GET | `/super-admin/tenants` | SUPER_ADMIN | List tenants — each row also carries `tier`, live `bookingsToday`, and `overBookingLimit` |
+| GET | `/super-admin/tenants/:id/entitlements` | SUPER_ADMIN | This tenant's tier, raw overrides, and the resolved effective modules/report panels/limits |
+| PATCH | `/super-admin/tenants/:id/entitlements` | SUPER_ADMIN | Whole-replace `{ tier, moduleOverrides?, reportPanelOverrides?, limitOverrides? }` — see DECISIONS.md §34 |
+
+Attendance, Incentives, Reports, the audit log and Invoices are each gated by
+the calling tenant's entitlements (`@RequiresModule`) in addition to their
+existing role permission below — a 403 `MODULE_NOT_ENABLED` means the salon's
+plan doesn't include it, not that the caller lacks the role.
 
 ---
 

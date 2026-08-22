@@ -14,8 +14,17 @@ import { EmptyState } from "../../../components/empty-state";
 import { TableSkeleton } from "../../../components/loading-skeleton";
 import { Cell, DataTable, Row, RowActions } from "../../../components/data-table";
 import { IncentivePlanDrawer } from "../../../components/incentive-plan-drawer";
+import { ModuleGate } from "../../../components/module-gate";
 
-export default function IncentivesPage() {
+export default function IncentivesPageGated() {
+  return (
+    <ModuleGate module="incentives" label="Incentives">
+      <IncentivesPage />
+    </ModuleGate>
+  );
+}
+
+function IncentivesPage() {
   const [plans, setPlans] = useState<IncentivePlanView[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);

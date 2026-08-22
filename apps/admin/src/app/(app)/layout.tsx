@@ -3,14 +3,23 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/auth-context";
-import { fetchTenantMe, setTenantProfileListener, ApiRequestError } from "../../lib/api-client";
+import {
+  fetchTenantMe,
+  setTenantProfileListener,
+  ApiRequestError,
+  type ModuleKey,
+  type ReportPanelKey,
+} from "../../lib/api-client";
 import { AppSidebar } from "../../components/app-sidebar";
 import { isStaffOnly } from "../../lib/permissions";
+import { ModulesProvider } from "../../context/modules-context";
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
   const [salonName, setSalonName] = useState<string | null>(null);
+  const [modules, setModules] = useState<Record<ModuleKey, boolean> | null>(null);
+  const [reportPanels, setReportPanels] = useState<Record<ReportPanelKey, boolean> | null>(null);
 
   useEffect(() => {
     if (loading) {
@@ -30,7 +39,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       return;
     }
     fetchTenantMe()
-      .then((res) => setSalonName(res.tenant.name))
+      .then((res) => {
+        setSalonName(res.tenant.name);
+        setModules(res.context.modules);
+        setReportPanels(res.context.reportPanels);
+      })
       .catch((err: unknown) => {
         if (!(err instanceof ApiRequestError)) {
           throw err;
@@ -52,14 +65,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     // Sidebar beside content on desktop; stacked above it on tablet and
     // narrower, where a fixed 224px rail would eat too much of the board.
-    <div className="min-h-screen bg-slate-100 lg:flex">
-      <AppSidebar
-        roles={user.roles}
-        salonName={salonName}
-        userName={user.name}
-        onLogout={() => void logout()}
-      />
-      <main className="min-w-0 flex-1 p-6 lg:h-screen lg:overflow-y-auto">{children}</main>
-    </div>
+    <ModulesProvider value={{ modules, reportPanels }}>
+      <div className="min-h-screen bg-slate-100 lg:flex">
+        <AppSidebar
+          roles={user.roles}
+          salonName={salonName}
+          userName={user.name}
+          onLogout={() => void logout()}
+        />
+        <main className="min-w-0 flex-1 p-6 lg:h-screen lg:overflow-y-auto">{children}</main>
+      </div>
+    </ModulesProvider>
   );
 }

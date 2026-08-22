@@ -19,6 +19,16 @@ export interface LoginResponse {
   user: AuthUser;
 }
 
+export type ModuleKey = "attendance" | "incentives" | "reports" | "auditLog" | "invoices";
+export type ReportPanelKey =
+  | "takings"
+  | "staff"
+  | "services"
+  | "busyHours"
+  | "lapsedCustomers"
+  | "customerSpend"
+  | "funnelLosses";
+
 export interface TenantMe {
   tenant: {
     id: string;
@@ -27,6 +37,11 @@ export interface TenantMe {
     status: string;
     currency: string;
     timezone: string;
+  };
+  /** The caller's resolved Lite/Pro entitlements for this tenant — same object `TenantGuard` attaches server-side. */
+  context: {
+    modules: Record<ModuleKey, boolean>;
+    reportPanels: Record<ReportPanelKey, boolean>;
   };
 }
 
@@ -918,6 +933,8 @@ export function retryNotification(id: string): Promise<NotificationRecord> {
   return request<NotificationRecord>(`/notifications/${id}/retry`, { method: "POST" });
 }
 
+export type PlanTier = "LITE" | "PRO";
+
 export interface PlatformTenant {
   id: string;
   slug: string;
@@ -926,6 +943,11 @@ export interface PlatformTenant {
   currency: string;
   timezone: string;
   createdAt: string;
+  tier: PlanTier;
+  /** Real appointments today, computed live — not a stored flag. */
+  bookingsToday: number;
+  /** Past the plan's own daily limit, inside the grace buffer that still lets a booking through. */
+  overBookingLimit: boolean;
 }
 
 export interface ProvisionTenantResult {
@@ -956,6 +978,7 @@ export function provisionTenant(input: {
   ownerName: string;
   ownerEmail: string;
   ownerPassword: string;
+  tier?: PlanTier;
 }): Promise<ProvisionTenantResult> {
   return request<ProvisionTenantResult>("/super-admin/tenants", {
     method: "POST",
@@ -968,6 +991,67 @@ export function demoSeedTenant(tenantId: string): Promise<DemoSeedResult> {
   return request<DemoSeedResult>(`/super-admin/tenants/${tenantId}/demo-seed`, {
     method: "POST",
     body: JSON.stringify({}),
+  });
+}
+
+/* ------------------------------------------------------- tenant entitlements */
+
+export interface ModuleOverridesInput {
+  attendance?: boolean;
+  incentives?: boolean;
+  reports?: boolean;
+  auditLog?: boolean;
+  invoices?: boolean;
+}
+
+export interface ReportPanelOverridesInput {
+  takings?: boolean;
+  staff?: boolean;
+  services?: boolean;
+  busyHours?: boolean;
+  lapsedCustomers?: boolean;
+  customerSpend?: boolean;
+  funnelLosses?: boolean;
+}
+
+export interface LimitOverridesInput {
+  maxManagers?: number | null;
+  maxReceptionists?: number | null;
+  maxStaff?: number | null;
+  maxServices?: number | null;
+  maxIncentivePlans?: number | null;
+  maxBookingsPerDay?: number | null;
+  maxBookingWindowDays?: number | null;
+  maxReminderOffsets?: number | null;
+  maxDiscountCapPercent?: number | null;
+}
+
+export interface TenantEntitlementsView {
+  tier: PlanTier;
+  moduleOverrides: ModuleOverridesInput;
+  reportPanelOverrides: ReportPanelOverridesInput;
+  limitOverrides: LimitOverridesInput;
+  modules: Record<ModuleKey, boolean>;
+  reportPanels: Record<ReportPanelKey, boolean>;
+  limits: Required<LimitOverridesInput>;
+}
+
+export function fetchTenantEntitlements(tenantId: string): Promise<TenantEntitlementsView> {
+  return request<TenantEntitlementsView>(`/super-admin/tenants/${tenantId}/entitlements`);
+}
+
+export function updateTenantEntitlements(
+  tenantId: string,
+  input: {
+    tier: PlanTier;
+    moduleOverrides?: ModuleOverridesInput;
+    reportPanelOverrides?: ReportPanelOverridesInput;
+    limitOverrides?: LimitOverridesInput;
+  },
+): Promise<TenantEntitlementsView> {
+  return request<TenantEntitlementsView>(`/super-admin/tenants/${tenantId}/entitlements`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
   });
 }
 

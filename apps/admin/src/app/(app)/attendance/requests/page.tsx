@@ -13,13 +13,22 @@ import { formatTime } from "../../../../lib/format";
 import { useToast } from "../../../../components/toast";
 import { ListSkeleton } from "../../../../components/loading-skeleton";
 import { EmptyState } from "../../../../components/empty-state";
+import { ModuleGate } from "../../../../components/module-gate";
 
 const TABS: Array<{ value: AttendanceEditRequestStatus | "ALL"; label: string }> = [
   { value: "PENDING", label: "Pending" },
   { value: "ALL", label: "All" },
 ];
 
-export default function AttendanceRequestsPage() {
+export default function AttendanceRequestsPageGated() {
+  return (
+    <ModuleGate module="attendance" label="Attendance">
+      <AttendanceRequestsPage />
+    </ModuleGate>
+  );
+}
+
+function AttendanceRequestsPage() {
   const toast = useToast();
   const [tab, setTab] = useState<AttendanceEditRequestStatus | "ALL">("PENDING");
   const [loading, setLoading] = useState(true);

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { useModules } from "../context/modules-context";
 
 /**
  * The floor's own bottom nav — three destinations, thumb-reachable, nothing
@@ -10,7 +11,7 @@ import type { ReactNode } from "react";
  * target: this is reached one-handed, sometimes with wet hands, so every hit
  * area is generous.
  */
-const ITEMS: Array<{ href: string; label: string; icon: ReactNode }> = [
+const ITEMS: Array<{ href: string; label: string; icon: ReactNode; module?: "incentives" }> = [
   {
     href: "/floor",
     label: "Today",
@@ -55,6 +56,7 @@ const ITEMS: Array<{ href: string; label: string; icon: ReactNode }> = [
   {
     href: "/floor/earnings",
     label: "Earnings",
+    module: "incentives",
     icon: (
       <svg viewBox="0 0 16 16" width="20" height="20" fill="none" aria-hidden="true">
         <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" />
@@ -72,12 +74,14 @@ const ITEMS: Array<{ href: string; label: string; icon: ReactNode }> = [
 
 export function FloorNav() {
   const pathname = usePathname();
+  const { modules } = useModules();
+  const items = ITEMS.filter((item) => !item.module || !modules || modules[item.module]);
   return (
     <nav
       aria-label="Primary"
       className="flex shrink-0 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)]"
     >
-      {ITEMS.map((item) => {
+      {items.map((item) => {
         const active = item.href === "/floor" ? pathname === "/floor" : pathname.startsWith(item.href);
         return (
           <Link
