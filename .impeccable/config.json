@@ -38,6 +38,24 @@
         ],
         "createdAt": "2026-08-22T16:24:34.829Z",
         "reason": "Payment-method pill ternary is a verbatim copy of the already-shipped selector in gift-card-create-drawer.tsx; text-slate-600 only applies in the unselected branch, never alongside bg-teal-50 - detector misreads the ternary as one co-occurring pair"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "text-slate-600",
+        "files": [
+          "apps/admin/src/components/bundle-drawer.tsx"
+        ],
+        "createdAt": "2026-08-22T21:05:46.394Z",
+        "reason": "Claude: computed WCAG contrast ~7:1 on bg-slate-50 for this 14px icon-only remove button; matches existing text-slate-600/500 icon usage elsewhere in apps/admin on tinted card backgrounds. Heuristic appears to pattern-match any gray-on-tint rather than compute real contrast."
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "text-slate-500",
+        "files": [
+          "apps/admin/src/app/(app)/bundles/page.tsx"
+        ],
+        "createdAt": "2026-08-22T21:07:29.969Z",
+        "reason": "Claude: identical precedent already shipped in gift-cards/page.tsx and other list rows (text-slate-400/500 secondary cell text inside a row with hover:bg-slate-50) - matching the established row-list convention across Products/Stock/Gift cards, not a new pattern."
       }
     ]
   }

@@ -2386,9 +2386,14 @@ export interface RetailReturnView {
   createdAt: string;
 }
 
-/** `POST /retail-sales/:saleId/returns` — OWNER/MANAGER only (ISSUE_REFUND). */
-export function processRetailReturn(saleId: string, input: CreateRetailReturnInput): Promise<RetailReturnView> {
-  return request<RetailReturnView>(`/retail-sales/${saleId}/returns`, { method: "POST", body: JSON.stringify(input) });
+/**
+ * `POST /retail-sales/:saleId/returns` — OWNER/MANAGER only (ISSUE_REFUND).
+ * Returns the reloaded sale (updated status, and every line's
+ * `returnedQuantity`) rather than the return record itself — exactly what a
+ * detail page needs to redraw after a return without a second fetch.
+ */
+export function processRetailReturn(saleId: string, input: CreateRetailReturnInput): Promise<RetailSaleView> {
+  return request<RetailSaleView>(`/retail-sales/${saleId}/returns`, { method: "POST", body: JSON.stringify(input) });
 }
 
 export function fetchRetailReturns(saleId: string): Promise<RetailReturnView[]> {

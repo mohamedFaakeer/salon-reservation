@@ -140,6 +140,30 @@ const GROUPS: NavGroup[] = [
         ),
       },
       {
+        href: "/sales",
+        label: "Sales",
+        visible: (roles) => canManageInventory(roles) || canRecordPayment(roles),
+        module: "inventory",
+        icon: (
+          <Icon>
+            <path d="M4 2h8v11l-1.3-.9-1.2.9-1.2-.9-1.3.9-1.2-.9-1.2.9-1.3-.9V2Z" strokeWidth={1.4} fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M6 5.5h4M6 8h4" {...stroke} />
+          </Icon>
+        ),
+      },
+      {
+        href: "/bundles",
+        label: "Bundles",
+        visible: canManageInventory,
+        module: "inventory",
+        icon: (
+          <Icon>
+            <rect x="2" y="2" width="7" height="7" rx="1.3" {...stroke} />
+            <rect x="7" y="7" width="7" height="7" rx="1.3" strokeWidth={1.5} fill="currentColor" fillOpacity={0.15} stroke="currentColor" />
+          </Icon>
+        ),
+      },
+      {
         href: "/products",
         label: "Products",
         visible: canManageInventory,

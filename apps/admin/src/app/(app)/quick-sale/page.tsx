@@ -5,7 +5,9 @@ import { useAuth } from "../../../context/auth-context";
 import {
   ApiRequestError,
   checkoutRetailSale,
+  fetchBundles,
   fetchVariants,
+  type BundleView,
   type PaymentMethod,
   type ProductVariantRecord,
 } from "../../../lib/api-client";
@@ -17,10 +19,9 @@ import { DrawerShell } from "../../../components/drawer-shell";
 import { BusyLabel } from "../../../components/spinner";
 import { useToast } from "../../../components/toast";
 
-interface CartLine {
-  variant: ProductVariantRecord;
-  quantity: number;
-}
+type CartLine =
+  | { kind: "variant"; key: string; variant: ProductVariantRecord; quantity: number }
+  | { kind: "bundle"; key: string; bundle: BundleView; quantity: number };
 
 interface WalkInCustomer {
   firstName: string;
@@ -42,6 +43,23 @@ function generateIdempotencyKey(): string {
   return `key-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function variantKey(id: string): string {
+  return `v:${id}`;
+}
+function bundleKey(id: string): string {
+  return `b:${id}`;
+}
+
+function lineName(line: CartLine): string {
+  return line.kind === "variant" ? (line.variant.product?.name ?? line.variant.sku) : line.bundle.name;
+}
+function linePriceCents(line: CartLine): number {
+  return line.kind === "variant" ? line.variant.priceCents : line.bundle.priceCents;
+}
+function lineMaxQty(line: CartLine): number {
+  return line.kind === "variant" ? line.variant.quantityOnHand : line.bundle.availableCount;
+}
+
 export default function QuickSalePageGated() {
   return (
     <ModuleGate module="inventory" label="Retail inventory">
@@ -56,7 +74,8 @@ function QuickSalePage() {
   const toast = useToast();
 
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<ProductVariantRecord[]>([]);
+  const [variantResults, setVariantResults] = useState<ProductVariantRecord[]>([]);
+  const [bundleResults, setBundleResults] = useState<BundleView[]>([]);
   const [loadingResults, setLoadingResults] = useState(true);
   const [cart, setCart] = useState<Map<string, CartLine>>(new Map());
   const [customer, setCustomer] = useState<WalkInCustomer | null>(null);
@@ -66,42 +85,66 @@ function QuickSalePage() {
   useEffect(() => {
     const handle = setTimeout(() => {
       setLoadingResults(true);
-      fetchVariants({ q: query || undefined, limit: 60 })
-        .then((res) => setResults(res.data))
-        .catch(() => setResults([]))
+      Promise.all([
+        fetchVariants({ q: query || undefined, limit: 60 }),
+        fetchBundles({ q: query || undefined, limit: 30 }),
+      ])
+        .then(([variants, bundles]) => {
+          setVariantResults(variants.data);
+          setBundleResults(bundles.data.filter((b) => b.active));
+        })
+        .catch(() => {
+          setVariantResults([]);
+          setBundleResults([]);
+        })
         .finally(() => setLoadingResults(false));
     }, 250);
     return () => clearTimeout(handle);
   }, [query]);
 
   const lines = useMemo(() => Array.from(cart.values()), [cart]);
-  const subtotalCents = lines.reduce((sum, l) => sum + l.variant.priceCents * l.quantity, 0);
+  const subtotalCents = lines.reduce((sum, l) => sum + linePriceCents(l) * l.quantity, 0);
 
-  function addToCart(variant: ProductVariantRecord): void {
+  function addVariantToCart(variant: ProductVariantRecord): void {
     if (variant.quantityOnHand <= 0) {
       return;
     }
+    const key = variantKey(variant.id);
     setCart((prev) => {
       const next = new Map(prev);
-      const existing = next.get(variant.id);
+      const existing = next.get(key);
       const nextQty = Math.min((existing?.quantity ?? 0) + 1, variant.quantityOnHand);
-      next.set(variant.id, { variant, quantity: nextQty });
+      next.set(key, { kind: "variant", key, variant, quantity: nextQty });
       return next;
     });
   }
 
-  function changeQty(variantId: string, delta: number): void {
+  function addBundleToCart(bundle: BundleView): void {
+    if (bundle.availableCount <= 0) {
+      return;
+    }
+    const key = bundleKey(bundle.id);
     setCart((prev) => {
       const next = new Map(prev);
-      const existing = next.get(variantId);
+      const existing = next.get(key);
+      const nextQty = Math.min((existing?.quantity ?? 0) + 1, bundle.availableCount);
+      next.set(key, { kind: "bundle", key, bundle, quantity: nextQty });
+      return next;
+    });
+  }
+
+  function changeQty(key: string, delta: number): void {
+    setCart((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(key);
       if (!existing) {
         return prev;
       }
-      const qty = Math.min(existing.quantity + delta, existing.variant.quantityOnHand);
+      const qty = Math.min(existing.quantity + delta, lineMaxQty(existing));
       if (qty <= 0) {
-        next.delete(variantId);
+        next.delete(key);
       } else {
-        next.set(variantId, { ...existing, quantity: qty });
+        next.set(key, { ...existing, quantity: qty });
       }
       return next;
     });
@@ -115,7 +158,7 @@ function QuickSalePage() {
     try {
       const res = await fetchVariants({ barcode: value, limit: 1 });
       if (res.data[0]) {
-        addToCart(res.data[0]);
+        addVariantToCart(res.data[0]);
         setQuery("");
       }
     } catch {
@@ -133,6 +176,8 @@ function QuickSalePage() {
       </div>
     );
   }
+
+  const noResults = variantResults.length === 0 && bundleResults.length === 0;
 
   return (
     <div className="grid gap-5 lg:h-[calc(100vh-88px)] lg:grid-cols-[1fr_380px]">
@@ -164,15 +209,50 @@ function QuickSalePage() {
         </div>
         <p className="text-[11px] text-slate-400">A USB or Bluetooth barcode scanner types straight into this field.</p>
 
-        {loadingResults && results.length === 0 ? (
+        {loadingResults && noResults ? (
           <p className="text-sm text-slate-500">Loading products…</p>
-        ) : results.length === 0 ? (
+        ) : noResults ? (
           <p className="rounded border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
             Nothing matches &ldquo;{query}&rdquo;.
           </p>
         ) : (
           <div className="grid grid-cols-2 gap-3 overflow-y-auto pb-4 sm:grid-cols-3 md:grid-cols-4">
-            {results.map((variant) => {
+            {bundleResults.map((bundle) => {
+              const outOfStock = bundle.availableCount <= 0;
+              return (
+                <button
+                  key={bundle.id}
+                  type="button"
+                  data-testid={`quick-sale-bundle-${bundle.id}`}
+                  disabled={outOfStock}
+                  onClick={() => addBundleToCart(bundle)}
+                  className="relative flex min-h-[112px] flex-col items-start justify-between rounded-[10px] border border-slate-200 bg-white p-3.5 text-left hover:border-teal-600 hover:shadow-sm disabled:opacity-55 disabled:hover:border-slate-200 disabled:hover:shadow-none"
+                >
+                  <span className="absolute right-2.5 top-2.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-amber-700">
+                    KIT
+                  </span>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-100 bg-slate-50 text-slate-300">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6">
+                      <rect x="3" y="3" width="8" height="8" rx="2" />
+                      <rect x="13" y="13" width="8" height="8" rx="2" fill="currentColor" opacity="0.15" />
+                    </svg>
+                  </span>
+                  <span className="mt-2.5 text-[13px] font-semibold leading-tight text-slate-900">{bundle.name}</span>
+                  <span className="text-[11px] text-slate-400">
+                    {bundle.components.length} item{bundle.components.length === 1 ? "" : "s"}
+                    {!outOfStock ? ` · ${bundle.availableCount} set${bundle.availableCount === 1 ? "" : "s"}` : ""}
+                  </span>
+                  {outOfStock ? (
+                    <span className="mt-2 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">
+                      Out of stock
+                    </span>
+                  ) : (
+                    <span className="mt-2 tabular text-[13px] font-bold text-teal-700">{formatPriceCents(bundle.priceCents)}</span>
+                  )}
+                </button>
+              );
+            })}
+            {variantResults.map((variant) => {
               const outOfStock = variant.quantityOnHand <= 0;
               const image = variant.imageUrl ?? variant.product?.imageUrl ?? null;
               return (
@@ -181,7 +261,7 @@ function QuickSalePage() {
                   type="button"
                   data-testid={`quick-sale-product-${variant.sku}`}
                   disabled={outOfStock}
-                  onClick={() => addToCart(variant)}
+                  onClick={() => addVariantToCart(variant)}
                   className="flex min-h-[112px] flex-col items-start justify-between rounded-[10px] border border-slate-200 bg-white p-3.5 text-left hover:border-teal-600 hover:shadow-sm disabled:opacity-55 disabled:hover:border-slate-200 disabled:hover:shadow-none"
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-100 bg-slate-50">
@@ -233,36 +313,44 @@ function QuickSalePage() {
               <span className="text-xs">Tap a product to add it</span>
             </div>
           ) : (
-            lines.map(({ variant, quantity }) => (
-              <div key={variant.id} className="flex items-center gap-2.5 border-b border-slate-100 py-2.5 last:border-b-0">
+            lines.map((line) => (
+              <div key={line.key} className="flex items-center gap-2.5 border-b border-slate-100 py-2.5 last:border-b-0">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-semibold text-slate-900">{variant.product?.name ?? variant.sku}</p>
+                  <p className="truncate text-[13px] font-semibold text-slate-900">
+                    {lineName(line)}
+                    {line.kind === "bundle" ? (
+                      <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 align-middle text-[9px] font-bold tracking-wide text-amber-700">
+                        KIT
+                      </span>
+                    ) : null}
+                  </p>
                   <p className="truncate text-[11px] text-slate-400">
-                    {variant.sku} · {formatPriceCents(variant.priceCents)} ea
+                    {line.kind === "variant" ? `${line.variant.sku} · ` : ""}
+                    {formatPriceCents(linePriceCents(line))} ea
                   </p>
                 </div>
                 <span className="flex shrink-0 items-center overflow-hidden rounded-lg border border-slate-300">
                   <button
                     type="button"
-                    aria-label={`Decrease ${variant.sku} quantity`}
-                    onClick={() => changeQty(variant.id, -1)}
+                    aria-label={`Decrease ${lineName(line)} quantity`}
+                    onClick={() => changeQty(line.key, -1)}
                     className="flex h-8 w-8 items-center justify-center text-slate-600 hover:bg-slate-100"
                   >
                     &minus;
                   </button>
-                  <span className="w-6 text-center text-[13px] font-semibold tabular">{quantity}</span>
+                  <span className="w-6 text-center text-[13px] font-semibold tabular">{line.quantity}</span>
                   <button
                     type="button"
-                    aria-label={`Increase ${variant.sku} quantity`}
-                    disabled={quantity >= variant.quantityOnHand}
-                    onClick={() => changeQty(variant.id, 1)}
+                    aria-label={`Increase ${lineName(line)} quantity`}
+                    disabled={line.quantity >= lineMaxQty(line)}
+                    onClick={() => changeQty(line.key, 1)}
                     className="flex h-8 w-8 items-center justify-center text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
                   >
                     +
                   </button>
                 </span>
                 <span className="w-[74px] shrink-0 text-right text-[13px] font-bold tabular text-slate-900">
-                  {formatPriceCents(variant.priceCents * quantity)}
+                  {formatPriceCents(linePriceCents(line) * line.quantity)}
                 </span>
               </div>
             ))
@@ -336,7 +424,11 @@ function QuickSalePage() {
           checkout={(paymentMethod) =>
             checkoutRetailSale(
               {
-                lines: lines.map((l) => ({ variantId: l.variant.id, quantity: l.quantity })),
+                lines: lines.map((l) =>
+                  l.kind === "variant"
+                    ? { variantId: l.variant.id, quantity: l.quantity }
+                    : { bundleId: l.bundle.id, quantity: l.quantity },
+                ),
                 customer: customer
                   ? {
                       firstName: customer.firstName,
