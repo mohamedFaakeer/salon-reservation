@@ -1,5 +1,5 @@
 import type { BusyHourCell } from "../../lib/api-client";
-import { Card, Panel, Quiet } from "./report-shell";
+import { Card, LockedPanel, Panel, Quiet } from "./report-shell";
 
 /**
  * When the salon is actually busy, as weekday against hour.
@@ -15,7 +15,15 @@ const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 /** Teal ramp. Magnitude only — it never encodes state. */
 const RAMP = ["#f1f5f9", "#ccfbf1", "#99f6e4", "#5eead4", "#2dd4bf", "#0d9488"];
 
-export function BusyHoursPanel({ cells }: { cells: BusyHourCell[] }) {
+export function BusyHoursPanel({ cells }: { cells: BusyHourCell[] | null }) {
+  if (!cells) {
+    return (
+      <LockedPanel
+        title="When the salon is busy"
+        teaser="Ask about upgrading to see a heatmap of your busiest days and hours."
+      />
+    );
+  }
   if (cells.length === 0) {
     return (
       <Panel title="When the salon is busy">

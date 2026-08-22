@@ -93,23 +93,13 @@ export default function ReportsPage() {
             {report.range.days === 1 ? "1 day" : `${report.range.days} days`}
           </p>
 
-          <TakingsPanel
-            collection={report.collection}
-            losses={report.losses}
-            days={report.range.days}
-          />
+          <TakingsPanel data={report.takings} days={report.range.days} />
           <StaffPanel staff={report.staff} />
-          <ServicesPanel
-            popular={report.services.popular}
-            byRevenue={report.services.byRevenue}
-          />
+          <ServicesPanel data={report.services} />
           <BusyHoursPanel cells={report.busyHours} />
-          <LapsedPanel rows={report.customers.lapsed} />
-          <CustomersPanel
-            topSpenders={report.customers.topSpenders}
-            frequent={report.customers.frequent}
-          />
-          <FunnelPanel funnel={report.funnel} losses={report.losses} />
+          <LapsedPanel rows={report.lapsedCustomers} />
+          <CustomersPanel data={report.customerSpend} />
+          <FunnelPanel data={report.funnelLosses} />
         </div>
       )}
     </div>

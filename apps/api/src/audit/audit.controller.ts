@@ -8,6 +8,7 @@ import type { Request } from "express";
 import { getTenantContext } from "../tenant/tenant-context";
 import { Permissions } from "../common/authorization/permissions.decorator";
 import { Permission } from "../common/authorization/permission.enum";
+import { RequiresModule } from "../common/authorization/module.decorator";
 // AuditService must stay a VALUE import: NestJS resolves constructor
 // injection via design:paramtypes metadata at runtime; `import type` would
 // erase it and break DI.
@@ -18,6 +19,7 @@ import { AuditService } from "./audit.service";
 @ApiTags("audit")
 @ApiBearerAuth()
 @Controller("audit")
+@RequiresModule("auditLog")
 export class AuditController {
   constructor(private readonly audit: AuditService) {}
 

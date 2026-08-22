@@ -13,6 +13,7 @@ function mockRepo<T extends ObjectLiteral>() {
     find: vi.fn(async () => []),
     findOne: vi.fn(),
     delete: vi.fn(),
+    count: vi.fn(async () => 0),
   } as unknown as Repository<T>;
   return repo;
 }
@@ -57,7 +58,7 @@ describe("StaffService", () => {
 
   describe("create", () => {
     it("persists with the caller's tenantId, branchId: null, active: true", async () => {
-      await service.create("tenant-1", { name: "Kasun" });
+      await service.create("tenant-1", { name: "Kasun" }, null);
 
       const created = vi.mocked(staff.create).mock.calls[0][0] as Staff;
       expect(created.tenantId).toBe("tenant-1");
@@ -69,7 +70,7 @@ describe("StaffService", () => {
       vi.mocked(users.findOne).mockResolvedValue(null);
 
       await expect(
-        service.create("tenant-1", { name: "Kasun", userId: "user-1" }),
+        service.create("tenant-1", { name: "Kasun", userId: "user-1" }, null),
       ).rejects.toMatchObject({ statusCode: 400, code: "USER_NOT_FOUND" });
     });
 
@@ -78,8 +79,25 @@ describe("StaffService", () => {
       vi.mocked(staff.findOne).mockResolvedValue(baseStaff());
 
       await expect(
-        service.create("tenant-1", { name: "Nadeesha", userId: "user-1" }),
+        service.create("tenant-1", { name: "Nadeesha", userId: "user-1" }, null),
       ).rejects.toMatchObject({ statusCode: 409, code: "STAFF_USER_ALREADY_LINKED" });
+    });
+
+    it("allows a new stylist under the seat cap", async () => {
+      vi.mocked(staff.count).mockResolvedValueOnce(4);
+
+      await service.create("tenant-1", { name: "Kasun" }, 5);
+
+      expect(staff.save).toHaveBeenCalled();
+    });
+
+    it("refuses a new stylist once the seat cap is reached", async () => {
+      vi.mocked(staff.count).mockResolvedValueOnce(5);
+
+      await expect(service.create("tenant-1", { name: "Kasun" }, 5)).rejects.toMatchObject({
+        statusCode: 409,
+        code: "STAFF_LIMIT_REACHED",
+      });
     });
   });
 

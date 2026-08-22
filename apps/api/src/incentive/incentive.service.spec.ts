@@ -15,6 +15,7 @@ function mockRepo<T extends ObjectLiteral>() {
     find: vi.fn(async () => [] as T[]),
     findOne: vi.fn(async () => null as T | null),
     delete: vi.fn(async () => undefined),
+    count: vi.fn(async () => 0),
   } as unknown as Repository<T>;
 }
 
@@ -80,6 +81,14 @@ describe("IncentiveService", () => {
 
       expect(result.name).toBe("Commission");
       expect(result.baseCommissionPercent).toBe(10);
+    });
+
+    it("refuses a new plan once the salon's active-plan cap is reached", async () => {
+      vi.mocked(plans.count).mockResolvedValueOnce(1);
+
+      await expect(
+        service.create("tenant-1", { name: "Second plan", baseCommissionPercent: 5 }, 1),
+      ).rejects.toMatchObject({ code: "INCENTIVE_PLAN_LIMIT_REACHED" });
     });
   });
 

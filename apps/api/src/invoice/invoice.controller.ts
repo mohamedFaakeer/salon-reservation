@@ -8,6 +8,7 @@ import { SendInvoiceDto } from "@salon/shared";
 import { getTenantContext } from "../tenant/tenant-context";
 import { Permissions } from "../common/authorization/permissions.decorator";
 import { Permission } from "../common/authorization/permission.enum";
+import { RequiresModule } from "../common/authorization/module.decorator";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { InvoiceService } from "./invoice.service";
 
@@ -19,6 +20,7 @@ import { InvoiceService } from "./invoice.service";
 @ApiBearerAuth()
 @Controller()
 @Permissions(Permission.RECORD_PAYMENT)
+@RequiresModule("invoices")
 export class InvoiceController {
   constructor(private readonly invoices: InvoiceService) {}
 

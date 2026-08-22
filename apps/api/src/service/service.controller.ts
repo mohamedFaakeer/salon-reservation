@@ -25,7 +25,7 @@ export class ServiceController {
   @Permissions(Permission.MANAGE_SERVICES)
   create(@Req() req: Request, @Body() dto: CreateServiceDto) {
     const ctx = getTenantContext(req);
-    return this.services.create(ctx.tenantId, dto);
+    return this.services.create(ctx.tenantId, dto, ctx.limits?.maxServices ?? null);
   }
 
   @Get()

@@ -8,7 +8,10 @@ import type { EntityManager } from "typeorm";
 import { Repository } from "typeorm";
 import {
   ApiError,
+  DEFAULT_TENANT_ENTITLEMENTS,
   DEFAULT_TENANT_SETTINGS,
+  resolveLimits,
+  type PlanTier,
   type TenantProfileUpdateDto,
   type TenantSettings,
   type TenantSettingsUpdateDto,
@@ -22,6 +25,8 @@ export interface CreateTenantInput {
   name: string;
   currency?: string;
   timezone?: string;
+  /** Defaults to PRO — provisioning always sends an explicit choice; other callers get full access. */
+  tier?: PlanTier;
 }
 
 @Injectable()
@@ -52,6 +57,7 @@ export class TenantService {
         currency: input.currency ?? "LKR",
         timezone: input.timezone ?? "Asia/Colombo",
         settings: DEFAULT_TENANT_SETTINGS,
+        entitlements: { ...DEFAULT_TENANT_ENTITLEMENTS, tier: input.tier ?? DEFAULT_TENANT_ENTITLEMENTS.tier },
       }),
     );
   }
@@ -96,11 +102,54 @@ export class TenantService {
     return { currency: tenant.currency, timezone: tenant.timezone, ...tenant.settings };
   }
 
+  /**
+   * A tenant's own settings, capped by whatever the plan allows
+   * (`TenantLimits.maxBookingWindowDays` / `maxReminderOffsets` /
+   * `maxDiscountCapPercent`). Refused outright rather than silently clamped —
+   * a salon that asked for a 90-day booking window and quietly got 14 would
+   * never know their own setting didn't take.
+   */
   async updateSettings(
     tenantId: string,
     patch: TenantSettingsUpdateDto,
   ): Promise<TenantSettings> {
     const tenant = await this.findById(tenantId);
+    const limits = resolveLimits(tenant.entitlements);
+
+    if (
+      patch.bookingWindowDays !== undefined &&
+      limits.maxBookingWindowDays !== null &&
+      patch.bookingWindowDays > limits.maxBookingWindowDays
+    ) {
+      throw new ApiError({
+        statusCode: 400,
+        code: "SETTING_EXCEEDS_PLAN_LIMIT",
+        message: `This salon's plan allows a booking window of at most ${limits.maxBookingWindowDays} days.`,
+      });
+    }
+    if (
+      patch.reminderOffsets !== undefined &&
+      limits.maxReminderOffsets !== null &&
+      patch.reminderOffsets.length > limits.maxReminderOffsets
+    ) {
+      throw new ApiError({
+        statusCode: 400,
+        code: "SETTING_EXCEEDS_PLAN_LIMIT",
+        message: `This salon's plan allows at most ${limits.maxReminderOffsets} reminder${limits.maxReminderOffsets === 1 ? "" : "s"}.`,
+      });
+    }
+    if (
+      patch.discountCapPercent !== undefined &&
+      limits.maxDiscountCapPercent !== null &&
+      patch.discountCapPercent > limits.maxDiscountCapPercent
+    ) {
+      throw new ApiError({
+        statusCode: 400,
+        code: "SETTING_EXCEEDS_PLAN_LIMIT",
+        message: `This salon's plan allows a desk discount cap of at most ${limits.maxDiscountCapPercent}%.`,
+      });
+    }
+
     tenant.settings = {
       ...tenant.settings,
       ...patch,

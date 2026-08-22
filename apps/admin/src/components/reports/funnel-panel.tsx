@@ -1,6 +1,6 @@
 import type { DepositBucket, FunnelReport, LossReport } from "../../lib/api-client";
 import { formatPriceCents } from "../../lib/format";
-import { Card, Panel, Quiet } from "./report-shell";
+import { Card, LockedPanel, Panel, Quiet } from "./report-shell";
 
 /**
  * What arrived, and what never showed up.
@@ -9,7 +9,20 @@ import { Card, Panel, Quiet } from "./report-shell";
  * because it is the only one where the numbers point at a specific setting the
  * owner can change. It is written only when the evidence actually supports it.
  */
-export function FunnelPanel({ funnel, losses }: { funnel: FunnelReport; losses: LossReport }) {
+export function FunnelPanel({
+  data,
+}: {
+  data: { funnel: FunnelReport; losses: LossReport } | null;
+}) {
+  if (!data) {
+    return (
+      <LockedPanel
+        title="Inquiries and empty chairs"
+        teaser="Ask about upgrading to see your inquiry conversion rate and whether deposits actually cut no-shows."
+      />
+    );
+  }
+  const { funnel, losses } = data;
   return (
     <Panel title="Inquiries and empty chairs">
       <div className="grid gap-4 lg:grid-cols-2">

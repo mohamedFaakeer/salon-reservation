@@ -4,6 +4,7 @@ import {
   IsArray,
   IsEmail,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -15,6 +16,7 @@ import {
   ValidateNested,
 } from "class-validator";
 import { AdvanceRule } from "../enums";
+import type { PlanTier } from "../tenant-entitlements";
 
 /** POST /super-admin/tenants (API.md §4) — SUPER_ADMIN only. */
 export class ProvisionTenantDto {
@@ -44,6 +46,11 @@ export class ProvisionTenantDto {
   @MinLength(8)
   @MaxLength(128)
   ownerPassword!: string;
+
+  /** Defaults to PRO server-side when omitted; the provisioning form always sends an explicit choice. */
+  @IsOptional()
+  @IsIn(["LITE", "PRO"])
+  tier?: PlanTier;
 }
 
 /** Nested inside TenantSettingsUpdateDto; all fields optional (PATCH semantics). */

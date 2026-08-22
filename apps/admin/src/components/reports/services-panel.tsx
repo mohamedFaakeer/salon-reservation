@@ -1,6 +1,6 @@
 import type { ServiceCount } from "../../lib/api-client";
 import { formatPriceCents } from "../../lib/format";
-import { Card, Insight, Panel, Quiet } from "./report-shell";
+import { Card, Insight, LockedPanel, Panel, Quiet } from "./report-shell";
 
 /**
  * Most booked beside most earned.
@@ -11,12 +11,19 @@ import { Card, Insight, Panel, Quiet } from "./report-shell";
  * gets made.
  */
 export function ServicesPanel({
-  popular,
-  byRevenue,
+  data,
 }: {
-  popular: ServiceCount[];
-  byRevenue: ServiceCount[];
+  data: { popular: ServiceCount[]; byRevenue: ServiceCount[] } | null;
 }) {
+  if (!data) {
+    return (
+      <LockedPanel
+        title="Services"
+        teaser="Ask about upgrading to see what's most booked against what actually earns the most."
+      />
+    );
+  }
+  const { popular, byRevenue } = data;
   if (popular.length === 0) {
     return (
       <Panel title="Services">

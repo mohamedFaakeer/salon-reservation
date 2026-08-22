@@ -1,5 +1,5 @@
 import type { StaffReportRow } from "../../lib/api-client";
-import { Card, Insight, Panel, Quiet, Td, Th } from "./report-shell";
+import { Card, Insight, LockedPanel, Panel, Quiet, Td, Th } from "./report-shell";
 
 /**
  * The stylist league table, with the honesty built in.
@@ -9,7 +9,15 @@ import { Card, Insight, Panel, Quiet, Td, Th } from "./report-shell";
  * underneath is written only when those two columns actually disagree,
  * because a takeaway that appears every time is wallpaper.
  */
-export function StaffPanel({ staff }: { staff: StaffReportRow[] }) {
+export function StaffPanel({ staff }: { staff: StaffReportRow[] | null }) {
+  if (!staff) {
+    return (
+      <LockedPanel
+        title="Stylists"
+        teaser="Ask about upgrading to see a per-stylist league table — jobs finished, diary utilisation, ratings, and late arrivals."
+      />
+    );
+  }
   const active = staff.filter((s) => s.rosteredMinutes > 0 || s.completed > 0);
 
   return (

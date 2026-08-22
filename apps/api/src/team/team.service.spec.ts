@@ -13,6 +13,7 @@ function mockRepo<T extends ObjectLiteral>() {
     save: vi.fn(async (e: T) => ({ id: "generated", ...e }) as T),
     find: vi.fn(async () => [] as T[]),
     findOne: vi.fn(async () => null as T | null),
+    count: vi.fn(async () => 0),
   } as unknown as Repository<T>;
 }
 
@@ -66,7 +67,7 @@ describe("TeamService", () => {
     };
 
     it("creates the login against the caller's salon, never a salon in the body", async () => {
-      await service.create("tenant-1", dto, "owner-1");
+      await service.create("tenant-1", dto, "owner-1", null);
 
       const grant = vi.mocked(txRoles.create).mock.calls[0][0] as UserTenantRole;
       expect(grant.tenantId).toBe("tenant-1");
@@ -74,14 +75,14 @@ describe("TeamService", () => {
     });
 
     it("normalises the email so a capitalised duplicate cannot slip through", async () => {
-      await service.create("tenant-1", dto, "owner-1");
+      await service.create("tenant-1", dto, "owner-1", null);
 
       const created = vi.mocked(txUsers.create).mock.calls[0][0] as User;
       expect(created.email).toBe("nadia@salon.lk");
     });
 
     it("hashes the password and never stores it", async () => {
-      await service.create("tenant-1", dto, "owner-1");
+      await service.create("tenant-1", dto, "owner-1", null);
 
       expect(passwords.hash).toHaveBeenCalledWith("a-real-password");
       const created = vi.mocked(txUsers.create).mock.calls[0][0] as User;
@@ -90,7 +91,7 @@ describe("TeamService", () => {
     });
 
     it("keeps the raw password out of the audit trail", async () => {
-      await service.create("tenant-1", dto, "owner-1");
+      await service.create("tenant-1", dto, "owner-1", null);
 
       const entry = vi.mocked(audit.record).mock.calls[0][0];
       expect(JSON.stringify(entry)).not.toContain("a-real-password");
@@ -101,7 +102,7 @@ describe("TeamService", () => {
       vi.mocked(txUsers.findOne).mockResolvedValue(fakeUser());
       vi.mocked(txRoles.findOne).mockResolvedValue({ userId: "u1" } as UserTenantRole);
 
-      await expect(service.create("tenant-1", dto, "owner-1")).rejects.toMatchObject({
+      await expect(service.create("tenant-1", dto, "owner-1", null)).rejects.toMatchObject({
         statusCode: 409,
         code: "TEAM_MEMBER_EXISTS",
       });
@@ -113,12 +114,67 @@ describe("TeamService", () => {
       vi.mocked(txUsers.findOne).mockResolvedValue(fakeUser());
       vi.mocked(txRoles.findOne).mockResolvedValue(null);
 
-      await service.create("tenant-2", dto, "owner-2");
+      await service.create("tenant-2", dto, "owner-2", null);
 
       expect(txUsers.create).not.toHaveBeenCalled();
       const grant = vi.mocked(txRoles.create).mock.calls[0][0] as UserTenantRole;
       expect(grant.userId).toBe("u1");
       expect(grant.tenantId).toBe("tenant-2");
+    });
+
+    it("allows a new receptionist under the seat cap", async () => {
+      vi.mocked(txRoles.count).mockResolvedValueOnce(0);
+
+      await service.create("tenant-1", dto, "owner-1", {
+        maxManagers: 0,
+        maxReceptionists: 1,
+        maxStaff: null,
+        maxServices: null,
+        maxIncentivePlans: null,
+        maxBookingsPerDay: null,
+        maxBookingWindowDays: null,
+        maxReminderOffsets: null,
+        maxDiscountCapPercent: null,
+      });
+
+      expect(txRoles.save).toHaveBeenCalled();
+    });
+
+    it("refuses a new receptionist once the seat cap is reached", async () => {
+      vi.mocked(txRoles.count).mockResolvedValueOnce(1);
+
+      await expect(
+        service.create("tenant-1", dto, "owner-1", {
+          maxManagers: 0,
+          maxReceptionists: 1,
+          maxStaff: null,
+          maxServices: null,
+          maxIncentivePlans: null,
+          maxBookingsPerDay: null,
+          maxBookingWindowDays: null,
+          maxReminderOffsets: null,
+          maxDiscountCapPercent: null,
+        }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "TEAM_SEAT_LIMIT_REACHED" });
+    });
+
+    it("never caps STAFF logins — that seat rides on the stylist profile cap instead", async () => {
+      const staffDto = { ...dto, role: UserRole.STAFF as never };
+      vi.mocked(txRoles.count).mockResolvedValueOnce(999);
+
+      await service.create("tenant-1", staffDto, "owner-1", {
+        maxManagers: 0,
+        maxReceptionists: 0,
+        maxStaff: 0,
+        maxServices: null,
+        maxIncentivePlans: null,
+        maxBookingsPerDay: null,
+        maxBookingWindowDays: null,
+        maxReminderOffsets: null,
+        maxDiscountCapPercent: null,
+      });
+
+      expect(txRoles.save).toHaveBeenCalled();
     });
   });
 

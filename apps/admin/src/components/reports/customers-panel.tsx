@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { CustomerSpendRow, LapsedCustomerRow } from "../../lib/api-client";
 import { formatDate, formatPhone, formatPriceCents } from "../../lib/format";
-import { Card, Panel, Quiet, Td, Th } from "./report-shell";
+import { Card, LockedPanel, Panel, Quiet, Td, Th } from "./report-shell";
 
 /**
  * Who is worth calling, and who is worth keeping.
@@ -11,7 +11,16 @@ import { Card, Panel, Quiet, Td, Th } from "./report-shell";
  * page tells an owner how the salon did; this one tells them who to ring.
  */
 
-export function LapsedPanel({ rows }: { rows: LapsedCustomerRow[] }) {
+export function LapsedPanel({ rows }: { rows: LapsedCustomerRow[] | null }) {
+  if (!rows) {
+    return (
+      <LockedPanel
+        title="Worth a call"
+        note="regulars who have not been back in 60 days"
+        teaser="Ask about upgrading to see who's worth a call before they go elsewhere."
+      />
+    );
+  }
   return (
     <Panel title="Worth a call" note="regulars who have not been back in 60 days">
       <Card>
@@ -77,12 +86,20 @@ export function LapsedPanel({ rows }: { rows: LapsedCustomerRow[] }) {
 }
 
 export function CustomersPanel({
-  topSpenders,
-  frequent,
+  data,
 }: {
-  topSpenders: CustomerSpendRow[];
-  frequent: CustomerSpendRow[];
+  data: { topSpenders: CustomerSpendRow[]; frequent: CustomerSpendRow[] } | null;
 }) {
+  if (!data) {
+    return (
+      <LockedPanel
+        title="Customers"
+        note="in this period"
+        teaser="Ask about upgrading to see who spends the most and who comes back the most."
+      />
+    );
+  }
+  const { topSpenders, frequent } = data;
   return (
     <Panel title="Customers" note="in this period">
       <div className="grid gap-4 lg:grid-cols-2">

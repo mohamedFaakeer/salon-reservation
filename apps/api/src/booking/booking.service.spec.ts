@@ -5,6 +5,7 @@ import {
   AppointmentStatus,
   BookingSource,
   SlotHoldStatus,
+  DEFAULT_TENANT_ENTITLEMENTS,
   type CreateBookingDto,
 } from "@salon/shared";
 import { BookingService } from "./booking.service";
@@ -34,6 +35,7 @@ function mockRepo<T extends ObjectLiteral>() {
     findOne: vi.fn(async () => null as T | null),
     findOneOrFail: vi.fn(async () => ({}) as T),
     update: vi.fn(async () => ({ affected: 1 })),
+    count: vi.fn(async () => 0),
   } as unknown as Repository<T>;
 }
 
@@ -50,6 +52,7 @@ function fakeTenant(): Tenant {
   return {
     id: "tenant-1",
     slug: "elegance",
+    entitlements: DEFAULT_TENANT_ENTITLEMENTS,
     settings: {
       advanceRule: AdvanceRule.NO_ADVANCE,
       advanceValueCents: null,
@@ -424,6 +427,48 @@ describe("BookingService", () => {
 
       expect(appointment.status).toBe(AppointmentStatus.CHECKED_IN);
       expect(appointment.checkedInAt).toBeInstanceOf(Date);
+    });
+
+    it("allows a booking right up to the plan's daily limit plus its grace buffer", async () => {
+      vi.mocked(servicesRepo.find).mockResolvedValue([
+        { id: "svc-1", name: "Cut", durationMin: 30, priceCents: 5000 } as Service,
+      ]);
+      // Limit 5 + grace 2 = 7 allowed; 6 already on the books is still inside that.
+      vi.mocked(appointmentsRepo.count).mockResolvedValue(6);
+      const liteTenant = {
+        ...fakeTenant(),
+        entitlements: { tier: "LITE", moduleOverrides: {}, reportPanelOverrides: {}, limitOverrides: { maxBookingsPerDay: 5 } },
+      } as Tenant;
+
+      const appointment = await service.reserveAndConfirm(
+        liteTenant,
+        { customerId: "customer-3", serviceIds: ["svc-1"], staffId: "staff-1", start: BOOKING_START, source: BookingSource.WALK_IN },
+        "session-4",
+        "user-1",
+      );
+
+      expect(appointment.status).toBe(AppointmentStatus.CONFIRMED);
+    });
+
+    it("refuses a booking once the plan's daily limit and its grace buffer are both used up", async () => {
+      vi.mocked(servicesRepo.find).mockResolvedValue([
+        { id: "svc-1", name: "Cut", durationMin: 30, priceCents: 5000 } as Service,
+      ]);
+      // Limit 5 + grace 2 = 7 allowed; 7 already on the books means the next one is refused.
+      vi.mocked(appointmentsRepo.count).mockResolvedValue(7);
+      const liteTenant = {
+        ...fakeTenant(),
+        entitlements: { tier: "LITE", moduleOverrides: {}, reportPanelOverrides: {}, limitOverrides: { maxBookingsPerDay: 5 } },
+      } as Tenant;
+
+      await expect(
+        service.reserveAndConfirm(
+          liteTenant,
+          { customerId: "customer-3", serviceIds: ["svc-1"], staffId: "staff-1", start: BOOKING_START, source: BookingSource.WALK_IN },
+          "session-5",
+          "user-1",
+        ),
+      ).rejects.toMatchObject({ statusCode: 409, code: "DAILY_BOOKING_LIMIT_REACHED" });
     });
   });
 

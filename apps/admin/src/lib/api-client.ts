@@ -1163,19 +1163,26 @@ export interface LossReport {
   depositEffect: { withDeposit: DepositBucket; withoutDeposit: DepositBucket };
 }
 
+export interface TakingsLossSummary {
+  noShows: number;
+  cancellations: number;
+  lostRevenueCents: number;
+}
+
+/**
+ * Each field is one of the seven report panels, and `null` means it's locked
+ * on this salon's plan — never "empty this period". The server never sends
+ * real numbers for a locked panel in the first place (see `ReportsService`).
+ */
 export interface ReportsSummary {
   range: { from: string; to: string; days: number };
-  staff: StaffReportRow[];
-  services: { popular: ServiceCount[]; byRevenue: ServiceCount[] };
-  collection: CollectionReport;
-  customers: {
-    topSpenders: CustomerSpendRow[];
-    frequent: CustomerSpendRow[];
-    lapsed: LapsedCustomerRow[];
-  };
-  busyHours: BusyHourCell[];
-  funnel: FunnelReport;
-  losses: LossReport;
+  takings: { collection: CollectionReport; losses: TakingsLossSummary } | null;
+  staff: StaffReportRow[] | null;
+  services: { popular: ServiceCount[]; byRevenue: ServiceCount[] } | null;
+  busyHours: BusyHourCell[] | null;
+  lapsedCustomers: LapsedCustomerRow[] | null;
+  customerSpend: { topSpenders: CustomerSpendRow[]; frequent: CustomerSpendRow[] } | null;
+  funnelLosses: { funnel: FunnelReport; losses: LossReport } | null;
 }
 
 export function fetchReports(range: { from: string; to: string }): Promise<ReportsSummary> {

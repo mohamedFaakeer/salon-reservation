@@ -9,6 +9,7 @@ import type { Request } from "express";
 import { getTenantContext } from "../tenant/tenant-context";
 import { Permissions } from "../common/authorization/permissions.decorator";
 import { Permission } from "../common/authorization/permission.enum";
+import { RequiresModule } from "../common/authorization/module.decorator";
 // IncentiveService must stay a VALUE import: NestJS resolves constructor
 // injection via design:paramtypes metadata at runtime; `import type` would
 // erase it and break DI.
@@ -19,6 +20,7 @@ import { IncentiveService } from "./incentive.service";
 @ApiTags("incentives")
 @ApiBearerAuth()
 @Controller("incentive-plans")
+@RequiresModule("incentives")
 export class IncentiveController {
   constructor(private readonly incentives: IncentiveService) {}
 
@@ -65,7 +67,7 @@ export class IncentiveController {
   @Permissions(Permission.MANAGE_INCENTIVES)
   create(@Req() req: Request, @Body() dto: UpsertIncentivePlanDto) {
     const ctx = getTenantContext(req);
-    return this.incentives.create(ctx.tenantId, dto);
+    return this.incentives.create(ctx.tenantId, dto, ctx.limits?.maxIncentivePlans ?? null);
   }
 
   @Put(":id")

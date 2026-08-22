@@ -1,5 +1,6 @@
 export * from "./enums";
 export * from "./tenant-settings";
+export * from "./tenant-entitlements";
 export * from "./dto/auth.dto";
 export * from "./dto/team.dto";
 export * from "./dto/tenant.dto";
@@ -27,4 +28,5 @@ export * from "./dto/invoice.dto";
 export * from "./dto/notification.dto";
 export * from "./dto/attendance.dto";
 export * from "./dto/incentive.dto";
+export * from "./dto/tenant-entitlements.dto";
 export * from "./errors/api-error";

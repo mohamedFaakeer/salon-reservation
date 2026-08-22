@@ -100,17 +100,27 @@ export interface LossReport {
   };
 }
 
+/** The slice of `LossReport` the Takings panel actually reads — never the staff/hour/deposit breakdown, which belongs to the Funnel panel alone. */
+export interface TakingsLossSummary {
+  noShows: number;
+  cancellations: number;
+  lostRevenueCents: number;
+}
+
+/**
+ * Each field is one of the seven panels the Reports screen is built from
+ * (`ReportPanelKey`, `@salon/shared`), and `null` means "locked" — not "empty
+ * this period". A locked panel's real numbers are never computed for a
+ * request that can't see them (see `ReportsService.summary`), so `null` here
+ * is the only thing a Lite tenant's browser ever receives for it.
+ */
 export interface ReportsSummary {
   range: { from: string; to: string; days: number };
-  staff: StaffReportRow[];
-  services: { popular: ServiceCount[]; byRevenue: ServiceCount[] };
-  collection: CollectionReport;
-  customers: {
-    topSpenders: CustomerSpendRow[];
-    frequent: CustomerSpendRow[];
-    lapsed: LapsedCustomerRow[];
-  };
-  busyHours: BusyHourCell[];
-  funnel: FunnelReport;
-  losses: LossReport;
+  takings: { collection: CollectionReport; losses: TakingsLossSummary } | null;
+  staff: StaffReportRow[] | null;
+  services: { popular: ServiceCount[]; byRevenue: ServiceCount[] } | null;
+  busyHours: BusyHourCell[] | null;
+  lapsedCustomers: LapsedCustomerRow[] | null;
+  customerSpend: { topSpenders: CustomerSpendRow[]; frequent: CustomerSpendRow[] } | null;
+  funnelLosses: { funnel: FunnelReport; losses: LossReport } | null;
 }

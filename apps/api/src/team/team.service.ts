@@ -9,6 +9,7 @@ import {
   ApiError,
   UserRole,
   type CreateTeamMemberDto,
+  type TenantLimits,
   type UpdateTeamMemberDto,
 } from "@salon/shared";
 import { User } from "../entities/user.entity";
@@ -60,16 +61,35 @@ export class TeamService {
       .map((grant) => toMember(grant));
   }
 
+  /**
+   * `limits` is the tenant's resolved seat caps (`TenantLimits`, from
+   * `TenantGuard`). Only MANAGER and RECEPTIONIST are capped here — STAFF
+   * logins ride on the same seat as the stylist's own `Staff` profile, which
+   * `StaffService.create` already caps separately.
+   */
   async create(
     tenantId: string,
     dto: CreateTeamMemberDto,
     actorUserId: string,
+    limits: Required<TenantLimits> | null,
   ): Promise<TeamMember> {
     const email = dto.email.trim().toLowerCase();
 
     return this.dataSource.transaction(async (manager) => {
       const userRepo = manager.getRepository(User);
       const roleRepo = manager.getRepository(UserTenantRole);
+
+      const cap = seatCapFor(dto.role, limits);
+      if (cap !== null) {
+        const currentCount = await roleRepo.count({ where: { tenantId, role: dto.role } });
+        if (currentCount >= cap) {
+          throw new ApiError({
+            statusCode: 409,
+            code: "TEAM_SEAT_LIMIT_REACHED",
+            message: `This salon's plan allows up to ${cap} ${roleLabel(dto.role)}${cap === 1 ? "" : "s"}. Ask your account manager to raise the limit.`,
+          });
+        }
+      }
 
       // A user row is global: the same person may already work at another
       // salon. Reuse the account and add a grant rather than refusing, but
@@ -183,6 +203,24 @@ export class TeamService {
 
     return toMember(grant);
   }
+}
+
+/** `null` = uncapped, either because the role isn't seat-limited or the plan sets no ceiling. */
+function seatCapFor(role: string, limits: Required<TenantLimits> | null): number | null {
+  if (!limits) {
+    return null;
+  }
+  if (role === UserRole.MANAGER) {
+    return limits.maxManagers;
+  }
+  if (role === UserRole.RECEPTIONIST) {
+    return limits.maxReceptionists;
+  }
+  return null;
+}
+
+function roleLabel(role: string): string {
+  return role === UserRole.MANAGER ? "manager" : "receptionist";
 }
 
 function toMember(grant: UserTenantRole & { user: User }): TeamMember {

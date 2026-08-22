@@ -5,7 +5,7 @@ import type { DataSource, EntityManager } from "typeorm";
 // injection via design:paramtypes metadata at runtime; `import type` would
 // erase it and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import { In, Repository } from "typeorm";
+import { In, Not, Repository } from "typeorm";
 import {
   ApiError,
   isApiError,
@@ -17,6 +17,8 @@ import {
   PaymentProviderName,
   PaymentStatus,
   PaymentType,
+  BOOKING_LIMIT_GRACE,
+  resolveLimits,
   type DiscountType,
   type CreateBookingDto,
   type CreateCustomerDto,
@@ -54,6 +56,15 @@ import { RefundCalculator } from "../pricing/refund-calculator";
 import { PaymentService } from "../payment/payment.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { NotificationService } from "../notification/notification.service";
+
+/** Never a real booking against the day's capacity — cancelled, no-show, rescheduled away, or expired before payment. */
+const DOES_NOT_COUNT_TOWARD_DAILY_LIMIT: AppointmentStatus[] = [
+  AppointmentStatus.CANCELLED,
+  AppointmentStatus.NO_SHOW,
+  AppointmentStatus.RESCHEDULED,
+  AppointmentStatus.EXPIRED,
+  AppointmentStatus.PENDING_PAYMENT,
+];
 
 /** Maps `canBook`'s rejection codes to HTTP statuses (API.md §7's list is illustrative, not exhaustive). */
 const CAN_BOOK_ERROR_STATUS: Record<string, number> = {
@@ -1082,6 +1093,8 @@ export class BookingService {
     const appointmentDate = colomboNow(spec.startTime).date;
     const now = new Date();
 
+    await this.assertUnderDailyBookingLimit(appointmentRepo, tenant, appointmentDate);
+
     let appointment: Appointment | undefined;
     for (let attempt = 0; attempt < 5 && !appointment; attempt++) {
       const bookingReference =
@@ -1149,6 +1162,39 @@ export class BookingService {
     );
 
     return appointment;
+  }
+
+  /**
+   * `maxBookingsPerDay` (`TenantLimits`) is soft, not a hard seat cap: organic
+   * daily volume, not a deliberate action, so a salon having a genuinely busy
+   * day is allowed `BOOKING_LIMIT_GRACE` bookings past it before anything is
+   * actually refused. Crossing the limit itself raises no alert here — the
+   * platform tenant list computes that live, off the same real appointment
+   * count, rather than a stored flag that would need resetting at midnight.
+   */
+  private async assertUnderDailyBookingLimit(
+    appointmentRepo: Repository<Appointment>,
+    tenant: Tenant,
+    appointmentDate: string,
+  ): Promise<void> {
+    const maxPerDay = resolveLimits(tenant.entitlements).maxBookingsPerDay;
+    if (maxPerDay === null) {
+      return;
+    }
+    const existing = await appointmentRepo.count({
+      where: {
+        tenantId: tenant.id,
+        appointmentDate,
+        status: Not(In(DOES_NOT_COUNT_TOWARD_DAILY_LIMIT)),
+      },
+    });
+    if (existing >= maxPerDay + BOOKING_LIMIT_GRACE) {
+      throw new ApiError({
+        statusCode: 409,
+        code: "DAILY_BOOKING_LIMIT_REACHED",
+        message: `This salon's plan allows up to ${maxPerDay} bookings a day (with a little headroom for a busy one) — ${appointmentDate} is full. Ask your account manager to raise the limit.`,
+      });
+    }
   }
 
   /**

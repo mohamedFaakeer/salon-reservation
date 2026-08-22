@@ -8,7 +8,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Reflector } from "@nestjs/core";
 import type { Request } from "express";
 import type { Repository } from "typeorm";
-import { ApiError, UserRole } from "@salon/shared";
+import { ApiError, UserRole, resolveLimits, resolveModules, resolveReportPanels } from "@salon/shared";
 import { Tenant } from "../entities/tenant.entity";
 import { TenantStatus } from "../enums/tenant-status.enum";
 import { UserTenantRole } from "../entities/user-tenant-role.entity";
@@ -122,6 +122,9 @@ export class TenantGuard implements CanActivate {
       tenantId,
       branchId: user.branchId,
       roles,
+      modules: resolveModules(tenant.entitlements),
+      reportPanels: resolveReportPanels(tenant.entitlements),
+      limits: resolveLimits(tenant.entitlements),
     };
     (req as AuthenticatedRequest).tenantContext = context;
   }

@@ -4,7 +4,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 // via design:paramtypes metadata at runtime; `import type` would erase it.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { Repository } from "typeorm";
-import { AppointmentStatus, InquiryStatus, PaymentStatus, RefundStatus } from "@salon/shared";
+import { AppointmentStatus, InquiryStatus, PaymentStatus, RefundStatus, type ReportPanelKey } from "@salon/shared";
 import { Appointment } from "../entities/appointment.entity";
 import { AppointmentServiceLine } from "../entities/appointment-service.entity";
 import { AttendanceDay } from "../entities/attendance-day.entity";
@@ -95,31 +95,46 @@ export class ReportsService {
     @InjectRepository(Customer) private readonly customers: Repository<Customer>,
   ) {}
 
-  async summary(tenantId: string, from?: string, to?: string): Promise<ReportsSummary> {
+  /**
+   * `panels` is the tenant's resolved Lite/Pro entitlement for each of the
+   * seven panels below (`TenantGuard` → `resolveReportPanels`). A locked
+   * panel is never computed at all, not merely omitted from the response —
+   * the only thing that can leak over the wire is a number that was never
+   * queried in the first place. Missing entirely (should not happen once
+   * `TenantGuard` has run) defaults every panel open, matching PRO.
+   */
+  async summary(
+    tenantId: string,
+    from: string | undefined,
+    to: string | undefined,
+    panels: Record<ReportPanelKey, boolean> | undefined,
+  ): Promise<ReportsSummary> {
     const range = resolveDateRange(from, to, new Date());
+    const on = (key: ReportPanelKey): boolean => panels?.[key] ?? true;
+    const needsLosses = on("takings") || on("funnelLosses");
 
     const [staff, services, collection, topSpenders, frequent, lapsed, busyHours, funnel, losses] =
       await Promise.all([
-        this.staffRows(tenantId, range),
-        this.serviceRows(tenantId, range),
-        this.collectionRows(tenantId, range),
-        this.topSpenders(tenantId, range),
-        this.frequentCustomers(tenantId, range),
-        this.lapsedCustomers(tenantId, range),
-        this.busyHours(tenantId, range),
-        this.funnel(tenantId, range),
-        this.losses(tenantId, range),
+        on("staff") ? this.staffRows(tenantId, range) : Promise.resolve(null),
+        on("services") ? this.serviceRows(tenantId, range) : Promise.resolve(null),
+        on("takings") ? this.collectionRows(tenantId, range) : Promise.resolve(null),
+        on("customerSpend") ? this.topSpenders(tenantId, range) : Promise.resolve(null),
+        on("customerSpend") ? this.frequentCustomers(tenantId, range) : Promise.resolve(null),
+        on("lapsedCustomers") ? this.lapsedCustomers(tenantId, range) : Promise.resolve(null),
+        on("busyHours") ? this.busyHours(tenantId, range) : Promise.resolve(null),
+        on("funnelLosses") ? this.funnel(tenantId, range) : Promise.resolve(null),
+        needsLosses ? this.losses(tenantId, range) : Promise.resolve(null),
       ]);
 
     return {
       range: { from: range.from, to: range.to, days: range.days },
+      takings: collection && losses ? { collection, losses } : null,
       staff,
       services,
-      collection,
-      customers: { topSpenders, frequent, lapsed },
       busyHours,
-      funnel,
-      losses,
+      lapsedCustomers: lapsed,
+      customerSpend: topSpenders && frequent ? { topSpenders, frequent } : null,
+      funnelLosses: funnel && losses ? { funnel, losses } : null,
     };
   }
 

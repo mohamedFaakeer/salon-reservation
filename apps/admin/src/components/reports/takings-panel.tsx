@@ -1,6 +1,6 @@
-import type { CollectionReport, LossReport } from "../../lib/api-client";
+import type { CollectionReport, TakingsLossSummary } from "../../lib/api-client";
 import { formatPriceCents } from "../../lib/format";
-import { Card, Figure, Panel } from "./report-shell";
+import { Card, Figure, LockedPanel, Panel } from "./report-shell";
 
 /**
  * Money in, money back out, and money that never arrived.
@@ -26,14 +26,21 @@ const METHOD_LABELS: Record<string, string> = {
 };
 
 export function TakingsPanel({
-  collection,
-  losses,
+  data,
   days,
 }: {
-  collection: CollectionReport;
-  losses: LossReport;
+  data: { collection: CollectionReport; losses: TakingsLossSummary } | null;
   days: number;
 }) {
+  if (!data) {
+    return (
+      <LockedPanel
+        title="Takings"
+        teaser="Ask about upgrading to see what came in, what went back out, and what empty chairs cost you."
+      />
+    );
+  }
+  const { collection, losses } = data;
   const payments = collection.byMethod.reduce((sum, m) => sum + m.count, 0);
   const perDay = days > 0 ? Math.round(collection.netCents / days) : 0;
   const emptyChairs = losses.noShows + losses.cancellations;

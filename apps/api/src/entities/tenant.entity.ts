@@ -6,7 +6,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm";
-import { DEFAULT_TENANT_SETTINGS, type TenantSettings } from "@salon/shared";
+import { DEFAULT_TENANT_ENTITLEMENTS, DEFAULT_TENANT_SETTINGS, type TenantEntitlements, type TenantSettings } from "@salon/shared";
 import type { TenantStatus } from "../enums/tenant-status.enum";
 
 /**
@@ -33,6 +33,26 @@ export function withDefaults(raw: Partial<TenantSettings> | null | undefined): T
       ...DEFAULT_TENANT_SETTINGS.cancellationPolicy,
       ...raw?.cancellationPolicy,
     },
+  };
+}
+
+/**
+ * Same defensive shape as `withDefaults` above, and for the same class of
+ * reason: a tenant row written before a new override bucket existed has a
+ * stored blob that simply lacks that key. Unlike `settings`, the buckets here
+ * default to *empty* (`{}`), not to a filled-in value — `resolveModules` /
+ * `resolveReportPanels` / `resolveLimits` are what apply the tier's own
+ * defaults on top, at read time, everywhere this is consumed. Filling them in
+ * here too would mean two places deciding what "no override" means.
+ */
+export function withEntitlementsDefaults(
+  raw: Partial<TenantEntitlements> | null | undefined,
+): TenantEntitlements {
+  return {
+    tier: raw?.tier ?? DEFAULT_TENANT_ENTITLEMENTS.tier,
+    moduleOverrides: raw?.moduleOverrides ?? {},
+    reportPanelOverrides: raw?.reportPanelOverrides ?? {},
+    limitOverrides: raw?.limitOverrides ?? {},
   };
 }
 
@@ -63,6 +83,19 @@ export class Tenant {
     transformer: { to: (value: TenantSettings) => value, from: withDefaults },
   })
   settings!: TenantSettings;
+
+  /**
+   * Lite/Pro tier plus per-module, per-report-panel and numeric-limit
+   * overrides. SUPER_ADMIN-only to write (`super-admin/entitlements.*`) —
+   * deliberately a separate column from `settings`, which the tenant's own
+   * OWNER/MANAGER can PATCH themselves.
+   */
+  @Column({
+    type: "jsonb",
+    default: () => "'{}'",
+    transformer: { to: (value: TenantEntitlements) => value, from: withEntitlementsDefaults },
+  })
+  entitlements!: TenantEntitlements;
 
   @CreateDateColumn({ type: "timestamptz" })
   createdAt!: Date;

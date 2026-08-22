@@ -88,6 +88,40 @@ export function Insight({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * What a locked panel shows instead of its real numbers. The title and note
+ * stay in place — the grid doesn't reflow, and an owner sees exactly which
+ * report they're missing, not a gap that looks like a bug.
+ */
+export function LockedPanel({
+  title,
+  note,
+  teaser,
+}: {
+  title: string;
+  note?: string;
+  teaser: string;
+}) {
+  return (
+    <Panel title={title} note={note}>
+      <Card>
+        <div className="flex flex-col items-center gap-2.5 px-6 py-10 text-center">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+            <svg viewBox="0 0 16 16" width="15" height="15" fill="none" aria-hidden="true">
+              <rect x="3.5" y="7" width="9" height="6.5" rx="1.3" stroke="currentColor" strokeWidth="1.4" />
+              <path d="M5.2 7V5a2.8 2.8 0 0 1 5.6 0v2" stroke="currentColor" strokeWidth="1.4" />
+            </svg>
+          </span>
+          <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+            Pro feature
+          </span>
+          <p className="max-w-[220px] text-[13px] leading-relaxed text-slate-500">{teaser}</p>
+        </div>
+      </Card>
+    </Panel>
+  );
+}
+
 export function Th({
   children,
   align = "left",

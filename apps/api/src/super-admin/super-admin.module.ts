@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
+import { Appointment } from "../entities/appointment.entity";
 import { Branch } from "../entities/branch.entity";
 import { Tenant } from "../entities/tenant.entity";
 import { User } from "../entities/user.entity";
@@ -15,7 +16,7 @@ import { DemoSeedService } from "./demo-seed.service";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Tenant, Branch, User, UserTenantRole]),
+    TypeOrmModule.forFeature([Tenant, Branch, User, UserTenantRole, Appointment]),
     TenantModule,
     AuthModule,
     AuditModule,

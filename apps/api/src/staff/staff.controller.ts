@@ -25,7 +25,7 @@ export class StaffController {
   @Permissions(Permission.MANAGE_STAFF)
   create(@Req() req: Request, @Body() dto: CreateStaffDto) {
     const ctx = getTenantContext(req);
-    return this.staff.create(ctx.tenantId, dto);
+    return this.staff.create(ctx.tenantId, dto, ctx.limits?.maxStaff ?? null);
   }
 
   @Get()

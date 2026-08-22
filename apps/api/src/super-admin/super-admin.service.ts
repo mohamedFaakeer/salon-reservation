@@ -1,7 +1,22 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { InjectDataSource, InjectRepository } from "@nestjs/typeorm";
-import type { DataSource, Repository } from "typeorm";
-import { ApiError, UserRole, type PaginationQueryDto, type ProvisionTenantDto } from "@salon/shared";
+// Repository must stay a VALUE import: NestJS resolves constructor
+// injection via design:paramtypes metadata at runtime; `import type` would
+// erase it and break DI.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { DataSource, Repository } from "typeorm";
+import {
+  ApiError,
+  AppointmentStatus,
+  UserRole,
+  resolveLimits,
+  resolveModules,
+  type PaginationQueryDto,
+  type TenantEntitlements,
+  type UpdateTenantEntitlementsDto,
+  type ProvisionTenantDto,
+} from "@salon/shared";
+import { Appointment } from "../entities/appointment.entity";
 import { Branch } from "../entities/branch.entity";
 import { Tenant } from "../entities/tenant.entity";
 import { User } from "../entities/user.entity";
@@ -10,11 +25,31 @@ import { UserStatus } from "../enums/user-status.enum";
 import { PasswordService } from "../auth/services/password.service";
 import { TenantService } from "../tenant/tenant.service";
 import { AuditService } from "../audit/audit.service";
+import { colomboNow } from "../availability/time.util";
+
+/** Mirrors `DOES_NOT_COUNT_TOWARD_DAILY_LIMIT` in booking.service.ts — what an active booking day actually counts. */
+const NOT_A_LIVE_BOOKING: AppointmentStatus[] = [
+  AppointmentStatus.CANCELLED,
+  AppointmentStatus.NO_SHOW,
+  AppointmentStatus.RESCHEDULED,
+  AppointmentStatus.EXPIRED,
+  AppointmentStatus.PENDING_PAYMENT,
+];
+
+export interface TenantEntitlementsView {
+  tier: TenantEntitlements["tier"];
+  moduleOverrides: TenantEntitlements["moduleOverrides"];
+  reportPanelOverrides: TenantEntitlements["reportPanelOverrides"];
+  limitOverrides: TenantEntitlements["limitOverrides"];
+  modules: ReturnType<typeof resolveModules>;
+  limits: ReturnType<typeof resolveLimits>;
+}
 
 @Injectable()
 export class SuperAdminService {
   constructor(
     @InjectRepository(Tenant) private readonly tenants: Repository<Tenant>,
+    @InjectRepository(Appointment) private readonly appointments: Repository<Appointment>,
     @InjectDataSource() private readonly dataSource: DataSource,
     @Inject(TenantService) private readonly tenantService: TenantService,
     @Inject(PasswordService) private readonly passwordService: PasswordService,
@@ -47,7 +82,7 @@ export class SuperAdminService {
       }
 
       const tenant = await this.tenantService.createTenant(
-        { slug: dto.slug, name: dto.salonName },
+        { slug: dto.slug, name: dto.salonName, tier: dto.tier },
         manager,
       );
 
@@ -102,10 +137,24 @@ export class SuperAdminService {
     });
   }
 
+  /**
+   * `bookingsToday` / `overBookingLimit` are computed live against today's
+   * real appointments, not a stored flag — nothing to reset at midnight, and
+   * it can never drift from what actually happened. "Over" means past the
+   * plan's own `maxBookingsPerDay`, before the `BOOKING_LIMIT_GRACE` buffer
+   * that only actually blocks a new booking — the flag is a heads-up, not a
+   * restatement of the block.
+   */
   async listTenants(
     query: PaginationQueryDto,
   ): Promise<{
-    data: Array<Pick<Tenant, "id" | "slug" | "name" | "status" | "currency" | "timezone" | "createdAt">>;
+    data: Array<
+      Pick<Tenant, "id" | "slug" | "name" | "status" | "currency" | "timezone" | "createdAt"> & {
+        tier: TenantEntitlements["tier"];
+        bookingsToday: number;
+        overBookingLimit: boolean;
+      }
+    >;
     meta: { total: number; limit: number; offset: number };
   }> {
     const [data, total] = await this.tenants.findAndCount({
@@ -113,17 +162,89 @@ export class SuperAdminService {
       take: query.limit,
       skip: query.offset,
     });
+
+    const today = colomboNow(new Date()).date;
+    const counts = data.length
+      ? await this.appointments
+          .createQueryBuilder("a")
+          .select('a."tenantId"', "tenantId")
+          .addSelect("COUNT(*)", "count")
+          .where('a."tenantId" IN (:...tenantIds)', { tenantIds: data.map((t) => t.id) })
+          .andWhere('a."appointmentDate" = :today', { today })
+          .andWhere('a."status" NOT IN (:...excluded)', { excluded: NOT_A_LIVE_BOOKING })
+          .groupBy('a."tenantId"')
+          .getRawMany<{ tenantId: string; count: string }>()
+      : [];
+    const countByTenant = new Map(counts.map((c) => [c.tenantId, Number(c.count)]));
+
     return {
-      data: data.map((t) => ({
-        id: t.id,
-        slug: t.slug,
-        name: t.name,
-        status: t.status,
-        currency: t.currency,
-        timezone: t.timezone,
-        createdAt: t.createdAt,
-      })),
+      data: data.map((t) => {
+        const limits = resolveLimits(t.entitlements);
+        const bookingsToday = countByTenant.get(t.id) ?? 0;
+        return {
+          id: t.id,
+          slug: t.slug,
+          name: t.name,
+          status: t.status,
+          currency: t.currency,
+          timezone: t.timezone,
+          createdAt: t.createdAt,
+          tier: t.entitlements.tier,
+          bookingsToday,
+          overBookingLimit: limits.maxBookingsPerDay !== null && bookingsToday > limits.maxBookingsPerDay,
+        };
+      }),
       meta: { total, limit: query.limit, offset: query.offset },
+    };
+  }
+
+  async getEntitlements(tenantId: string): Promise<TenantEntitlementsView> {
+    const tenant = await this.findOwned(tenantId);
+    return this.toEntitlementsView(tenant);
+  }
+
+  async updateEntitlements(
+    tenantId: string,
+    dto: UpdateTenantEntitlementsDto,
+    actorUserId: string,
+  ): Promise<TenantEntitlementsView> {
+    const tenant = await this.findOwned(tenantId);
+    tenant.entitlements = {
+      tier: dto.tier,
+      moduleOverrides: dto.moduleOverrides ?? {},
+      reportPanelOverrides: dto.reportPanelOverrides ?? {},
+      limitOverrides: dto.limitOverrides ?? {},
+    };
+    await this.tenants.save(tenant);
+
+    await this.audit.record({
+      tenantId,
+      actorUserId,
+      action: "TENANT_ENTITLEMENTS_UPDATED",
+      entityType: "Tenant",
+      entityId: tenantId,
+      metadata: { tier: dto.tier, moduleOverrides: dto.moduleOverrides, limitOverrides: dto.limitOverrides },
+    });
+
+    return this.toEntitlementsView(tenant);
+  }
+
+  private async findOwned(tenantId: string): Promise<Tenant> {
+    const tenant = await this.tenants.findOne({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new ApiError({ statusCode: 404, code: "TENANT_NOT_FOUND", message: "Tenant not found." });
+    }
+    return tenant;
+  }
+
+  private toEntitlementsView(tenant: Tenant): TenantEntitlementsView {
+    return {
+      tier: tenant.entitlements.tier,
+      moduleOverrides: tenant.entitlements.moduleOverrides,
+      reportPanelOverrides: tenant.entitlements.reportPanelOverrides,
+      limitOverrides: tenant.entitlements.limitOverrides,
+      modules: resolveModules(tenant.entitlements),
+      limits: resolveLimits(tenant.entitlements),
     };
   }
 }

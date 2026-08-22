@@ -30,9 +30,25 @@ export class StaffService {
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
-  async create(tenantId: string, dto: CreateStaffDto): Promise<Staff> {
+  /**
+   * `maxStaff` is a hard seat cap (`TenantLimits`, resolved by `TenantGuard`):
+   * this salon's plan says how many bookable stylist profiles it may have,
+   * `null` meaning unlimited. Checked against active profiles — a retired
+   * stylist doesn't count against the cap they're no longer using.
+   */
+  async create(tenantId: string, dto: CreateStaffDto, maxStaff: number | null): Promise<Staff> {
     if (dto.userId) {
       await this.assertUserLinkable(tenantId, dto.userId);
+    }
+    if (maxStaff !== null) {
+      const activeCount = await this.staff.count({ where: { tenantId, active: true } });
+      if (activeCount >= maxStaff) {
+        throw new ApiError({
+          statusCode: 409,
+          code: "STAFF_LIMIT_REACHED",
+          message: `This salon's plan allows up to ${maxStaff} stylist${maxStaff === 1 ? "" : "s"}. Ask your account manager to raise the limit.`,
+        });
+      }
     }
     return this.staff.save(
       this.staff.create({

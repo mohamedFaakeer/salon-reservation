@@ -54,7 +54,22 @@ export class IncentiveService {
     return (await this.toViews([plan]))[0];
   }
 
-  async create(tenantId: string, dto: UpsertIncentivePlanDto): Promise<IncentivePlanView> {
+  /** `maxIncentivePlans` is a hard cap (`TenantLimits`); `null` = unlimited. Checked against active plans. */
+  async create(
+    tenantId: string,
+    dto: UpsertIncentivePlanDto,
+    maxIncentivePlans: number | null = null,
+  ): Promise<IncentivePlanView> {
+    if (maxIncentivePlans !== null) {
+      const activeCount = await this.plans.count({ where: { tenantId, active: true } });
+      if (activeCount >= maxIncentivePlans) {
+        throw new ApiError({
+          statusCode: 409,
+          code: "INCENTIVE_PLAN_LIMIT_REACHED",
+          message: `This salon's plan allows up to ${maxIncentivePlans} active incentive plan${maxIncentivePlans === 1 ? "" : "s"}. Ask your account manager to raise the limit.`,
+        });
+      }
+    }
     await this.validateServiceRates(tenantId, dto);
     const plan = await this.plans.save(
       this.plans.create({

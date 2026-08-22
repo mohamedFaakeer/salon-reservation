@@ -13,6 +13,7 @@ function mockRepo<T extends ObjectLiteral>() {
     findOne: vi.fn(),
     findOneOrFail: vi.fn(async () => ({}) as T),
     delete: vi.fn(async () => ({ affected: 1 })),
+    count: vi.fn(async () => 0),
   } as unknown as Repository<T>;
   return repo;
 }
@@ -214,6 +215,22 @@ describe("ServiceService", () => {
       expect(created.branchId).toBeNull();
       expect(created.active).toBe(true);
       expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it("refuses a new service once the plan's active-service cap is reached", async () => {
+      vi.mocked(services.count).mockResolvedValueOnce(20);
+
+      await expect(
+        service.create("tenant-1", { name: "Colour", durationMin: 60, priceCents: 800000 }, 20),
+      ).rejects.toMatchObject({ statusCode: 409, code: "SERVICE_LIMIT_REACHED" });
+    });
+
+    it("allows a new service under the cap", async () => {
+      vi.mocked(services.count).mockResolvedValueOnce(19);
+
+      await service.create("tenant-1", { name: "Colour", durationMin: 60, priceCents: 800000 }, 20);
+
+      expect(services.save).toHaveBeenCalled();
     });
   });
 

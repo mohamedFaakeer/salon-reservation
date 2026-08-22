@@ -35,7 +35,18 @@ export class ServiceService {
     private readonly dataSource: DataSource,
   ) {}
 
-  async create(tenantId: string, dto: CreateServiceDto): Promise<Service> {
+  /** `maxServices` is a hard seat-style cap (`TenantLimits`); `null` = unlimited. Checked against active services. */
+  async create(tenantId: string, dto: CreateServiceDto, maxServices: number | null = null): Promise<Service> {
+    if (maxServices !== null) {
+      const activeCount = await this.services.count({ where: { tenantId, active: true } });
+      if (activeCount >= maxServices) {
+        throw new ApiError({
+          statusCode: 409,
+          code: "SERVICE_LIMIT_REACHED",
+          message: `This salon's plan allows up to ${maxServices} active service${maxServices === 1 ? "" : "s"}. Ask your account manager to raise the limit.`,
+        });
+      }
+    }
     return this.services.save(
       this.services.create({
         tenantId,

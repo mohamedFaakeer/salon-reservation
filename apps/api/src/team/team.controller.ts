@@ -34,7 +34,7 @@ export class TeamController {
   @Post()
   create(@Req() req: AuthenticatedRequest, @Body() dto: CreateTeamMemberDto) {
     const ctx = getTenantContext(req);
-    return this.team.create(ctx.tenantId, dto, req.user.sub);
+    return this.team.create(ctx.tenantId, dto, req.user.sub, ctx.limits ?? null);
   }
 
   @Patch(":userId")

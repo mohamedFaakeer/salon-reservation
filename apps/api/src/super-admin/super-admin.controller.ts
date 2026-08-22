@@ -1,9 +1,9 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 // DTOs must stay VALUE imports: ValidationPipe resolves them via
 // design:paramtypes metadata at runtime; `import type` would erase them.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import { PaginationQueryDto, ProvisionTenantDto } from "@salon/shared";
+import { PaginationQueryDto, ProvisionTenantDto, UpdateTenantEntitlementsDto } from "@salon/shared";
 import type { AuthenticatedRequest } from "../tenant/tenant-context";
 import { Permissions } from "../common/authorization/permissions.decorator";
 import { Permission } from "../common/authorization/permission.enum";
@@ -46,5 +46,21 @@ export class SuperAdminController {
   @Permissions(Permission.PLATFORM_ADMIN)
   demoSeed(@Req() req: AuthenticatedRequest, @Param("tenantId", ParseUUIDPipe) tenantId: string) {
     return this.demoSeedService.seed(tenantId, req.user.sub);
+  }
+
+  @Get(":tenantId/entitlements")
+  @Permissions(Permission.PLATFORM_ADMIN)
+  getEntitlements(@Param("tenantId", ParseUUIDPipe) tenantId: string) {
+    return this.superAdmin.getEntitlements(tenantId);
+  }
+
+  @Patch(":tenantId/entitlements")
+  @Permissions(Permission.PLATFORM_ADMIN)
+  updateEntitlements(
+    @Req() req: AuthenticatedRequest,
+    @Param("tenantId", ParseUUIDPipe) tenantId: string,
+    @Body() dto: UpdateTenantEntitlementsDto,
+  ) {
+    return this.superAdmin.updateEntitlements(tenantId, dto, req.user.sub);
   }
 }
