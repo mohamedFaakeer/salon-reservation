@@ -2008,6 +2008,10 @@ export interface ProductVariantRecord {
   updatedAt: string;
   /** Joined in on `GET /product-variants` (search/browse); absent from a product's own nested variant list. */
   product?: { id: string; name: string; imageUrl: string | null; tracksExpiry: boolean; trackSerial: boolean };
+  /** Present only from `GET /product-variants` — simple velocity-vs-reorder-point signal, computed fresh on every read. */
+  salesVelocityPerDay?: number | null;
+  daysOfStockLeft?: number | null;
+  reorderSoon?: boolean;
 }
 
 export interface StockBatchRecord {

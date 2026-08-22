@@ -3,6 +3,7 @@ import { ProductService } from "./product.service";
 import type { Product } from "../entities/product.entity";
 import type { ProductVariant } from "../entities/product-variant.entity";
 import type { StockBatch } from "../entities/stock-batch.entity";
+import type { StockMovement } from "../entities/stock-movement.entity";
 import type { CloudinaryService } from "../cloudinary/cloudinary.service";
 import type { AuditService } from "../audit/audit.service";
 
@@ -32,6 +33,8 @@ describe("ProductService", () => {
   let products: Repository<Product>;
   let variants: Repository<ProductVariant>;
   let batches: Repository<StockBatch>;
+  let movements: Repository<StockMovement>;
+  let movementsGetRawMany: ReturnType<typeof vi.fn>;
   let cloudinary: CloudinaryService;
   let audit: AuditService;
   let service: ProductService;
@@ -40,9 +43,21 @@ describe("ProductService", () => {
     products = mockRepo<Product>();
     variants = mockRepo<ProductVariant>();
     batches = mockRepo<StockBatch>();
+    movementsGetRawMany = vi.fn(async () => [] as Array<{ variantId: string; unitsSold: number }>);
+    const movementsQueryBuilder = {
+      select: vi.fn().mockReturnThis(),
+      addSelect: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      andWhere: vi.fn().mockReturnThis(),
+      groupBy: vi.fn().mockReturnThis(),
+      getRawMany: movementsGetRawMany,
+    };
+    movements = {
+      createQueryBuilder: vi.fn(() => movementsQueryBuilder),
+    } as unknown as Repository<StockMovement>;
     cloudinary = { uploadProductImage: vi.fn(async () => "https://res.cloudinary.com/demo/product.png") } as unknown as CloudinaryService;
     audit = { record: vi.fn() } as unknown as AuditService;
-    service = new ProductService(products, variants, batches, cloudinary, audit);
+    service = new ProductService(products, variants, batches, movements, cloudinary, audit);
   });
 
   describe("create", () => {
@@ -126,6 +141,64 @@ describe("ProductService", () => {
       const product = await service.uploadImage("tenant-1", "product-1", pngBuffer(800, 800));
       expect(cloudinary.uploadProductImage).toHaveBeenCalledWith(expect.any(Buffer), "product-images/tenant-1/products");
       expect(product.imageUrl).toBe("https://res.cloudinary.com/demo/product.png");
+    });
+  });
+
+  describe("lookupVariants — reorder signal", () => {
+    function stubVariantQuery(rows: ProductVariant[]): void {
+      const qb = {
+        leftJoinAndSelect: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        andWhere: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        addOrderBy: vi.fn().mockReturnThis(),
+        take: vi.fn().mockReturnThis(),
+        skip: vi.fn().mockReturnThis(),
+        getManyAndCount: vi.fn(async () => [rows, rows.length] as [ProductVariant[], number]),
+      };
+      service = new ProductService(
+        products,
+        { ...variants, createQueryBuilder: vi.fn(() => qb) } as unknown as Repository<ProductVariant>,
+        batches,
+        movements,
+        cloudinary,
+        audit,
+      );
+    }
+
+    it("flags a variant under its reorder point even with no sales history", async () => {
+      stubVariantQuery([{ id: "v1", quantityOnHand: 2, reorderPoint: 5 } as ProductVariant]);
+      const result = await service.lookupVariants("tenant-1", { limit: 50, offset: 0 });
+      expect(result.data[0].reorderSoon).toBe(true);
+      expect(result.data[0].salesVelocityPerDay).toBeNull();
+      expect(result.data[0].daysOfStockLeft).toBeNull();
+    });
+
+    it("flags a variant projected to run out within 7 days from recent velocity, even above its reorder point", async () => {
+      stubVariantQuery([{ id: "v1", quantityOnHand: 10, reorderPoint: 2 } as ProductVariant]);
+      // 60 units sold over the 30-day window = 2/day -> 10 on hand / 2 per day = 5 days left.
+      movementsGetRawMany.mockResolvedValueOnce([{ variantId: "v1", unitsSold: 60 }]);
+
+      const result = await service.lookupVariants("tenant-1", { limit: 50, offset: 0 });
+      expect(result.data[0].salesVelocityPerDay).toBe(2);
+      expect(result.data[0].daysOfStockLeft).toBe(5);
+      expect(result.data[0].reorderSoon).toBe(true);
+    });
+
+    it("does not flag a variant with healthy stock and slow velocity", async () => {
+      stubVariantQuery([{ id: "v1", quantityOnHand: 100, reorderPoint: 5 } as ProductVariant]);
+      // 3 units over 30 days -> 0.1/day -> 1000 days left.
+      movementsGetRawMany.mockResolvedValueOnce([{ variantId: "v1", unitsSold: 3 }]);
+
+      const result = await service.lookupVariants("tenant-1", { limit: 50, offset: 0 });
+      expect(result.data[0].reorderSoon).toBe(false);
+    });
+
+    it("never divides by zero when a variant has no sales in the window", async () => {
+      stubVariantQuery([{ id: "v1", quantityOnHand: 50, reorderPoint: null } as ProductVariant]);
+      const result = await service.lookupVariants("tenant-1", { limit: 50, offset: 0 });
+      expect(result.data[0].daysOfStockLeft).toBeNull();
+      expect(result.data[0].reorderSoon).toBe(false);
     });
   });
 

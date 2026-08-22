@@ -18,6 +18,7 @@ import { ModuleGate } from "../../../components/module-gate";
 import { DrawerShell } from "../../../components/drawer-shell";
 import { BusyLabel } from "../../../components/spinner";
 import { useToast } from "../../../components/toast";
+import { BarcodeScannerModal } from "../../../components/barcode-scanner-modal";
 
 type CartLine =
   | { kind: "variant"; key: string; variant: ProductVariantRecord; quantity: number }
@@ -81,6 +82,7 @@ function QuickSalePage() {
   const [customer, setCustomer] = useState<WalkInCustomer | null>(null);
   const [showAttachCustomer, setShowAttachCustomer] = useState(false);
   const [showCharge, setShowCharge] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   useEffect(() => {
     const handle = setTimeout(() => {
@@ -150,19 +152,45 @@ function QuickSalePage() {
     });
   }
 
-  async function handleSearchEnter(): Promise<void> {
-    const value = query.trim();
-    if (!value) {
-      return;
+  /**
+   * Shared by a USB/BT scanner-gun's Enter keystroke and the camera scanner
+   * — both just produce a barcode string. Returns the matched product's
+   * name so a caller can confirm the add without re-deciding what counts
+   * as "found".
+   */
+  async function handleBarcode(value: string): Promise<string | null> {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
     }
     try {
-      const res = await fetchVariants({ barcode: value, limit: 1 });
-      if (res.data[0]) {
-        addVariantToCart(res.data[0]);
-        setQuery("");
+      const res = await fetchVariants({ barcode: trimmed, limit: 1 });
+      const variant = res.data[0];
+      if (!variant) {
+        toast.error("Not found", `No product has the barcode ${trimmed}.`);
+        return null;
       }
+      addVariantToCart(variant);
+      return variant.product?.name ?? variant.sku;
     } catch {
       // A scan that doesn't resolve to an exact barcode just falls through to the live-filtered list already on screen.
+      return null;
+    }
+  }
+
+  async function handleSearchEnter(): Promise<void> {
+    if (!query.trim()) {
+      return;
+    }
+    await handleBarcode(query);
+    setQuery("");
+  }
+
+  async function handleCameraDecoded(code: string): Promise<void> {
+    const name = await handleBarcode(code);
+    if (name) {
+      // A brief confirmation so a rapid multi-scan session has feedback without stealing focus from the camera.
+      toast.success("Added", name);
     }
   }
 
@@ -182,32 +210,52 @@ function QuickSalePage() {
   return (
     <div className="grid gap-5 lg:h-[calc(100vh-88px)] lg:grid-cols-[1fr_380px]">
       <div className="flex min-w-0 flex-col gap-3.5">
-        <div className="relative">
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 16 16"
-            fill="none"
-            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-            aria-hidden="true"
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 16 16"
+              fill="none"
+              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+              aria-hidden="true"
+            >
+              <circle cx="7" cy="7" r="4.6" stroke="currentColor" strokeWidth="1.5" />
+              <path d="m13.2 13.2-2.9-2.9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            <input
+              data-testid="quick-sale-search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  void handleSearchEnter();
+                }
+              }}
+              placeholder="Scan a barcode, or search by name / SKU…"
+              className="min-h-[52px] w-full rounded-[10px] border border-slate-300 pl-11 pr-3 text-[15px]"
+            />
+          </div>
+          <button
+            type="button"
+            data-testid="quick-sale-open-scanner"
+            onClick={() => setShowScanner(true)}
+            aria-label="Scan a barcode with the camera"
+            className="flex min-h-[52px] w-[52px] shrink-0 items-center justify-center rounded-[10px] border border-slate-300 text-slate-600 hover:bg-slate-50"
           >
-            <circle cx="7" cy="7" r="4.6" stroke="currentColor" strokeWidth="1.5" />
-            <path d="m13.2 13.2-2.9-2.9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-          <input
-            data-testid="quick-sale-search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                void handleSearchEnter();
-              }
-            }}
-            placeholder="Scan a barcode, or search by name / SKU…"
-            className="min-h-[52px] w-full rounded-[10px] border border-slate-300 pl-11 pr-3 text-[15px]"
-          />
+            <svg width="22" height="22" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path
+                d="M2 5V3.5A1.5 1.5 0 0 1 3.5 2H5M11 2h1.5A1.5 1.5 0 0 1 14 3.5V5M14 11v1.5a1.5 1.5 0 0 1-1.5 1.5H11M5 14H3.5A1.5 1.5 0 0 1 2 12.5V11"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path d="M4 8h8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
-        <p className="text-[11px] text-slate-400">A USB or Bluetooth barcode scanner types straight into this field.</p>
+        <p className="text-[11px] text-slate-400">A USB or Bluetooth scanner types straight into this field, or tap the camera icon.</p>
 
         {loadingResults && noResults ? (
           <p className="text-sm text-slate-500">Loading products…</p>
@@ -443,6 +491,10 @@ function QuickSalePage() {
             )
           }
         />
+      ) : null}
+
+      {showScanner ? (
+        <BarcodeScannerModal onClose={() => setShowScanner(false)} onDecoded={(code) => void handleCameraDecoded(code)} />
       ) : null}
     </div>
   );

@@ -1396,3 +1396,133 @@ inventing a look for one screen would have made it read as a different product.
     the *existing* Reports gate for win-back — same "don't silently expand
     a five-module system" call already made and documented for gift cards
     (§35.12).
+
+## 37. Inventory & Quick Billing — retail products, bundles, returns, scanning (2026-08-22/23)
+
+1. **Scope-boundary call, made explicitly rather than silently, and wider
+   than any prior exception.** CLAUDE.md §1.11 names *"inventory"*,
+   *"purchases"*, and *"full POS/ERP"* as three separate out-of-scope
+   items — this module touches all three, not one, unlike gift cards
+   (§35) or service packages (§36), each of which landed on a single
+   excluded phrase. Each is bounded on purpose rather than built in full:
+   "inventory" is addressed head-on (that is the point) but scoped to a
+   retail counter's actual needs, not a generic warehouse-management
+   checklist; "purchases" stays unbuilt — no supplier entity, no PO
+   approval chain, receiving stock is one manual action with a free-text
+   supplier field; "full POS/ERP" stays unbuilt — no till/register
+   sessions, no GL integration, no tax engine beyond the existing flat
+   LKR model. Approved explicitly before Phase A began, the same gate
+   gift cards and service packages went through.
+2. **`Payment.customerId` stays `NOT NULL`; a walk-in sale resolves to a
+   lazily-created, per-tenant placeholder `Customer`** rather than
+   relaxing the column. Every existing `Payment` consumer (reports,
+   refunds, invoices, audit rendering) already assumes a real customer
+   row; auditing every call site for a null-safety gap that has never had
+   to hold would have been the more invasive change. The placeholder is
+   matched by a new `customer.isWalkInPlaceholder` boolean, not by phone,
+   which sidesteps the `(tenantId, phone)` uniqueness constraint entirely;
+   every place that broadly enumerates customers (search, reports'
+   `topSpenders`/`frequentCustomers`/`lapsedCustomers`, win-back candidate
+   selection) filters it out explicitly, confirmed by a regression test.
+3. **Costing is weighted-average, not FIFO/specific-lot**
+   (`ProductVariant.weightedAvgCostCents`, recomputed transactionally on
+   every receipt). Matches the codebase's existing "denormalized figure
+   kept in sync transactionally" pattern (`quantityOnHand`,
+   `Appointment.balanceCents`) and is simpler to reason about under
+   concurrency than tracking cost per physical unit. Every
+   `retail_sale_line` snapshots `unitCostCentsSnapshot` at sale time —
+   history is never reconstructed from a variant's current cost, the same
+   rule `AppointmentServiceLine` already follows.
+4. **Batch *selection* for a sale is FIFO by `expiresAt` (nulls-last),
+   separate from costing, which always snapshots the variant's current
+   weighted-average regardless of which physical batch the units came
+   from.** The two questions — "which lot loses inventory" and "what did
+   this line cost" — have different right answers and are computed
+   independently rather than one being inferred from the other.
+5. **No bill-level discount on retail sales in Phase A.** Quick Sale is
+   "ring up items, take payment"; a bill-level discount is a materially
+   different feature (needing a `RECORD_PAYMENT`-vs-`OVERRIDE_DISCOUNT_CAP`
+   split, same as appointments already have) deferred rather than bolted
+   on to keep the core checkout lean.
+6. **The core concurrency guarantee is one `pessimistic_write` lock on
+   `product_variant`, taken before any read a caller acts on**
+   (`StockMutationService.lockVariant`), the same "DB is the final
+   arbiter" posture the availability engine and gift-card/package
+   redemption already use. `StockMutationService.applyMovement` is the
+   *only* place a `stock_movement` ledger row is ever written or
+   `quantityOnHand` ever mutated — receiving, selling, and manual
+   adjustment all funnel through it, so the ledger can never drift from
+   the running total by construction.
+7. **Three business rules were confirmed with the product owner before
+   Phase B was built, not assumed:** (a) a quarantined return is a pure
+   record — it never re-enters `quantityOnHand`, because it isn't
+   sellable, rather than being tracked as "present but unsellable" via a
+   batch-status split; (b) a return's refund is staff-entered and
+   optional (defaulting to the returned lines' value, editable down to
+   zero for an even exchange), not automatic and not all-or-nothing;
+   (c) restocking a unit whose original batch is gone creates a *new*
+   batch at the original sale line's frozen cost, preserving that unit's
+   real cost basis rather than either the current weighted-average or a
+   forced quarantine.
+8. **A serialised product's restock reactivates its exact original batch
+   by serial number rather than creating a fresh one** — the one place
+   decision (c) above doesn't apply as stated. `UQ_stock_batch_tenant_serial`
+   is a real partial-unique index on `(tenantId, serialNumber)`; the
+   original batch row is never deleted (no hard deletes on business
+   records), so a second insert with the same serial would violate that
+   constraint. `RetailReturnService.restock` branches on
+   `product.trackSerial` for exactly this reason, and validates the
+   serial was actually part of *this* sale line (via
+   `retail_sale_line_batch`) before reactivating it.
+9. **A bundle sale is one aggregate `RetailSaleLine`, not one line per
+   component** — a product-owner call, weighed against exploding into
+   per-component lines with a price split proportional to each
+   component's standalone price. The aggregate approach needs no pricing
+   formula to invent: cost is a straightforward sum of each component's
+   cost × quantity at sale time, and "Product sales & margin" reports the
+   bundle as one named row ("Gift Set"), which is how a salon actually
+   thinks about a kit it sells. Stock still depletes exactly right per
+   component underneath — `RetailSaleLineBatch` already supported "one
+   line, several batches" for FIFO spill, and extends unchanged to
+   "several batches across several different variants." `retail_sale_line`
+   gained one new nullable `bundleId` column, mirroring the existing
+   nullable `variantId` — exactly one of the two is ever set per line.
+10. **Bundle-line returns are out of scope for Phase B — a disclosed
+    narrowing, not a silent gap.** `RetailReturnService.process` refuses
+    a bundle line outright (`BUNDLE_RETURN_NOT_SUPPORTED`) rather than
+    guessing how to fan a partial bundle return back out across
+    components; the admin return drawer shows the line with an explicit
+    "can't be returned yet" note rather than hiding it.
+11. **Checkout locks every touched variant — direct lines and every
+    bundle's components alike — in one globally sorted order** (by
+    variant id) before any allocation happens, rather than locking
+    per-line in cart order. Two concurrent checkouts that both include,
+    say, a bundle and a loose unit of one of its own components could
+    otherwise request the same two locks in opposite orders and deadlock;
+    a single global sort makes every transaction request its locks in the
+    same order, which Postgres never deadlocks on.
+12. **Reorder intelligence is simple velocity vs. a reorder point, computed
+    fresh on every `GET /product-variants` read from the existing
+    `stock_movement` ledger — never stored, and never ML/seasonal**, per
+    the scope explicitly confirmed before Phase A began. A 30-day trailing
+    window and a 7-day "reorder soon" threshold are reasonable defaults,
+    not tenant-configurable in this pass. Deliberately *not* a new
+    paginated filter: the signal is attached to whichever page the caller
+    already fetched (via `lowStockOnly`/search/browse), because computing
+    it inside a single correctly-paginated query would need a join
+    against a second aggregate query — real complexity for what stays an
+    advisory, not a money-moving, feature.
+13. **Camera barcode scanning uses `@zxing/library` + `@zxing/browser`
+    (Apache-2.0, `npm audit` clean) rather than a hand-rolled decoder.**
+    The `detectImage` precedent (§35.2 — hand-rolling PNG/JPEG/WebP header
+    parsing instead of a flagged dependency) does not generalise here:
+    that was reading three well-documented, static binary headers: this
+    is decoding a 1D barcode from a live, noisy camera stream, a
+    materially larger problem where a maintained library is the
+    responsible choice, not a bounded reimplementation. The reader is
+    hinted to the six formats a retail counter actually sees
+    (EAN-13/8, UPC-A/E, Code128/39) — never QR/Aztec/PDF417 — so it can't
+    false-match printed matter elsewhere in frame. The same exact-barcode
+    lookup (`GET /product-variants?barcode=`) already built for a
+    USB/BT scanner-gun's Enter keystroke serves the camera path too;
+    no new backend endpoint was needed for this feature.

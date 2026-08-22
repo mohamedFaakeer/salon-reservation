@@ -8,6 +8,7 @@ import { ILike, Repository } from "typeorm";
 import {
   ApiError,
   StockBatchStatus,
+  StockMovementType,
   type CreateProductDto,
   type CreateProductVariantDto,
   type ProductQueryDto,
@@ -18,6 +19,7 @@ import {
 import { Product } from "../entities/product.entity";
 import { ProductVariant } from "../entities/product-variant.entity";
 import { StockBatch } from "../entities/stock-batch.entity";
+import { StockMovement } from "../entities/stock-movement.entity";
 import { isUniqueViolation } from "../common/postgres-errors.util";
 import { detectImage } from "../common/image.util";
 // CloudinaryService/AuditService must stay VALUE imports: NestJS resolves
@@ -33,10 +35,30 @@ export interface ProductListResult {
   meta: { total: number; limit: number; offset: number };
 }
 
+/**
+ * A variant with its Phase C reorder signal attached — simple velocity vs.
+ * a reorder point, per the confirmed scope (no ML/seasonal modeling, ever).
+ * Computed fresh on every read, never stored: the ledger (`stock_movement`)
+ * is the one source of truth for what actually sold.
+ */
+export interface VariantWithReorderSignal extends ProductVariant {
+  /** Average units sold per day over the trailing window; null with no sales in it. */
+  salesVelocityPerDay: number | null;
+  /** quantityOnHand / velocity; null when there's no velocity to divide by. */
+  daysOfStockLeft: number | null;
+  /** True if under the reorder point, or projected to run out within REORDER_SOON_DAYS. */
+  reorderSoon: boolean;
+}
+
 export interface VariantListResult {
-  data: ProductVariant[];
+  data: VariantWithReorderSignal[];
   meta: { total: number; limit: number; offset: number };
 }
+
+/** Trailing window the velocity average is taken over. */
+const VELOCITY_WINDOW_DAYS = 30;
+/** "Soon" as in an owner would want to know this week, not this quarter. */
+const REORDER_SOON_DAYS = 7;
 
 /**
  * A little more generous than a logo's (CLAUDE.md §35.2 area): product
@@ -61,6 +83,7 @@ export class ProductService {
     @InjectRepository(Product) private readonly products: Repository<Product>,
     @InjectRepository(ProductVariant) private readonly variants: Repository<ProductVariant>,
     @InjectRepository(StockBatch) private readonly batches: Repository<StockBatch>,
+    @InjectRepository(StockMovement) private readonly movements: Repository<StockMovement>,
     private readonly cloudinary: CloudinaryService,
     private readonly audit: AuditService,
   ) {}
@@ -257,8 +280,48 @@ export class ProductService {
       qb.andWhere('v."reorderPoint" IS NOT NULL AND v."quantityOnHand" <= v."reorderPoint"');
     }
 
-    const [data, total] = await qb.getManyAndCount();
+    const [rows, total] = await qb.getManyAndCount();
+    const velocity = await this.salesVelocityFor(tenantId, rows.map((v) => v.id));
+    const data = rows.map((v) => this.attachReorderSignal(v, velocity.get(v.id) ?? 0));
+
     return { data, meta: { total, limit: query.limit, offset: query.offset } };
+  }
+
+  /**
+   * Average units sold per day over the trailing window, per variant — a
+   * single grouped aggregate over the append-only ledger rather than one
+   * query per row. Only `SALE` movements count: a receipt, a restock or a
+   * manual adjustment isn't demand.
+   */
+  private async salesVelocityFor(tenantId: string, variantIds: string[]): Promise<Map<string, number>> {
+    if (variantIds.length === 0) {
+      return new Map();
+    }
+    const since = new Date(Date.now() - VELOCITY_WINDOW_DAYS * 24 * 60 * 60_000);
+    const rows = await this.movements
+      .createQueryBuilder("m")
+      .select('m."variantId"', "variantId")
+      .addSelect('SUM(-m."quantityDelta")::int', "unitsSold")
+      .where('m."tenantId" = :tenantId', { tenantId })
+      .andWhere("m.type = :type", { type: StockMovementType.SALE })
+      .andWhere('m."variantId" IN (:...variantIds)', { variantIds })
+      .andWhere('m."createdAt" >= :since', { since })
+      .groupBy('m."variantId"')
+      .getRawMany<{ variantId: string; unitsSold: number }>();
+
+    return new Map(rows.map((r) => [r.variantId, Number(r.unitsSold) / VELOCITY_WINDOW_DAYS]));
+  }
+
+  private attachReorderSignal(variant: ProductVariant, velocityPerDay: number): VariantWithReorderSignal {
+    const daysOfStockLeft = velocityPerDay > 0 ? variant.quantityOnHand / velocityPerDay : null;
+    const belowReorderPoint = variant.reorderPoint !== null && variant.quantityOnHand <= variant.reorderPoint;
+    const runningOutSoon = daysOfStockLeft !== null && daysOfStockLeft <= REORDER_SOON_DAYS;
+    return {
+      ...variant,
+      salesVelocityPerDay: velocityPerDay > 0 ? Math.round(velocityPerDay * 100) / 100 : null,
+      daysOfStockLeft: daysOfStockLeft !== null ? Math.round(daysOfStockLeft * 10) / 10 : null,
+      reorderSoon: belowReorderPoint || runningOutSoon,
+    };
   }
 
   /**

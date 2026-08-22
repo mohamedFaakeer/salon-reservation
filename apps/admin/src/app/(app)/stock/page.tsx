@@ -57,6 +57,7 @@ function StockPage() {
   const lowStockCount = variants.filter(
     (v) => v.reorderPoint !== null && v.quantityOnHand <= v.reorderPoint,
   ).length;
+  const reorderSoonCount = variants.filter((v) => v.reorderSoon).length;
 
   return (
     <div className="flex flex-col gap-4">
@@ -65,6 +66,7 @@ function StockPage() {
           <h1 className="text-xl font-semibold text-slate-900">Stock</h1>
           <p className="mt-0.5 text-sm text-slate-500">
             {variants.length} variants{lowStockCount > 0 ? ` · ${lowStockCount} below reorder point` : ""}
+            {reorderSoonCount > 0 ? ` · ${reorderSoonCount} reorder soon` : ""}
           </p>
         </div>
         <div className="flex gap-2">
@@ -125,12 +127,13 @@ function StockPage() {
         </p>
       ) : (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-          <div className="hidden grid-cols-[1.4fr_1.1fr_0.8fr_0.8fr_0.8fr] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:grid">
+          <div className="hidden grid-cols-[1.3fr_1fr_0.7fr_0.7fr_0.7fr_1fr] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:grid">
             <span>Product</span>
             <span>Variant</span>
             <span>On hand</span>
             <span>Reorder at</span>
             <span>Avg cost</span>
+            <span>Reorder signal</span>
           </div>
           {variants.map((variant) => {
             const isLow = variant.reorderPoint !== null && variant.quantityOnHand <= variant.reorderPoint;
@@ -138,7 +141,7 @@ function StockPage() {
               <div
                 key={variant.id}
                 data-testid={`stock-row-${variant.sku}`}
-                className="grid grid-cols-1 gap-2 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 sm:grid-cols-[1.4fr_1.1fr_0.8fr_0.8fr_0.8fr] sm:items-center sm:gap-3"
+                className="grid grid-cols-1 gap-2 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 sm:grid-cols-[1.3fr_1fr_0.7fr_0.7fr_0.7fr_1fr] sm:items-center sm:gap-3"
               >
                 <span className="truncate font-medium text-slate-900">{variant.product?.name ?? "—"}</span>
                 <span className="min-w-0">
@@ -154,6 +157,20 @@ function StockPage() {
                 </span>
                 <span className="tabular text-slate-600">{variant.reorderPoint ?? "—"}</span>
                 <span className="tabular text-slate-600">{formatPriceCents(variant.weightedAvgCostCents)}</span>
+                <span className="min-w-0">
+                  {variant.reorderSoon ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                      Reorder soon
+                    </span>
+                  ) : (
+                    <span className="text-xs text-slate-400">—</span>
+                  )}
+                  {variant.daysOfStockLeft !== null && variant.daysOfStockLeft !== undefined ? (
+                    <span className="mt-0.5 block text-[11px] tabular text-slate-500">
+                      ~{variant.daysOfStockLeft}d left · {variant.salesVelocityPerDay}/day
+                    </span>
+                  ) : null}
+                </span>
               </div>
             );
           })}
