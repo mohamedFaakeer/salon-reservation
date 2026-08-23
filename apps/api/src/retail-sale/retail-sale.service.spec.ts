@@ -12,7 +12,7 @@ import { RetailSaleLineBatch } from "../entities/retail-sale-line-batch.entity";
 import { RetailReturnLine } from "../entities/retail-return-line.entity";
 import { StockBatch } from "../entities/stock-batch.entity";
 import type { Tenant } from "../entities/tenant.entity";
-import type { StockMutationService } from "../inventory/stock-mutation.service";
+import { StockMutationService } from "../inventory/stock-mutation.service";
 import type { CustomerService } from "../customer/customer.service";
 import type { BundleService } from "../bundle/bundle.service";
 import type { AuditService } from "../audit/audit.service";
@@ -172,16 +172,19 @@ describe("RetailSaleService", () => {
       }),
     } as unknown as CustomerService;
 
-    stockMutation = {
-      lockVariant: vi.fn(async (_m: unknown, _t: string, variantId: string) => {
-        const variant = variantsById.get(variantId);
-        if (!variant) {
-          throw Object.assign(new Error("not found"), { statusCode: 404, code: "PRODUCT_VARIANT_NOT_FOUND" });
-        }
-        return variant;
-      }),
-      applyMovement: vi.fn(async () => fakeVariant()),
-    } as unknown as StockMutationService;
+    // A real instance, not a full mock: `allocateFifo` is left as the real
+    // implementation so it exercises the `stockBatchQueryBuilder` harness
+    // above exactly as `InventoryAdjustmentService` would — only
+    // `lockVariant`/`applyMovement` are stubbed.
+    stockMutation = new StockMutationService();
+    vi.spyOn(stockMutation, "lockVariant").mockImplementation(async (_m: unknown, _t: string, variantId: string) => {
+      const variant = variantsById.get(variantId);
+      if (!variant) {
+        throw Object.assign(new Error("not found"), { statusCode: 404, code: "PRODUCT_VARIANT_NOT_FOUND" });
+      }
+      return variant;
+    });
+    vi.spyOn(stockMutation, "applyMovement").mockImplementation(async () => fakeVariant());
 
     audit = { record: vi.fn() } as unknown as AuditService;
     bundles = { getSellableBundleWithComponents: vi.fn() } as unknown as BundleService;

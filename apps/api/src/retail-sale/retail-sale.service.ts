@@ -48,11 +48,6 @@ const SELLABLE_METHODS: PaymentMethod[] = [
   PaymentMethod.CARD_CAPTURED,
 ];
 
-interface BatchAllocation {
-  batch: StockBatch;
-  quantity: number;
-}
-
 type ResolvedLine =
   | { kind: "variant"; variant: ProductVariant; quantity: number }
   | {
@@ -309,7 +304,7 @@ export class RetailSaleService {
     quantity: number,
     actorUserId: string,
   ): Promise<void> {
-    const allocations = await this.allocateBatches(manager, tenantId, variantId, quantity);
+    const allocations = await this.stockMutation.allocateFifo(manager, tenantId, variantId, quantity);
     for (const { batch, quantity: take } of allocations) {
       batch.quantityRemaining -= take;
       if (batch.quantityRemaining <= 0) {
@@ -337,55 +332,6 @@ export class RetailSaleService {
         actorUserId,
       });
     }
-  }
-
-  /**
-   * FIFO by `expiresAt` (nulls-last), then by receipt date — oldest-expiring
-   * stock sells first. Separate from costing, which always snapshots the
-   * variant's current weighted-average cost regardless of which batch the
-   * units physically came from. A batch past its own `expiresAt` would
-   * still match this query (nothing here checks "today"): expiry write-off
-   * is a manual adjustment, not something checkout silently skips.
-   */
-  private async allocateBatches(
-    manager: EntityManager,
-    tenantId: string,
-    variantId: string,
-    quantity: number,
-  ): Promise<BatchAllocation[]> {
-    const batches = await manager
-      .getRepository(StockBatch)
-      .createQueryBuilder("b")
-      .setLock("pessimistic_write")
-      .where("b.tenantId = :tenantId AND b.variantId = :variantId AND b.status = :active AND b.quantityRemaining > 0", {
-        tenantId,
-        variantId,
-        active: StockBatchStatus.ACTIVE,
-      })
-      .orderBy("b.expiresAt", "ASC", "NULLS LAST")
-      .addOrderBy("b.createdAt", "ASC")
-      .getMany();
-
-    const allocations: BatchAllocation[] = [];
-    let remaining = quantity;
-    for (const batch of batches) {
-      if (remaining <= 0) {
-        break;
-      }
-      const take = Math.min(batch.quantityRemaining, remaining);
-      allocations.push({ batch, quantity: take });
-      remaining -= take;
-    }
-
-    if (remaining > 0) {
-      throw new ApiError({
-        statusCode: 409,
-        code: "INSUFFICIENT_STOCK",
-        message: "Not enough stock on hand to fulfil this line.",
-      });
-    }
-
-    return allocations;
   }
 
   /** Not private — `RetailReturnService` reuses this exact view builder after processing a return, inside the same transaction. */

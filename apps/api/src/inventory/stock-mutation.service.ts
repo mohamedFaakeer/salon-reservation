@@ -1,8 +1,14 @@
 import { Injectable } from "@nestjs/common";
 import type { EntityManager } from "typeorm";
-import { ApiError, type StockMovementType } from "@salon/shared";
+import { ApiError, StockBatchStatus, type StockMovementType } from "@salon/shared";
 import { ProductVariant } from "../entities/product-variant.entity";
+import { StockBatch } from "../entities/stock-batch.entity";
 import { StockMovement } from "../entities/stock-movement.entity";
+
+export interface BatchAllocation {
+  batch: StockBatch;
+  quantity: number;
+}
 
 export interface ApplyMovementInput {
   tenantId: string;
@@ -89,5 +95,50 @@ export class StockMutationService {
     );
 
     return variant;
+  }
+
+  /**
+   * FIFO by `expiresAt` (nulls-last), then by receipt date — oldest-expiring
+   * stock is drawn first. Shared by `RetailSaleService` (selling) and
+   * `InventoryAdjustmentService` (a batch-agnostic shrinkage correction) so
+   * both keep `quantityOnHand` in lockstep with `sum(batch.quantityRemaining)`
+   * — the one invariant that makes a batch's `quantityRemaining` trustworthy.
+   * Neither caller mutates the returned batches; that's on them, inside their
+   * own transaction, right after this resolves.
+   */
+  async allocateFifo(manager: EntityManager, tenantId: string, variantId: string, quantity: number): Promise<BatchAllocation[]> {
+    const batches = await manager
+      .getRepository(StockBatch)
+      .createQueryBuilder("b")
+      .setLock("pessimistic_write")
+      .where("b.tenantId = :tenantId AND b.variantId = :variantId AND b.status = :active AND b.quantityRemaining > 0", {
+        tenantId,
+        variantId,
+        active: StockBatchStatus.ACTIVE,
+      })
+      .orderBy("b.expiresAt", "ASC", "NULLS LAST")
+      .addOrderBy("b.createdAt", "ASC")
+      .getMany();
+
+    const allocations: BatchAllocation[] = [];
+    let remaining = quantity;
+    for (const batch of batches) {
+      if (remaining <= 0) {
+        break;
+      }
+      const take = Math.min(batch.quantityRemaining, remaining);
+      allocations.push({ batch, quantity: take });
+      remaining -= take;
+    }
+
+    if (remaining > 0) {
+      throw new ApiError({
+        statusCode: 409,
+        code: "INSUFFICIENT_STOCK",
+        message: "Not enough stock on hand to cover this quantity.",
+      });
+    }
+
+    return allocations;
   }
 }
