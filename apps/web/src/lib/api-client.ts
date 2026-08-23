@@ -292,7 +292,7 @@ export function fetchBookingByReference(reference: string, phone: string): Promi
   return request<BookingDetail>(`/bookings/${reference}?phone=${encodeURIComponent(phone)}`);
 }
 
-export type PaymentMethod = "CASH" | "BANK_TRANSFER" | "CARD_CAPTURED" | "ONLINE" | "GATEWAY" | "GIFT_CARD" | "PACKAGE_CREDIT";
+export type PaymentMethod = "CASH" | "BANK_TRANSFER" | "CARD_CAPTURED" | "QR" | "ONLINE" | "GATEWAY" | "GIFT_CARD" | "PACKAGE_CREDIT";
 
 /** What a "Share" link from the salon's till opens — no login, the id in the URL is the only credential. */
 export interface RetailSaleReceiptView {

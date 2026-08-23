@@ -202,6 +202,7 @@ export type PaymentMethod =
   | "CASH"
   | "BANK_TRANSFER"
   | "CARD_CAPTURED"
+  | "QR"
   | "ONLINE"
   | "GATEWAY"
   | "GIFT_CARD"

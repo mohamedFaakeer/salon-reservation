@@ -47,6 +47,7 @@ const SELLABLE_METHODS: PaymentMethod[] = [
   PaymentMethod.CASH,
   PaymentMethod.BANK_TRANSFER,
   PaymentMethod.CARD_CAPTURED,
+  PaymentMethod.QR,
 ];
 
 type ResolvedLine =
@@ -89,7 +90,7 @@ export class RetailSaleService {
       throw new ApiError({
         statusCode: 400,
         code: "VALIDATION_ERROR",
-        message: "Choose cash, bank transfer or card for how this sale was paid for.",
+        message: "Choose cash, bank transfer, card or QR for how this sale was paid for.",
       });
     }
     for (const line of dto.lines) {

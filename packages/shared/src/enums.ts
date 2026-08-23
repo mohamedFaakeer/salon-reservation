@@ -64,6 +64,8 @@ export enum PaymentMethod {
   CASH = "CASH",
   BANK_TRANSFER = "BANK_TRANSFER",
   CARD_CAPTURED = "CARD_CAPTURED",
+  /** A bank/wallet QR code the customer scans — staff confirm it visually, same manual trust model as CASH/BANK_TRANSFER. No live gateway. */
+  QR = "QR",
   ONLINE = "ONLINE",
   GATEWAY = "GATEWAY",
   GIFT_CARD = "GIFT_CARD",

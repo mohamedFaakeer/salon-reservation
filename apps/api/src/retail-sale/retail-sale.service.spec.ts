@@ -212,7 +212,7 @@ describe("RetailSaleService", () => {
     };
   }
 
-  it("refuses a payment method that isn't cash/bank/card", async () => {
+  it("refuses a payment method that isn't cash/bank/card/QR", async () => {
     await expect(
       service.checkout(
         fakeTenant(),
@@ -223,6 +223,11 @@ describe("RetailSaleService", () => {
       ),
     ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
     expect(dataSource.transaction).not.toHaveBeenCalled();
+  });
+
+  it("accepts QR as a sellable payment method", async () => {
+    const view = await service.checkout(fakeTenant(), { ...checkoutDto(), paymentMethod: PaymentMethod.QR }, "user-1", "idem-qr");
+    expect(view).toBeTruthy();
   });
 
   it("refuses to sell an inactive variant", async () => {

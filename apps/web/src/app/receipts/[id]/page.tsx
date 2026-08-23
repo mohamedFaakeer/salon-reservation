@@ -9,6 +9,7 @@ const METHOD_LABELS: Record<string, string> = {
   CASH: "Cash",
   BANK_TRANSFER: "Bank transfer",
   CARD_CAPTURED: "Card",
+  QR: "QR",
   ONLINE: "Online",
   GATEWAY: "Gateway",
   GIFT_CARD: "Gift card",

@@ -37,6 +37,7 @@ const PAYMENT_METHODS: Array<{ value: PaymentMethod; label: string }> = [
   { value: "CASH", label: "Cash" },
   { value: "BANK_TRANSFER", label: "Bank transfer" },
   { value: "CARD_CAPTURED", label: "Card" },
+  { value: "QR", label: "QR" },
 ];
 
 function generateIdempotencyKey(): string {
