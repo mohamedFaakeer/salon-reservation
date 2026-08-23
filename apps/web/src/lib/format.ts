@@ -41,6 +41,18 @@ export function statusLabel(status: string): string {
   return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
+/** A full instant (e.g. a receipt's `createdAt`), not just a calendar date — `formatDateLong` takes a bare date string, this takes an ISO timestamp. */
+export function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("en-LK", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "Asia/Colombo",
+  });
+}
+
 export function formatDateLong(dateStr: string): string {
   return new Date(`${dateStr}T00:00:00Z`).toLocaleDateString("en-LK", {
     weekday: "short",

@@ -292,6 +292,32 @@ export function fetchBookingByReference(reference: string, phone: string): Promi
   return request<BookingDetail>(`/bookings/${reference}?phone=${encodeURIComponent(phone)}`);
 }
 
+export type PaymentMethod = "CASH" | "BANK_TRANSFER" | "CARD_CAPTURED" | "ONLINE" | "GATEWAY" | "GIFT_CARD" | "PACKAGE_CREDIT";
+
+/** What a "Share" link from the salon's till opens — no login, the id in the URL is the only credential. */
+export interface RetailSaleReceiptView {
+  id: string;
+  createdAt: string;
+  salon: { name: string; address: string | null; city: string | null; phone: string | null };
+  customer: { name: string; phone: string; isWalkIn: boolean };
+  soldByName: string | null;
+  paymentMethod: PaymentMethod | null;
+  lines: Array<{
+    id: string;
+    bundleId: string | null;
+    nameSnapshot: string;
+    skuSnapshot: string | null;
+    quantity: number;
+    lineTotalCents: number;
+  }>;
+  subtotalCents: number;
+  totalCents: number;
+}
+
+export function fetchRetailSaleReceipt(id: string): Promise<RetailSaleReceiptView> {
+  return request<RetailSaleReceiptView>(`/retail-sale-receipts/${id}`);
+}
+
 export function cancelBooking(
   reference: string,
   phone: string,
