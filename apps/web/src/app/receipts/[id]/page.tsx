@@ -10,7 +10,7 @@ const METHOD_LABELS: Record<string, string> = {
   BANK_TRANSFER: "Bank transfer",
   CARD_CAPTURED: "Card",
   ONLINE: "Online",
-  GATEWAY: "QR payment",
+  GATEWAY: "Gateway",
   GIFT_CARD: "Gift card",
   PACKAGE_CREDIT: "Package credit",
 };
