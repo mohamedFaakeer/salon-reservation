@@ -2226,6 +2226,7 @@ export interface RetailSaleView {
   status: "COMPLETED" | "RETURNED" | "PARTIALLY_RETURNED";
   soldByName: string | null;
   paymentId: string | null;
+  paymentMethod: PaymentMethod | null;
   lines: RetailSaleLineView[];
   createdAt: string;
 }
@@ -2233,6 +2234,31 @@ export interface RetailSaleView {
 export interface RetailSaleListResult {
   data: RetailSaleView[];
   meta: { total: number; limit: number; offset: number };
+}
+
+/** What the public, no-login `/retail-sale-receipts/:id` page renders — same shape a "Share" link opens for a customer. */
+export interface RetailSaleReceiptView {
+  id: string;
+  createdAt: string;
+  salon: { name: string; address: string | null; city: string | null; phone: string | null };
+  customer: { name: string; phone: string; isWalkIn: boolean };
+  soldByName: string | null;
+  paymentMethod: PaymentMethod | null;
+  lines: Array<{
+    id: string;
+    bundleId: string | null;
+    nameSnapshot: string;
+    skuSnapshot: string | null;
+    quantity: number;
+    lineTotalCents: number;
+  }>;
+  subtotalCents: number;
+  totalCents: number;
+}
+
+/** No auth required by the endpoint itself — safe to call from an already-authenticated admin session too. */
+export function fetchRetailSaleReceipt(id: string): Promise<RetailSaleReceiptView> {
+  return request<RetailSaleReceiptView>(`/retail-sale-receipts/${id}`);
 }
 
 export interface RetailSaleCheckoutInput {

@@ -163,6 +163,7 @@ Browser (any device)
    |---|---|
    | `NEXT_PUBLIC_API_URL` | `https://<api>.onrender.com/api/v1` |
    | `AUTH_COOKIE_NAME` | `salon_session` (must match API cookie config) |
+   | `NEXT_PUBLIC_CUSTOMER_APP_URL` | `https://<customer>.onrender.com` — where a retail-sale "Share" link points |
 
 ---
 

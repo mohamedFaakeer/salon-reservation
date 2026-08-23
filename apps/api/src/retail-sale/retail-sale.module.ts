@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
+import { Branch } from "../entities/branch.entity";
 import { Payment } from "../entities/payment.entity";
 import { Product } from "../entities/product.entity";
 import { ProductVariant } from "../entities/product-variant.entity";
@@ -14,12 +15,13 @@ import { InventoryModule } from "../inventory/inventory.module";
 import { BundleModule } from "../bundle/bundle.module";
 import { PaymentModule } from "../payment/payment.module";
 import { RetailSaleController } from "./retail-sale.controller";
+import { RetailReceiptController } from "./retail-receipt.controller";
 import { RetailSaleService } from "./retail-sale.service";
 import { RetailReturnService } from "./retail-return.service";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Payment, Product, ProductVariant, RetailSale, RetailSaleLine, RetailSaleLineBatch, StockBatch]),
+    TypeOrmModule.forFeature([Branch, Payment, Product, ProductVariant, RetailSale, RetailSaleLine, RetailSaleLineBatch, StockBatch]),
     CustomerModule,
     AuditModule,
     TenantModule,
@@ -27,7 +29,7 @@ import { RetailReturnService } from "./retail-return.service";
     BundleModule,
     PaymentModule,
   ],
-  controllers: [RetailSaleController],
+  controllers: [RetailSaleController, RetailReceiptController],
   providers: [RetailSaleService, RetailReturnService],
   exports: [RetailSaleService, RetailReturnService],
 })

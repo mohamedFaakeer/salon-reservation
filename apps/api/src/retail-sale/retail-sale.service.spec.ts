@@ -1,6 +1,7 @@
 import type { DataSource, EntityManager, ObjectLiteral, Repository } from "typeorm";
 import { PaymentMethod } from "@salon/shared";
 import { RetailSaleService } from "./retail-sale.service";
+import type { Branch } from "../entities/branch.entity";
 import { Payment } from "../entities/payment.entity";
 import type { Product } from "../entities/product.entity";
 import type { ProductBundle } from "../entities/product-bundle.entity";
@@ -63,6 +64,7 @@ describe("RetailSaleService", () => {
   let bundles: BundleService;
   let audit: AuditService;
   let service: RetailSaleService;
+  let branchesRepo: Repository<Branch>;
 
   let paymentFindOneResult: Payment | null;
   let saleFindOneByPaymentIdResult: RetailSale | null;
@@ -76,6 +78,8 @@ describe("RetailSaleService", () => {
   beforeEach(() => {
     productsRepo = mockRepo<Product>();
     vi.mocked(productsRepo.findOne).mockResolvedValue({ id: "product-1", name: "Sunsilk Shampoo" } as Product);
+    branchesRepo = mockRepo<Branch>();
+    vi.mocked(branchesRepo.findOne).mockResolvedValue({ address: "42 Galle Road", city: "Colombo", phone: "0112345678" } as Branch);
 
     paymentFindOneResult = null;
     saleFindOneByPaymentIdResult = null;
@@ -114,6 +118,15 @@ describe("RetailSaleService", () => {
       }),
       find: vi.fn(async () => savedLines),
     } as unknown as Repository<RetailSaleLine>;
+
+    // `getPublicReceipt` reads through `this.sales.manager`, same as the
+    // existing `get()`/`loadView` path — a real Repository always has one.
+    (salesRepo as unknown as { manager: EntityManager }).manager = {
+      getRepository: (entity: unknown) => {
+        if (entity === RetailSaleLine) return lineRepo;
+        throw new Error("unexpected entity via sales.manager in test");
+      },
+    } as unknown as EntityManager;
 
     const lineBatchRepo = {
       create: vi.fn((e: Partial<RetailSaleLineBatch>) => e as RetailSaleLineBatch),
@@ -189,7 +202,7 @@ describe("RetailSaleService", () => {
     audit = { record: vi.fn() } as unknown as AuditService;
     bundles = { getSellableBundleWithComponents: vi.fn() } as unknown as BundleService;
 
-    service = new RetailSaleService(dataSource, productsRepo, salesRepo, customers, stockMutation, bundles, audit);
+    service = new RetailSaleService(dataSource, productsRepo, salesRepo, branchesRepo, customers, stockMutation, bundles, audit);
   });
 
   function checkoutDto(overrides: Partial<{ lines: Array<{ variantId: string; quantity: number }> }> = {}) {
@@ -382,6 +395,53 @@ describe("RetailSaleService", () => {
       await expect(
         service.checkout(fakeTenant(), { lines: [{ bundleId: "bundle-1", quantity: 1 }], paymentMethod: PaymentMethod.CASH }, "user-1", "idem-b6"),
       ).rejects.toMatchObject({ code: "PRODUCT_BUNDLE_NOT_FOUND" });
+    });
+  });
+
+  describe("getPublicReceipt", () => {
+    it("returns a receipt-shaped view keyed only by the sale id, no auth", async () => {
+      savedSale = {
+        id: "sale-1",
+        tenantId: "tenant-1",
+        subtotalCents: 1770,
+        totalCents: 1770,
+        createdAt: new Date("2026-08-23T10:42:00Z"),
+        tenant: { name: "Elegance Salon" },
+        customer: { firstName: "Faakeer", lastName: "Mohamed", phone: "0771932264", isWalkInPlaceholder: false },
+        soldBy: { name: "Priya Fernando" },
+        payment: { method: PaymentMethod.CASH },
+      } as unknown as RetailSale;
+      savedLines = [
+        {
+          id: "line-1",
+          bundleId: null,
+          nameSnapshot: "Sunsilk Black Shine Shampoo — 180ml",
+          skuSnapshot: "SUN-BSN-180",
+          quantity: 1,
+          lineTotalCents: 590,
+        } as RetailSaleLine,
+      ];
+
+      const receipt = await service.getPublicReceipt("sale-1");
+
+      expect(receipt).toMatchObject({
+        id: "sale-1",
+        salon: { name: "Elegance Salon", address: "42 Galle Road", city: "Colombo", phone: "0112345678" },
+        customer: { name: "Faakeer Mohamed", phone: "0771932264", isWalkIn: false },
+        soldByName: "Priya Fernando",
+        paymentMethod: PaymentMethod.CASH,
+        totalCents: 1770,
+      });
+      expect(receipt.lines).toEqual([expect.objectContaining({ nameSnapshot: "Sunsilk Black Shine Shampoo — 180ml", quantity: 1 })]);
+    });
+
+    it("404s rather than leaking whether a sale id exists", async () => {
+      savedSale = null;
+
+      await expect(service.getPublicReceipt("no-such-sale")).rejects.toMatchObject({
+        statusCode: 404,
+        code: "RETAIL_SALE_NOT_FOUND",
+      });
     });
   });
 });

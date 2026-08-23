@@ -18,6 +18,7 @@ import {
   type RetailSaleCheckoutDto,
   type RetailSaleQueryDto,
 } from "@salon/shared";
+import { Branch } from "../entities/branch.entity";
 import { Payment } from "../entities/payment.entity";
 import { Product } from "../entities/product.entity";
 import type { ProductBundle } from "../entities/product-bundle.entity";
@@ -29,7 +30,7 @@ import { RetailSaleLineBatch } from "../entities/retail-sale-line-batch.entity";
 import { RetailReturnLine } from "../entities/retail-return-line.entity";
 import { StockBatch } from "../entities/stock-batch.entity";
 import type { Tenant } from "../entities/tenant.entity";
-import type { RetailSaleView } from "./retail-sale.types";
+import type { RetailSaleReceiptView, RetailSaleView } from "./retail-sale.types";
 // StockMutationService/CustomerService/BundleService/AuditService must stay
 // VALUE imports: NestJS resolves constructor injection via design:paramtypes
 // metadata at runtime; `import type` would erase them and break DI.
@@ -71,6 +72,7 @@ export class RetailSaleService {
     @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(Product) private readonly products: Repository<Product>,
     @InjectRepository(RetailSale) private readonly sales: Repository<RetailSale>,
+    @InjectRepository(Branch) private readonly branches: Repository<Branch>,
     private readonly customers: CustomerService,
     private readonly stockMutation: StockMutationService,
     private readonly bundles: BundleService,
@@ -294,6 +296,47 @@ export class RetailSaleService {
     return this.loadView(this.sales.manager, id);
   }
 
+  /**
+   * No auth, no `tenantId` from a session — this is what `GET
+   * /retail-sale-receipts/:id` (a link texted to the customer) resolves.
+   * `saleId` is the only credential; deliberately trimmed to receipt-shaped
+   * facts (see `RetailSaleReceiptView`'s own doc comment).
+   */
+  async getPublicReceipt(saleId: string): Promise<RetailSaleReceiptView> {
+    const sale = await this.sales.findOne({
+      where: { id: saleId },
+      relations: { customer: true, soldBy: true, payment: true, tenant: true },
+    });
+    if (!sale) {
+      throw new ApiError({ statusCode: 404, code: "RETAIL_SALE_NOT_FOUND", message: "Receipt not found." });
+    }
+    const branch = await this.branches.findOne({ where: { tenantId: sale.tenantId } });
+    const lines = await this.sales.manager.getRepository(RetailSaleLine).find({ where: { saleId }, order: { createdAt: "ASC" } });
+
+    return {
+      id: sale.id,
+      createdAt: sale.createdAt,
+      salon: { name: sale.tenant.name, address: branch?.address ?? null, city: branch?.city ?? null, phone: branch?.phone ?? null },
+      customer: {
+        name: `${sale.customer.firstName} ${sale.customer.lastName}`.trim(),
+        phone: sale.customer.phone,
+        isWalkIn: sale.customer.isWalkInPlaceholder,
+      },
+      soldByName: sale.soldBy?.name ?? null,
+      paymentMethod: sale.payment?.method ?? null,
+      lines: lines.map((l) => ({
+        id: l.id,
+        bundleId: l.bundleId,
+        nameSnapshot: l.nameSnapshot,
+        skuSnapshot: l.skuSnapshot,
+        quantity: l.quantity,
+        lineTotalCents: l.lineTotalCents,
+      })),
+      subtotalCents: sale.subtotalCents,
+      totalCents: sale.totalCents,
+    };
+  }
+
   /** Shared by a plain variant line and each bundle component — one place that draws FIFO batches and writes the ledger. */
   private async allocateAndDraw(
     manager: EntityManager,
@@ -338,7 +381,7 @@ export class RetailSaleService {
   async loadView(manager: EntityManager, saleId: string): Promise<RetailSaleView> {
     const sale = await manager.getRepository(RetailSale).findOne({
       where: { id: saleId },
-      relations: { customer: true, soldBy: true },
+      relations: { customer: true, soldBy: true, payment: true },
     });
     if (!sale) {
       throw new ApiError({ statusCode: 404, code: "RETAIL_SALE_NOT_FOUND", message: "Sale not found." });
@@ -362,6 +405,7 @@ export class RetailSaleService {
       status: sale.status,
       soldByName: sale.soldBy?.name ?? null,
       paymentId: sale.paymentId,
+      paymentMethod: sale.payment?.method ?? null,
       lines: lines.map((l) => ({
         id: l.id,
         variantId: l.variantId,

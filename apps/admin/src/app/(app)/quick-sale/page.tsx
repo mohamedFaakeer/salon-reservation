@@ -7,7 +7,9 @@ import {
   checkoutRetailSale,
   fetchBundles,
   fetchVariants,
+  searchCustomers,
   type BundleView,
+  type CustomerRecord,
   type PaymentMethod,
   type ProductVariantRecord,
 } from "../../../lib/api-client";
@@ -16,7 +18,7 @@ import { formatPriceCents } from "../../../lib/format";
 import { errorCopy } from "../../../lib/error-copy";
 import { ModuleGate } from "../../../components/module-gate";
 import { DrawerShell } from "../../../components/drawer-shell";
-import { BusyLabel } from "../../../components/spinner";
+import { BusyLabel, Spinner } from "../../../components/spinner";
 import { useToast } from "../../../components/toast";
 import { BarcodeScannerModal } from "../../../components/barcode-scanner-modal";
 
@@ -500,6 +502,11 @@ function QuickSalePage() {
   );
 }
 
+/** Digits only, so "077 193 2264" and "0771932264" compare equal. */
+function normalizePhone(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
 function AttachCustomerDrawer({
   initial,
   onClose,
@@ -516,63 +523,162 @@ function AttachCustomerDrawer({
   const [phone, setPhone] = useState(initial?.phone ?? "");
   const [email, setEmail] = useState(initial?.email ?? "");
 
+  const [searching, setSearching] = useState(false);
+  const [match, setMatch] = useState<CustomerRecord | null>(null);
+  const [searchedFor, setSearchedFor] = useState<string | null>(null);
+  const [enteringNew, setEnteringNew] = useState(Boolean(initial));
+
+  // A returning customer's phone number fills in the rest — so the search
+  // resets to "nothing found yet" the moment the number changes, and only
+  // shows "new customer" once a search has actually come back empty.
+  useEffect(() => {
+    const digits = normalizePhone(phone);
+    setMatch(null);
+    if (digits.length < 7) {
+      setSearching(false);
+      setSearchedFor(null);
+      return;
+    }
+    setSearching(true);
+    const timer = setTimeout(() => {
+      searchCustomers(phone.trim())
+        .then((results) => {
+          const found = results.find((c) => normalizePhone(c.phone) === digits) ?? null;
+          setMatch(found);
+          setSearchedFor(digits);
+        })
+        .catch(() => {
+          setMatch(null);
+          setSearchedFor(digits);
+        })
+        .finally(() => setSearching(false));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [phone]);
+
+  const showNewCustomerFields = enteringNew || (!searching && !match && searchedFor === normalizePhone(phone) && normalizePhone(phone).length >= 7);
   const valid = firstName.trim().length > 0 && lastName.trim().length > 0 && phone.trim().length >= 5;
+
+  function useMatch(customer: CustomerRecord): void {
+    onAttached({ firstName: customer.firstName, lastName: customer.lastName, phone: customer.phone, email: customer.email ?? "" });
+  }
 
   return (
     <DrawerShell title="Attach a customer" onClose={onClose}>
       <div className="flex flex-col gap-4">
         <p className="text-sm text-slate-500">
-          Optional — a returning customer's phone number matches them to their existing record.
+          Start with their phone number — a returning customer's record fills in automatically.
         </p>
-        <div className="grid grid-cols-2 gap-2">
+        <div>
           <input
-            data-testid="attach-customer-first-name"
-            placeholder="First name"
-            value={firstName}
-            onChange={(e) => setFirstName(e.target.value)}
-            className="min-h-11 rounded border border-slate-300 px-3 text-sm"
+            data-testid="attach-customer-phone"
+            placeholder="Phone"
+            value={phone}
+            onChange={(e) => {
+              setPhone(e.target.value);
+              setEnteringNew(false);
+            }}
+            className="min-h-11 w-full rounded border border-slate-300 px-3 text-sm tabular"
           />
-          <input
-            data-testid="attach-customer-last-name"
-            placeholder="Last name"
-            value={lastName}
-            onChange={(e) => setLastName(e.target.value)}
-            className="min-h-11 rounded border border-slate-300 px-3 text-sm"
-          />
+          {searching ? (
+            <p className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+              <Spinner className="h-3.5 w-3.5" />
+              Searching…
+            </p>
+          ) : null}
         </div>
-        <input
-          data-testid="attach-customer-phone"
-          placeholder="Phone"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          className="min-h-11 rounded border border-slate-300 px-3 text-sm"
-        />
-        <input
-          data-testid="attach-customer-email"
-          placeholder="Email (optional)"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="min-h-11 rounded border border-slate-300 px-3 text-sm"
-        />
 
-        <div className="mt-1 flex gap-2">
+        {match ? (
+          <div className="rounded-lg border-[1.5px] border-teal-600 bg-teal-50 p-3.5">
+            <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-teal-700">Existing customer</p>
+            <p className="mt-1.5 text-[15px] font-semibold text-slate-900">
+              {match.firstName} {match.lastName}
+            </p>
+            <p className="mt-0.5 text-sm text-slate-600 tabular">{match.phone}</p>
+            <button
+              type="button"
+              data-testid="attach-customer-use-match"
+              onClick={() => useMatch(match)}
+              className="mt-3 min-h-11 w-full rounded bg-teal-600 text-sm font-semibold text-white hover:bg-teal-700"
+            >
+              Use this customer
+            </button>
+            <p className="mt-2 text-center text-xs text-slate-500">
+              Not them?{" "}
+              <button
+                type="button"
+                data-testid="attach-customer-not-them"
+                onClick={() => setEnteringNew(true)}
+                className="font-semibold text-slate-600 underline hover:text-slate-800"
+              >
+                Enter as a new customer
+              </button>
+            </p>
+          </div>
+        ) : null}
+
+        {showNewCustomerFields ? (
+          <>
+            {!enteringNew ? (
+              <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.05em] text-slate-500">
+                <span className="h-1.5 w-1.5 rounded-full bg-slate-400" aria-hidden="true" />
+                No record found — new customer
+              </p>
+            ) : null}
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                data-testid="attach-customer-first-name"
+                placeholder="First name"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                className="min-h-11 rounded border border-slate-300 px-3 text-sm"
+              />
+              <input
+                data-testid="attach-customer-last-name"
+                placeholder="Last name"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                className="min-h-11 rounded border border-slate-300 px-3 text-sm"
+              />
+            </div>
+            <input
+              data-testid="attach-customer-email"
+              placeholder="Email (optional)"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="min-h-11 rounded border border-slate-300 px-3 text-sm"
+            />
+
+            <div className="mt-1 flex gap-2">
+              <button
+                type="button"
+                onClick={onClearWalkIn}
+                className="min-h-11 flex-1 rounded border border-slate-300 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Keep as walk-in
+              </button>
+              <button
+                type="button"
+                data-testid="attach-customer-submit"
+                disabled={!valid}
+                onClick={() => onAttached({ firstName: firstName.trim(), lastName: lastName.trim(), phone: phone.trim(), email: email.trim() })}
+                className="min-h-11 flex-1 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                Attach
+              </button>
+            </div>
+          </>
+        ) : null}
+
+        {!match && !showNewCustomerFields && !searching ? (
           <button
             type="button"
             onClick={onClearWalkIn}
-            className="min-h-11 flex-1 rounded border border-slate-300 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="min-h-11 rounded border border-slate-300 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             Keep as walk-in
           </button>
-          <button
-            type="button"
-            data-testid="attach-customer-submit"
-            disabled={!valid}
-            onClick={() => onAttached({ firstName: firstName.trim(), lastName: lastName.trim(), phone: phone.trim(), email: email.trim() })}
-            className="min-h-11 flex-1 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-          >
-            Attach
-          </button>
-        </div>
+        ) : null}
       </div>
     </DrawerShell>
   );

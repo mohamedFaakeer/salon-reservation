@@ -2,13 +2,27 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { ApiRequestError, fetchRetailReturns, fetchRetailSale, type RetailReturnView, type RetailSaleView } from "../../../../lib/api-client";
+import {
+  ApiRequestError,
+  fetchRetailReturns,
+  fetchRetailSale,
+  fetchRetailSaleReceipt,
+  type RetailReturnView,
+  type RetailSaleReceiptView,
+  type RetailSaleView,
+} from "../../../../lib/api-client";
 import { canIssueRefund } from "../../../../lib/permissions";
 import { useAuth } from "../../../../context/auth-context";
 import { formatDate, formatPriceCents, formatTime } from "../../../../lib/format";
 import { ModuleGate } from "../../../../components/module-gate";
 import { LoadingSkeleton } from "../../../../components/loading-skeleton";
 import { RetailReturnDrawer } from "../../../../components/retail-return-drawer";
+import { RetailSaleReceipt } from "../../../../components/retail-sale-receipt";
+import { DrawerShell } from "../../../../components/drawer-shell";
+import { useToast } from "../../../../components/toast";
+
+/** Same NEXT_PUBLIC_API_URL convention — the public receipt page lives in apps/web, not this app. */
+const CUSTOMER_APP_URL = process.env.NEXT_PUBLIC_CUSTOMER_APP_URL ?? "";
 
 const STATUS_STYLE: Record<RetailSaleView["status"], { label: string; className: string }> = {
   COMPLETED: { label: "Completed", className: "bg-emerald-100 text-emerald-700" },
@@ -40,6 +54,9 @@ function SaleDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showReturn, setShowReturn] = useState(false);
+  const [receipt, setReceipt] = useState<RetailSaleReceiptView | null>(null);
+  const [loadingReceipt, setLoadingReceipt] = useState(false);
+  const toast = useToast();
 
   const load = useCallback(() => {
     setLoading(true);
@@ -70,6 +87,28 @@ function SaleDetailPage() {
   const status = STATUS_STYLE[sale.status];
   const canStillReturn = sale.lines.some((l) => l.variantId !== null && l.quantity > l.returnedQuantity);
 
+  async function openReceipt(): Promise<void> {
+    setLoadingReceipt(true);
+    try {
+      setReceipt(await fetchRetailSaleReceipt(saleId));
+    } catch {
+      toast.error("Couldn't load the receipt", "Try again in a moment.");
+    } finally {
+      setLoadingReceipt(false);
+    }
+  }
+
+  function shareViaWhatsApp(): void {
+    if (!sale) {
+      return;
+    }
+    const link = `${CUSTOMER_APP_URL}/receipts/${saleId}`;
+    const greeting = sale.customer.isWalkIn ? "Hi there" : `Hi ${sale.customer.name.split(" ")[0]}`;
+    const message = `${greeting}, here's your receipt from the salon — ${formatPriceCents(sale.totalCents)} on ${formatDate(sale.createdAt)}. View it here: ${link}`;
+    const phone = !sale.customer.isWalkIn ? sale.customer.phone.replace(/[^\d]/g, "") : "";
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -84,16 +123,44 @@ function SaleDetailPage() {
             </span>
           </p>
         </div>
-        {canReturn && canStillReturn ? (
+        <div className="flex gap-2">
           <button
             type="button"
-            data-testid="sale-record-return"
-            onClick={() => setShowReturn(true)}
-            className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700"
+            data-testid="sale-view-receipt"
+            onClick={() => void openReceipt()}
+            disabled={loadingReceipt}
+            className="min-h-11 rounded border border-slate-300 px-3.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Record return
+            {loadingReceipt ? "Loading…" : "View receipt"}
           </button>
-        ) : null}
+          <button
+            type="button"
+            data-testid="sale-share"
+            onClick={shareViaWhatsApp}
+            className="flex min-h-11 items-center gap-1.5 rounded border border-slate-300 px-3.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path
+                d="M11.5 2.5 14 5l-2.5 2.5M14 5H6.5A3.5 3.5 0 0 0 3 8.5V9M4.5 13.5 2 11l2.5-2.5M2 11h7.5A3.5 3.5 0 0 0 13 7.5V7"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Share
+          </button>
+          {canReturn && canStillReturn ? (
+            <button
+              type="button"
+              data-testid="sale-record-return"
+              onClick={() => setShowReturn(true)}
+              className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700"
+            >
+              Record return
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <div className="grid gap-3.5 lg:grid-cols-[1.5fr_1fr]">
@@ -152,6 +219,22 @@ function SaleDetailPage() {
             ))}
           </div>
         </div>
+      ) : null}
+
+      {receipt ? (
+        <DrawerShell title="Receipt" onClose={() => setReceipt(null)}>
+          <div className="flex flex-col gap-3">
+            <button
+              type="button"
+              data-testid="print-receipt"
+              onClick={() => window.print()}
+              className="min-h-11 w-fit rounded border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 print:hidden"
+            >
+              Print or save as PDF
+            </button>
+            <RetailSaleReceipt receipt={receipt} />
+          </div>
+        </DrawerShell>
       ) : null}
 
       {showReturn ? (
