@@ -4,6 +4,8 @@ import { Branch } from "../entities/branch.entity";
 import { Payment } from "../entities/payment.entity";
 import { Product } from "../entities/product.entity";
 import { ProductVariant } from "../entities/product-variant.entity";
+import { RetailReturn } from "../entities/retail-return.entity";
+import { RetailReturnLine } from "../entities/retail-return-line.entity";
 import { RetailSale } from "../entities/retail-sale.entity";
 import { RetailSaleLine } from "../entities/retail-sale-line.entity";
 import { RetailSaleLineBatch } from "../entities/retail-sale-line-batch.entity";
@@ -21,7 +23,18 @@ import { RetailReturnService } from "./retail-return.service";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Branch, Payment, Product, ProductVariant, RetailSale, RetailSaleLine, RetailSaleLineBatch, StockBatch]),
+    TypeOrmModule.forFeature([
+      Branch,
+      Payment,
+      Product,
+      ProductVariant,
+      RetailReturn,
+      RetailReturnLine,
+      RetailSale,
+      RetailSaleLine,
+      RetailSaleLineBatch,
+      StockBatch,
+    ]),
     CustomerModule,
     AuditModule,
     TenantModule,
