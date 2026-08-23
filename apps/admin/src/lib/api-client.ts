@@ -2084,6 +2084,12 @@ export interface CreateVariantInput {
   attributes?: Record<string, string>;
   priceCents: number;
   reorderPoint?: number;
+  /** Opening stock — optional, required together, see `packages/shared`'s `CreateProductVariantDto`. */
+  openingQuantity?: number;
+  openingUnitCostCents?: number;
+  openingLotCode?: string;
+  openingExpiresAt?: string;
+  openingSerialNumber?: string;
 }
 
 export function createVariant(productId: string, input: CreateVariantInput): Promise<ProductVariantRecord> {
@@ -2146,6 +2152,50 @@ async function uploadImageFile<T>(path: string, file: File): Promise<T> {
 
 export function uploadProductImage(productId: string, file: File): Promise<ProductRecord> {
   return uploadImageFile<ProductRecord>(`/products/${productId}/image`, file);
+}
+
+export interface ImportRowError {
+  row: number;
+  message: string;
+}
+
+export interface ImportSummary {
+  productsCreated: number;
+  variantsCreated: number;
+  products: Array<{ name: string; variantCount: number }>;
+}
+
+/**
+ * A validation failure (`IMPORT_VALIDATION_FAILED`) carries every row's
+ * problem in `details.rowErrors` — `uploadImageFile` doesn't thread `details`
+ * through, so this gets its own small multipart helper rather than reusing it.
+ */
+export async function importProducts(file: File): Promise<ImportSummary> {
+  const form = new FormData();
+  form.append("file", file);
+  const headers: Record<string, string> = {};
+  if (currentToken) {
+    headers.Authorization = `Bearer ${currentToken}`;
+  }
+  const res = await fetch(`${apiBaseUrl()}/products/import`, { method: "POST", headers, body: form, cache: "no-store" });
+  if (res.status === 401) {
+    unauthorizedHandler?.();
+  }
+  if (!res.ok) {
+    let body: { code?: string; message?: string; details?: Record<string, unknown> } = {};
+    try {
+      body = await res.json();
+    } catch {
+      // Non-JSON error body — fall through to the generic message below.
+    }
+    throw new ApiRequestError(
+      res.status,
+      body.code ?? "UNKNOWN_ERROR",
+      body.message ?? "Something went wrong. Please try again.",
+      body.details,
+    );
+  }
+  return (await res.json()) as ImportSummary;
 }
 
 export function removeProductImage(productId: string): Promise<ProductRecord> {

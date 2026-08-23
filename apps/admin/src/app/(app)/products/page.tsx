@@ -7,6 +7,7 @@ import { canManageInventory } from "../../../lib/permissions";
 import { ModuleGate } from "../../../components/module-gate";
 import { ProductDrawer } from "../../../components/product-drawer";
 import { ProductDetailDrawer } from "../../../components/product-detail-drawer";
+import { ProductImportDrawer } from "../../../components/product-import-drawer";
 import { LoadingSkeleton } from "../../../components/loading-skeleton";
 import { useToast } from "../../../components/toast";
 
@@ -28,6 +29,7 @@ function ProductsPage() {
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [viewingId, setViewingId] = useState<string | null>(null);
 
   const load = useCallback((query: string) => {
@@ -56,14 +58,33 @@ function ProductsPage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Header count={products.length} />
-        <button
-          type="button"
-          data-testid="product-create-open"
-          onClick={() => setShowCreate(true)}
-          className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700"
-        >
-          + Create product
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            data-testid="product-import-open"
+            onClick={() => setShowImport(true)}
+            className="inline-flex min-h-11 items-center gap-1.5 rounded border border-slate-300 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path
+                d="M8 2v8m0 0 3-3m-3 3-3-3M3 12v1.5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V12"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Import products
+          </button>
+          <button
+            type="button"
+            data-testid="product-create-open"
+            onClick={() => setShowCreate(true)}
+            className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700"
+          >
+            + Create product
+          </button>
+        </div>
       </div>
 
       <input
@@ -159,6 +180,16 @@ function ProductsPage() {
           productId={viewingId}
           onClose={() => {
             setViewingId(null);
+            load(q);
+          }}
+        />
+      ) : null}
+
+      {showImport ? (
+        <ProductImportDrawer
+          onClose={() => setShowImport(false)}
+          onImported={() => {
+            toast.success("Products imported");
             load(q);
           }}
         />

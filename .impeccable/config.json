@@ -74,6 +74,33 @@
         ],
         "createdAt": "2026-08-23T08:30:08.248Z",
         "reason": "Pre-existing ChargeDrawer payment-method selected-state button, unmodified by this change — line number only shifted because new code was added earlier in the file. teal-700 on teal-50 is a light tint pairing already shipped elsewhere in this app."
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "bg-slate-100 text-slate-500",
+        "files": [
+          "apps/admin/src/components/product-detail-drawer.tsx"
+        ],
+        "createdAt": "2026-08-23T11:14:22.798Z",
+        "reason": "Pre-existing Active/Discontinued status pill, unmodified by this session's edits — muted background, not a colored surface."
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "disabled:border-slate-300 disabled:bg-transparent disabled:text-slate-400",
+        "files": [
+          "apps/admin/src/components/product-detail-drawer.tsx"
+        ],
+        "createdAt": "2026-08-23T11:14:23.014Z",
+        "reason": "Disabled state on the pre-existing Add-variant button (identical class string carried over unchanged): background is transparent whenever the text is gray, so there is no gray-on-color composite actually rendered."
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "bg-slate-100 text-slate-500",
+        "files": [
+          "apps/admin/src/app/(app)/products/page.tsx"
+        ],
+        "createdAt": "2026-08-23T11:21:17.524Z",
+        "reason": "Pre-existing Active/Discontinued status pill, unmodified by this session's edits (same as gift-cards page precedent) — muted background, not a colored surface."
       }
     ]
   }

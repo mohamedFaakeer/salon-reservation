@@ -1,9 +1,22 @@
 import { Injectable } from "@nestjs/common";
 import type { EntityManager } from "typeorm";
-import { ApiError, StockBatchStatus, type StockMovementType } from "@salon/shared";
+import { ApiError, StockBatchStatus, StockMovementType } from "@salon/shared";
 import { ProductVariant } from "../entities/product-variant.entity";
 import { StockBatch } from "../entities/stock-batch.entity";
 import { StockMovement } from "../entities/stock-movement.entity";
+
+export interface OpenBatchInput {
+  tenantId: string;
+  variantId: string;
+  quantity: number;
+  unitCostCents: number;
+  lotCode?: string | null;
+  expiresAt?: string | null;
+  serialNumber?: string | null;
+  referenceType?: string | null;
+  referenceId?: string | null;
+  actorUserId: string | null;
+}
 
 export interface BatchAllocation {
   batch: StockBatch;
@@ -140,5 +153,40 @@ export class StockMutationService {
     }
 
     return allocations;
+  }
+
+  /**
+   * Opens a brand-new ACTIVE batch and records the RECEIPT movement that
+   * puts it on hand — the shape "stock arrived with no prior batch to add
+   * to" takes, whether that's a fresh variant's opening count or one row of
+   * a bulk product import. `StockReceiptService` deliberately doesn't call
+   * this: it also recomputes a variant's weighted-average cost across
+   * *existing* stock, which a brand-new variant has none of.
+   */
+  async openBatch(manager: EntityManager, input: OpenBatchInput): Promise<ProductVariant> {
+    const batch = await manager.getRepository(StockBatch).save(
+      manager.getRepository(StockBatch).create({
+        tenantId: input.tenantId,
+        variantId: input.variantId,
+        receiptId: null,
+        lotCode: input.lotCode ?? null,
+        expiresAt: input.expiresAt ?? null,
+        serialNumber: input.serialNumber ?? null,
+        unitCostCents: input.unitCostCents,
+        quantityReceived: input.quantity,
+        quantityRemaining: input.quantity,
+        status: StockBatchStatus.ACTIVE,
+      }),
+    );
+    return this.applyMovement(manager, {
+      tenantId: input.tenantId,
+      variantId: input.variantId,
+      batchId: batch.id,
+      type: StockMovementType.RECEIPT,
+      quantityDelta: input.quantity,
+      referenceType: input.referenceType ?? null,
+      referenceId: input.referenceId ?? null,
+      actorUserId: input.actorUserId,
+    });
   }
 }

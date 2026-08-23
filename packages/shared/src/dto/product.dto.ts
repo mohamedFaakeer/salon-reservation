@@ -1,6 +1,7 @@
 import { Type } from "class-transformer";
 import {
   IsBoolean,
+  IsDateString,
   IsInt,
   IsObject,
   IsOptional,
@@ -119,6 +120,42 @@ export class CreateProductVariantDto {
   @IsInt()
   @Min(0)
   reorderPoint?: number;
+
+  /**
+   * Optional opening stock, folded into the same request so a brand-new
+   * variant can be sellable the moment it's created — the alternative was
+   * always "use Adjust with no batch to fake a starting count," which is
+   * exactly the phantom-stock bug this DTO closes off. `openingQuantity` and
+   * `openingUnitCostCents` are required together; a product that tracks
+   * expiry additionally requires `openingExpiresAt`, one that tracks serials
+   * additionally requires `openingSerialNumber` (and then `openingQuantity`
+   * must be exactly 1 — one serial per unit, same rule Receive stock uses).
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  openingQuantity?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  openingUnitCostCents?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  openingLotCode?: string;
+
+  /** `YYYY-MM-DD`. Required at the service layer when the product tracks expiry. */
+  @IsOptional()
+  @IsDateString()
+  openingExpiresAt?: string;
+
+  /** Required at the service layer when the product tracks serials — `openingQuantity` must then be exactly 1. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  openingSerialNumber?: string;
 }
 
 /** PATCH /products/:productId/variants/:variantId — identity/price fields only; stock moves through StockReceipt/Adjustment. */

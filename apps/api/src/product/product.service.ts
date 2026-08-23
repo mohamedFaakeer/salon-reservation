@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
-import { InjectRepository } from "@nestjs/typeorm";
+import { InjectDataSource, InjectRepository } from "@nestjs/typeorm";
+import type { DataSource } from "typeorm";
 // Repository must stay a VALUE import: NestJS resolves constructor
 // injection via design:paramtypes metadata at runtime; `import type` would
 // erase it and break DI.
@@ -22,13 +23,15 @@ import { StockBatch } from "../entities/stock-batch.entity";
 import { StockMovement } from "../entities/stock-movement.entity";
 import { isUniqueViolation } from "../common/postgres-errors.util";
 import { detectImage } from "../common/image.util";
-// CloudinaryService/AuditService must stay VALUE imports: NestJS resolves
-// constructor injection via design:paramtypes metadata at runtime; `import
-// type` would erase them and break DI.
+// CloudinaryService/AuditService/StockMutationService must stay VALUE
+// imports: NestJS resolves constructor injection via design:paramtypes
+// metadata at runtime; `import type` would erase them and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { CloudinaryService } from "../cloudinary/cloudinary.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { AuditService } from "../audit/audit.service";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { StockMutationService } from "../inventory/stock-mutation.service";
 
 export interface ProductListResult {
   data: Product[];
@@ -80,12 +83,14 @@ const PRODUCT_IMAGE_MAX_ASPECT_RATIO = 3;
 @Injectable()
 export class ProductService {
   constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(Product) private readonly products: Repository<Product>,
     @InjectRepository(ProductVariant) private readonly variants: Repository<ProductVariant>,
     @InjectRepository(StockBatch) private readonly batches: Repository<StockBatch>,
     @InjectRepository(StockMovement) private readonly movements: Repository<StockMovement>,
     private readonly cloudinary: CloudinaryService,
     private readonly audit: AuditService,
+    private readonly stockMutation: StockMutationService,
   ) {}
 
   async create(tenantId: string, dto: CreateProductDto, actorUserId: string): Promise<Product> {
@@ -170,40 +175,117 @@ export class ProductService {
     actorUserId: string,
   ): Promise<ProductVariant> {
     const product = await this.findOwned(tenantId, productId);
-    try {
-      const variant = await this.variants.save(
-        this.variants.create({
+    const opening = this.validateOpeningStock(product, dto);
+
+    return this.dataSource.transaction(async (manager) => {
+      let variant: ProductVariant;
+      try {
+        variant = await manager.getRepository(ProductVariant).save(
+          manager.getRepository(ProductVariant).create({
+            tenantId,
+            productId: product.id,
+            sku: dto.sku.trim(),
+            barcode: dto.barcode?.trim() || null,
+            attributes: dto.attributes ?? {},
+            priceCents: dto.priceCents,
+            weightedAvgCostCents: opening?.unitCostCents ?? 0,
+            quantityOnHand: 0,
+            reorderPoint: dto.reorderPoint ?? null,
+            active: true,
+          }),
+        );
+      } catch (err) {
+        if (isUniqueViolation(err)) {
+          throw new ApiError({
+            statusCode: 409,
+            code: "DUPLICATE_SKU_OR_BARCODE",
+            message: "Another variant already uses this SKU or barcode.",
+          });
+        }
+        throw err;
+      }
+
+      if (opening) {
+        variant = await this.stockMutation.openBatch(manager, {
           tenantId,
-          productId: product.id,
-          sku: dto.sku.trim(),
-          barcode: dto.barcode?.trim() || null,
-          attributes: dto.attributes ?? {},
-          priceCents: dto.priceCents,
-          weightedAvgCostCents: 0,
-          quantityOnHand: 0,
-          reorderPoint: dto.reorderPoint ?? null,
-          active: true,
-        }),
-      );
-      await this.audit.record({
-        tenantId,
-        actorUserId,
-        action: "PRODUCT_VARIANT_CREATED",
-        entityType: "ProductVariant",
-        entityId: variant.id,
-        metadata: { sku: variant.sku, productId: product.id },
-      });
-      return variant;
-    } catch (err) {
-      if (isUniqueViolation(err)) {
-        throw new ApiError({
-          statusCode: 409,
-          code: "DUPLICATE_SKU_OR_BARCODE",
-          message: "Another variant already uses this SKU or barcode.",
+          variantId: variant.id,
+          quantity: opening.quantity,
+          unitCostCents: opening.unitCostCents,
+          lotCode: opening.lotCode,
+          expiresAt: opening.expiresAt,
+          serialNumber: opening.serialNumber,
+          referenceType: "ProductVariant",
+          referenceId: variant.id,
+          actorUserId,
         });
       }
-      throw err;
+
+      await this.audit.record(
+        {
+          tenantId,
+          actorUserId,
+          action: "PRODUCT_VARIANT_CREATED",
+          entityType: "ProductVariant",
+          entityId: variant.id,
+          metadata: { sku: variant.sku, productId: product.id, openingQuantity: opening?.quantity ?? 0 },
+        },
+        manager,
+      );
+      return variant;
+    });
+  }
+
+  /**
+   * Turns the DTO's flat `opening*` fields into a validated batch to open,
+   * or `null` when no opening stock was given at all. Throws rather than
+   * silently dropping data: a caller who filled in quantity but forgot cost
+   * (or vice versa) gets told, not left with a batch that has one field
+   * wrong.
+   */
+  private validateOpeningStock(
+    product: Product,
+    dto: CreateProductVariantDto,
+  ): { quantity: number; unitCostCents: number; lotCode: string | null; expiresAt: string | null; serialNumber: string | null } | null {
+    if (dto.openingQuantity === undefined && dto.openingUnitCostCents === undefined) {
+      return null;
     }
+    if (dto.openingQuantity === undefined || dto.openingUnitCostCents === undefined) {
+      throw new ApiError({
+        statusCode: 400,
+        code: "VALIDATION_ERROR",
+        message: "Give both an opening quantity and a unit cost, or leave both blank.",
+      });
+    }
+    if (product.tracksExpiry && !dto.openingExpiresAt) {
+      throw new ApiError({
+        statusCode: 400,
+        code: "VALIDATION_ERROR",
+        message: `${product.name} tracks expiry — opening stock needs an expiry date.`,
+      });
+    }
+    if (product.trackSerial) {
+      if (!dto.openingSerialNumber) {
+        throw new ApiError({
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: `${product.name} tracks serial numbers — opening stock needs a serial number.`,
+        });
+      }
+      if (dto.openingQuantity !== 1) {
+        throw new ApiError({
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "A serialised product must open with exactly one unit — use Receive stock to add more.",
+        });
+      }
+    }
+    return {
+      quantity: dto.openingQuantity,
+      unitCostCents: dto.openingUnitCostCents,
+      lotCode: dto.openingLotCode?.trim() || null,
+      expiresAt: dto.openingExpiresAt ?? null,
+      serialNumber: dto.openingSerialNumber?.trim() || null,
+    };
   }
 
   async updateVariant(

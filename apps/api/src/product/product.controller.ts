@@ -17,11 +17,13 @@ import { getTenantContext } from "../tenant/tenant-context";
 import { Permissions } from "../common/authorization/permissions.decorator";
 import { Permission } from "../common/authorization/permission.enum";
 import { RequiresModule } from "../common/authorization/module.decorator";
-// ProductService must stay a VALUE import: NestJS resolves constructor
-// injection via design:paramtypes metadata at runtime; `import type` would
-// erase it and break DI.
+// ProductService/ProductImportService must stay VALUE imports: NestJS
+// resolves constructor injection via design:paramtypes metadata at runtime;
+// `import type` would erase them and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { ProductService } from "./product.service";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { ProductImportService } from "./product-import.service";
 
 /** Products/variants "back office" — reads open to whoever can also take a payment, writes MANAGE_INVENTORY only. */
 @ApiTags("products")
@@ -29,13 +31,32 @@ import { ProductService } from "./product.service";
 @Controller("products")
 @RequiresModule("inventory")
 export class ProductController {
-  constructor(private readonly productService: ProductService) {}
+  constructor(
+    private readonly productService: ProductService,
+    private readonly productImport: ProductImportService,
+  ) {}
 
   @Post()
   @Permissions(Permission.MANAGE_INVENTORY)
   create(@Req() req: Request, @Body() dto: CreateProductDto) {
     const ctx = getTenantContext(req);
     return this.productService.create(ctx.tenantId, dto, ctx.userId);
+  }
+
+  /**
+   * Bulk product setup for a new salon. Same 5MB backstop as the image
+   * uploads — the real ceiling is `ProductImportService`'s row-by-row
+   * validation, not file size.
+   */
+  @Post("import")
+  @Permissions(Permission.MANAGE_INVENTORY)
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 5_000_000 } }))
+  async importProducts(@Req() req: Request, @UploadedFile() file: Express.Multer.File | undefined) {
+    const ctx = getTenantContext(req);
+    if (!file) {
+      throw new ApiError({ statusCode: 400, code: "VALIDATION_ERROR", message: "No file was uploaded." });
+    }
+    return this.productImport.importProducts(ctx.tenantId, file.buffer, ctx.userId);
   }
 
   @Get()

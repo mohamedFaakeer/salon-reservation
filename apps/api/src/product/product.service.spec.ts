@@ -1,11 +1,12 @@
-import type { ObjectLiteral, Repository } from "typeorm";
+import type { DataSource, EntityManager, ObjectLiteral, Repository } from "typeorm";
 import { ProductService } from "./product.service";
-import type { Product } from "../entities/product.entity";
-import type { ProductVariant } from "../entities/product-variant.entity";
-import type { StockBatch } from "../entities/stock-batch.entity";
+import { Product } from "../entities/product.entity";
+import { ProductVariant } from "../entities/product-variant.entity";
+import { StockBatch } from "../entities/stock-batch.entity";
 import type { StockMovement } from "../entities/stock-movement.entity";
 import type { CloudinaryService } from "../cloudinary/cloudinary.service";
 import type { AuditService } from "../audit/audit.service";
+import type { StockMutationService } from "../inventory/stock-mutation.service";
 
 function mockRepo<T extends ObjectLiteral>() {
   return {
@@ -37,6 +38,8 @@ describe("ProductService", () => {
   let movementsGetRawMany: ReturnType<typeof vi.fn>;
   let cloudinary: CloudinaryService;
   let audit: AuditService;
+  let stockMutation: StockMutationService;
+  let dataSource: DataSource;
   let service: ProductService;
 
   beforeEach(() => {
@@ -57,7 +60,23 @@ describe("ProductService", () => {
     } as unknown as Repository<StockMovement>;
     cloudinary = { uploadProductImage: vi.fn(async () => "https://res.cloudinary.com/demo/product.png") } as unknown as CloudinaryService;
     audit = { record: vi.fn() } as unknown as AuditService;
-    service = new ProductService(products, variants, batches, movements, cloudinary, audit);
+    stockMutation = {
+      openBatch: vi.fn(async (_m: unknown, input: { variantId: string; quantity: number }) =>
+        ({ id: input.variantId, quantityOnHand: input.quantity }) as ProductVariant,
+      ),
+    } as unknown as StockMutationService;
+    const manager = {
+      getRepository: (entity: unknown) => {
+        if (entity === Product) return products;
+        if (entity === ProductVariant) return variants;
+        if (entity === StockBatch) return batches;
+        throw new Error("unexpected entity in test manager");
+      },
+    } as unknown as EntityManager;
+    dataSource = {
+      transaction: vi.fn(async (cb: (m: EntityManager) => Promise<unknown>) => cb(manager)),
+    } as unknown as DataSource;
+    service = new ProductService(dataSource, products, variants, batches, movements, cloudinary, audit, stockMutation);
   });
 
   describe("create", () => {
@@ -77,6 +96,73 @@ describe("ProductService", () => {
       await expect(
         service.createVariant("tenant-1", "product-1", { sku: "SUN-400", priceCents: 1000 }, "user-1"),
       ).rejects.toMatchObject({ statusCode: 409, code: "DUPLICATE_SKU_OR_BARCODE" });
+    });
+
+    it("opens a batch through StockMutationService when opening stock is given", async () => {
+      vi.mocked(products.findOne).mockResolvedValue({ id: "product-1", tenantId: "tenant-1", tracksExpiry: false, trackSerial: false } as Product);
+
+      await service.createVariant(
+        "tenant-1",
+        "product-1",
+        { sku: "SUN-400", priceCents: 1000, openingQuantity: 24, openingUnitCostCents: 410 },
+        "user-1",
+      );
+
+      expect(stockMutation.openBatch).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ tenantId: "tenant-1", quantity: 24, unitCostCents: 410 }),
+      );
+    });
+
+    it("never opens a batch when no opening stock is given", async () => {
+      vi.mocked(products.findOne).mockResolvedValue({ id: "product-1", tenantId: "tenant-1", tracksExpiry: false, trackSerial: false } as Product);
+      await service.createVariant("tenant-1", "product-1", { sku: "SUN-400", priceCents: 1000 }, "user-1");
+      expect(stockMutation.openBatch).not.toHaveBeenCalled();
+    });
+
+    it("rejects opening quantity given without a cost, or vice versa", async () => {
+      vi.mocked(products.findOne).mockResolvedValue({ id: "product-1", tenantId: "tenant-1", tracksExpiry: false, trackSerial: false } as Product);
+      await expect(
+        service.createVariant("tenant-1", "product-1", { sku: "SUN-400", priceCents: 1000, openingQuantity: 5 }, "user-1"),
+      ).rejects.toMatchObject({ statusCode: 400, code: "VALIDATION_ERROR" });
+    });
+
+    it("requires an expiry date for opening stock on a product that tracks expiry", async () => {
+      vi.mocked(products.findOne).mockResolvedValue({ id: "product-1", tenantId: "tenant-1", name: "Face Cream", tracksExpiry: true, trackSerial: false } as Product);
+      await expect(
+        service.createVariant(
+          "tenant-1",
+          "product-1",
+          { sku: "FH-CRM-60", priceCents: 780, openingQuantity: 10, openingUnitCostCents: 520 },
+          "user-1",
+        ),
+      ).rejects.toMatchObject({ statusCode: 400, code: "VALIDATION_ERROR" });
+    });
+
+    it("accepts opening stock with an expiry date for a product that tracks expiry", async () => {
+      vi.mocked(products.findOne).mockResolvedValue({ id: "product-1", tenantId: "tenant-1", name: "Face Cream", tracksExpiry: true, trackSerial: false } as Product);
+      await service.createVariant(
+        "tenant-1",
+        "product-1",
+        { sku: "FH-CRM-60", priceCents: 780, openingQuantity: 10, openingUnitCostCents: 520, openingExpiresAt: "2027-03-15" },
+        "user-1",
+      );
+      expect(stockMutation.openBatch).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ expiresAt: "2027-03-15" }),
+      );
+    });
+
+    it("requires exactly one unit of opening stock for a product that tracks serials", async () => {
+      vi.mocked(products.findOne).mockResolvedValue({ id: "product-1", tenantId: "tenant-1", name: "Hair Dryer", tracksExpiry: false, trackSerial: true } as Product);
+      await expect(
+        service.createVariant(
+          "tenant-1",
+          "product-1",
+          { sku: "DRY-3000", priceCents: 12000, openingQuantity: 2, openingUnitCostCents: 8000, openingSerialNumber: "SN-1" },
+          "user-1",
+        ),
+      ).rejects.toMatchObject({ statusCode: 400, code: "VALIDATION_ERROR" });
     });
   });
 
@@ -157,12 +243,14 @@ describe("ProductService", () => {
         getManyAndCount: vi.fn(async () => [rows, rows.length] as [ProductVariant[], number]),
       };
       service = new ProductService(
+        dataSource,
         products,
         { ...variants, createQueryBuilder: vi.fn(() => qb) } as unknown as Repository<ProductVariant>,
         batches,
         movements,
         cloudinary,
         audit,
+        stockMutation,
       );
     }
 
