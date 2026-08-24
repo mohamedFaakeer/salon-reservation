@@ -1,3 +1,4 @@
+import "reflect-metadata";
 import type { ObjectLiteral, Repository } from "typeorm";
 import { AppointmentStatus, NotificationChannel, NotificationEvent, NotificationStatus } from "@salon/shared";
 import { NotificationService } from "./notification.service";
@@ -6,6 +7,11 @@ import type { Appointment } from "../entities/appointment.entity";
 import type { Customer } from "../entities/customer.entity";
 import type { Tenant } from "../entities/tenant.entity";
 import type { NotificationProviderResolver } from "./providers/resolve-notification-provider";
+import { TemplateRendererService } from "./services/template-renderer.service";
+import { NotificationRule } from "../entities/notification-rule.entity";
+import { NotificationTemplate } from "../entities/notification-template.entity";
+import { CustomerNotificationPreferences } from "../entities/customer-notification-preferences.entity";
+import { NotificationQuota } from "../entities/notification-quota.entity";
 
 function mockRepo<T extends ObjectLiteral>() {
   return {
@@ -14,6 +20,7 @@ function mockRepo<T extends ObjectLiteral>() {
     find: vi.fn(async () => [] as T[]),
     findOne: vi.fn(async () => null as T | null),
     findAndCount: vi.fn(async () => [[], 0] as [T[], number]),
+    delete: vi.fn(async () => ({ affected: 1 })),
   } as unknown as Repository<T>;
 }
 
@@ -42,14 +49,23 @@ function fakeTenant(overrides: Partial<Tenant> = {}): Tenant {
 
 describe("NotificationService", () => {
   let notificationsRepo: Repository<Notification>;
+  let ruleRepo: Repository<NotificationRule>;
+  let templateRepo: Repository<NotificationTemplate>;
+  let prefRepo: Repository<CustomerNotificationPreferences>;
+  let quotaRepo: Repository<NotificationQuota>;
   let appointmentsRepo: Repository<Appointment>;
   let tenantRepo: Repository<Tenant>;
   let providers: NotificationProviderResolver;
   let sendMock: ReturnType<typeof vi.fn>;
+  let templateRenderer: TemplateRendererService;
   let service: NotificationService;
 
   beforeEach(() => {
     notificationsRepo = mockRepo<Notification>();
+    ruleRepo = mockRepo<NotificationRule>();
+    templateRepo = mockRepo<NotificationTemplate>();
+    prefRepo = mockRepo<CustomerNotificationPreferences>();
+    quotaRepo = mockRepo<NotificationQuota>();
     appointmentsRepo = mockRepo<Appointment>();
     tenantRepo = mockRepo<Tenant>();
 
@@ -58,9 +74,21 @@ describe("NotificationService", () => {
       resolve: vi.fn(() => ({ send: sendMock })),
     } as unknown as NotificationProviderResolver;
 
+    templateRenderer = new TemplateRendererService();
+
     vi.mocked(appointmentsRepo.findOne).mockResolvedValue(fakeAppointment());
 
-    service = new NotificationService(notificationsRepo, appointmentsRepo, tenantRepo, providers);
+    service = new NotificationService(
+      notificationsRepo,
+      ruleRepo,
+      templateRepo,
+      prefRepo,
+      quotaRepo,
+      appointmentsRepo,
+      tenantRepo,
+      providers,
+      templateRenderer,
+    );
   });
 
   describe("fire", () => {

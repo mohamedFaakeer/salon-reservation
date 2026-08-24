@@ -70,11 +70,31 @@ export enum Permission {
   VIEW_AUDIT_LOG = "VIEW_AUDIT_LOG",
   VIEW_NOTIFICATIONS = "VIEW_NOTIFICATIONS",
   /**
+   * Manage notification rules, templates, scheduling, and send test notifications.
+   * OWNER and MANAGER only — same scope as VIEW_REPORTS.
+   */
+  MANAGE_NOTIFICATIONS = "MANAGE_NOTIFICATIONS",
+  /**
+   * Manage notification rules (create, update, delete, list).
+   * OWNER and MANAGER only.
+   */
+  MANAGE_NOTIFICATION_RULES = "MANAGE_NOTIFICATION_RULES",
+  /**
+   * Manage notification templates (create, update, delete, list).
+   * OWNER and MANAGER only.
+   */
+  MANAGE_NOTIFICATION_TEMPLATES = "MANAGE_NOTIFICATION_TEMPLATES",
+  /**
    * Send a win-back message to lapsed customers. OWNER and MANAGER only,
    * same scope as VIEW_REPORTS — the audience this reaches into (named
    * customers, their contact details) is the same owner-level surface.
    */
   SEND_MARKETING_CAMPAIGN = "SEND_MARKETING_CAMPAIGN",
+  /**
+   * View customer information (for preferences management).
+   * RECEPTIONIST and above.
+   */
+  VIEW_CUSTOMERS = "VIEW_CUSTOMERS",
   /**
    * The retail "back office": products, variants, stock receipts and manual
    * adjustments. OWNER and MANAGER only — mirrors how MANAGE_GIFT_CARDS

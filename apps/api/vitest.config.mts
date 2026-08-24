@@ -9,10 +9,11 @@ export default defineConfig({
     fileParallelism: false,
     passWithNoTests: true,
     setupFiles: ["./vitest.setup.ts"],
+    root: import.meta.dirname,
   },
   resolve: {
     alias: {
-      "@salon/shared": path.resolve(import.meta.dirname, "../../packages/shared/dist/index.js"),
+      "@salon/shared": path.resolve(import.meta.dirname, "../../packages/shared/dist"),
     },
   },
 });

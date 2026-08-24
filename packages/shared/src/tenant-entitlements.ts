@@ -33,6 +33,11 @@ export interface ModuleOverrides {
    * inventory is genuinely opt-in rather than a Lite-vs-Pro feature split.
    */
   inventory?: boolean;
+  /**
+   * Notification rules, templates, scheduling, multi-channel delivery,
+   * customer preferences, and quota management.
+   */
+  notifications?: boolean;
 }
 
 export type ModuleKey = keyof ModuleOverrides;
@@ -43,6 +48,7 @@ export const ALL_MODULES: ModuleKey[] = [
   "auditLog",
   "invoices",
   "inventory",
+  "notifications",
 ];
 
 /** The seven panels the Reports page is actually built from — see reports.service.ts. */
@@ -118,6 +124,7 @@ const PRO_MODULES: Required<ModuleOverrides> = {
   auditLog: true,
   invoices: true,
   inventory: true,
+  notifications: true,
 };
 
 const LITE_MODULES: Required<ModuleOverrides> = {
@@ -127,6 +134,7 @@ const LITE_MODULES: Required<ModuleOverrides> = {
   auditLog: false,
   invoices: false,
   inventory: false,
+  notifications: false,
 };
 
 const PRO_REPORT_PANELS: Required<ReportPanelOverrides> = {

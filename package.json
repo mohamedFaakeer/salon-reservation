@@ -2,7 +2,7 @@
   "name": "salon-reservation",
   "version": "0.1.0",
   "private": true,
-  "description": "Salon Reservation SaaS MVP \u2014 NestJS + Next.js monorepo (npm workspaces)",
+  "description": "Salon Reservation SaaS MVP — NestJS + Next.js monorepo (npm workspaces)",
   "engines": {
     "node": ">=24.11.0",
     "npm": ">=10.0.0"
@@ -44,7 +44,8 @@
     "typescript-eslint": "^8.66.0"
   },
   "dependencies": {
-    "cookie-parser": "^1.4.7"
+    "cookie-parser": "^1.4.7",
+    "handlebars": "^4.7.9"
   },
   "overrides": {
     "js-yaml": "5.2.3"

@@ -7,10 +7,13 @@ import {
   ApiRequestError,
   fetchCustomer,
   fetchCustomerAppointments,
+  fetchCustomerNotificationPreferences,
   fetchCustomerStats,
   updateCustomer,
+  updateCustomerNotificationPreferences,
   type AppointmentRecord,
   type CustomerDetail,
+  type CustomerNotificationPreferencesRecord,
   type CustomerStats,
   type ListMeta,
 } from "../../../../lib/api-client";
@@ -51,6 +54,8 @@ export default function CustomerDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [optOutSaving, setOptOutSaving] = useState(false);
+  const [prefs, setPrefs] = useState<CustomerNotificationPreferencesRecord | null>(null);
+  const [prefsSaving, setPrefsSaving] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -59,12 +64,14 @@ export default function CustomerDetailPage() {
       fetchCustomer(customerId),
       fetchCustomerAppointments(customerId, { limit: PAGE_SIZE, offset }),
       fetchCustomerStats(customerId),
+      fetchCustomerNotificationPreferences(customerId).catch(() => null),
     ])
-      .then(([customerRow, history, customerStats]) => {
+      .then(([customerRow, history, customerStats, prefData]) => {
         setCustomer(customerRow);
         setAppointments(history.data);
         setMeta(history.meta);
         setStats(customerStats);
+        setPrefs(prefData);
       })
       .catch((err: unknown) => {
         setError(err instanceof ApiRequestError ? err.message : "Could not load this customer.");
@@ -73,6 +80,21 @@ export default function CustomerDetailPage() {
   }, [customerId, offset]);
 
   useEffect(load, [load]);
+
+  async function handleTogglePref(key: "emailOptIn" | "smsOptIn" | "whatsappOptIn" | "marketingOptIn"): Promise<void> {
+    if (!prefs) return;
+    const nextVal = !prefs[key];
+    const nextPrefs = { ...prefs, [key]: nextVal };
+    setPrefs(nextPrefs);
+    setPrefsSaving(true);
+    try {
+      await updateCustomerNotificationPreferences(customerId, { [key]: nextVal });
+    } catch {
+      setPrefs(prefs);
+    } finally {
+      setPrefsSaving(false);
+    }
+  }
 
   async function toggleMarketingOptOut(): Promise<void> {
     if (!customer) {
@@ -162,6 +184,46 @@ export default function CustomerDetailPage() {
           />
           Don&apos;t send marketing messages (win-back etc.) to this customer
         </label>
+
+        {prefs ? (
+          <div className="mt-4 border-t border-slate-100 pt-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
+              Notification Channel Preferences
+            </p>
+            <div className="flex flex-wrap gap-4 text-xs text-slate-700">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={prefs.smsOptIn}
+                  disabled={prefsSaving}
+                  onChange={() => void handleTogglePref("smsOptIn")}
+                  className="rounded border-slate-300 accent-teal-600"
+                />
+                SMS notifications
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={prefs.whatsappOptIn}
+                  disabled={prefsSaving}
+                  onChange={() => void handleTogglePref("whatsappOptIn")}
+                  className="rounded border-slate-300 accent-teal-600"
+                />
+                WhatsApp notifications
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={prefs.emailOptIn}
+                  disabled={prefsSaving}
+                  onChange={() => void handleTogglePref("emailOptIn")}
+                  className="rounded border-slate-300 accent-teal-600"
+                />
+                Email notifications
+              </label>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {stats ? <CustomerHistory stats={stats} /> : null}

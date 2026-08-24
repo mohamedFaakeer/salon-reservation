@@ -28,6 +28,11 @@ export function canManageNotifications(roles: string[]): boolean {
   return roles.some((r) => r === "OWNER" || r === "MANAGER" || r === "RECEPTIONIST");
 }
 
+/** Mirrors MANAGE_NOTIFICATION_RULES & MANAGE_NOTIFICATION_TEMPLATES (OWNER, MANAGER only). */
+export function canConfigureNotifications(roles: string[]): boolean {
+  return roles.some((r) => r === "OWNER" || r === "MANAGER");
+}
+
 /** Mirrors MANAGE_SERVICES (OWNER, MANAGER only). */
 export function canManageServices(roles: string[]): boolean {
   return roles.some((r) => r === "OWNER" || r === "MANAGER");

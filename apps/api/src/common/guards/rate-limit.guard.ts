@@ -110,6 +110,30 @@ const RULES: RateLimitRule[] = [
     max: 30,
     windowMs: 60_000,
   },
+  {
+    // Notification test endpoint — tighter limit.
+    name: "notification-test",
+    method: "POST",
+    pattern: /^\/notifications\/test$|^\/notification-rules\/[^/]+\/test$/,
+    max: 10,
+    windowMs: 60_000,
+  },
+  {
+    // Customer preferences update.
+    name: "preferences-update",
+    method: "PATCH",
+    pattern: /^\/notifications\/customers\/[^/]+\/preferences$|^\/customers\/[^/]+\/notification-preferences$/,
+    max: 30,
+    windowMs: 60_000,
+  },
+  {
+    // Public customer preferences update.
+    name: "public-preferences-update",
+    method: "PATCH",
+    pattern: /^\/me\/notification-preferences$/,
+    max: 30,
+    windowMs: 60_000,
+  },
 ];
 
 /** Health checks must never be throttled — a 429 here reads as an outage. */

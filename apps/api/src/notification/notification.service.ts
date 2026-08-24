@@ -6,14 +6,27 @@ import { InjectRepository } from "@nestjs/typeorm";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { Between, In, LessThanOrEqual, Repository } from "typeorm";
 import { AppointmentStatus, ApiError, NotificationChannel, NotificationEvent, NotificationStatus } from "@salon/shared";
-import type { NotificationQueryDto } from "@salon/shared";
+import type { 
+  NotificationQueryDto,
+  CreateNotificationRuleDto,
+  UpdateNotificationRuleDto,
+  NotificationRuleQueryDto,
+  CreateNotificationTemplateDto,
+  UpdateNotificationTemplateDto,
+  CustomerNotificationPreferencesDto,
+} from "@salon/shared";
 import { Notification } from "../entities/notification.entity";
+import { NotificationRule } from "../entities/notification-rule.entity";
+import { NotificationTemplate } from "../entities/notification-template.entity";
+import { CustomerNotificationPreferences } from "../entities/customer-notification-preferences.entity";
+import { NotificationQuota } from "../entities/notification-quota.entity";
 import { Appointment } from "../entities/appointment.entity";
 import type { Customer } from "../entities/customer.entity";
 import { Tenant } from "../entities/tenant.entity";
 import { TenantStatus } from "../enums/tenant-status.enum";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { NotificationProviderResolver } from "./providers/resolve-notification-provider";
+import { TemplateRendererService } from "./services/template-renderer.service";
 
 /** Fixed backoff, minutes after each failed attempt; index = retryCount - 1. Exhausted → FAILED permanently (manual retry still available). */
 const RETRY_BACKOFF_MINUTES = [1, 5, 15, 60];
@@ -30,9 +43,14 @@ export interface NotificationListResult {
 export class NotificationService {
   constructor(
     @InjectRepository(Notification) private readonly notifications: Repository<Notification>,
+    @InjectRepository(NotificationRule) private readonly ruleRepo: Repository<NotificationRule>,
+    @InjectRepository(NotificationTemplate) private readonly templateRepo: Repository<NotificationTemplate>,
+    @InjectRepository(CustomerNotificationPreferences) private readonly prefRepo: Repository<CustomerNotificationPreferences>,
+    @InjectRepository(NotificationQuota) private readonly quotaRepo: Repository<NotificationQuota>,
     @InjectRepository(Appointment) private readonly appointments: Repository<Appointment>,
     @InjectRepository(Tenant) private readonly tenantRepo: Repository<Tenant>,
     private readonly providers: NotificationProviderResolver,
+    private readonly templateRenderer: TemplateRendererService,
   ) {}
 
   /**
@@ -290,5 +308,191 @@ export class NotificationService {
       default:
         return { subject: "Salon notification", body: "You have a notification from your salon." };
     }
+  }
+
+  // ============ Notification Rules ============
+
+  async createRule(tenantId: string, dto: CreateNotificationRuleDto): Promise<NotificationRule> {
+    const rule = this.ruleRepo.create({
+      tenantId,
+      name: dto.name,
+      timingType: dto.timingType,
+      timingValue: dto.timingValue as Record<string, unknown>,
+      channels: dto.channels,
+      targeting: dto.targeting ? (dto.targeting as Record<string, unknown>) : {},
+      priority: dto.priority || 0,
+      templateSubject: dto.templateSubject,
+      templateBody: dto.templateBody,
+      isEnabled: dto.isEnabled ?? true,
+    });
+    return this.ruleRepo.save(rule);
+  }
+
+  async listRules(tenantId: string, query: NotificationRuleQueryDto): Promise<{ data: NotificationRule[]; total: number }> {
+    const where: Record<string, unknown> = { tenantId };
+    if (query.eventType) where.eventType = query.eventType;
+    if (query.isEnabled !== undefined) where.isEnabled = query.isEnabled;
+
+    const [data, total] = await this.ruleRepo.findAndCount({
+      where,
+      order: { priority: "DESC", createdAt: "DESC" },
+      take: query.limit,
+      skip: query.offset,
+    });
+    return { data, total };
+  }
+
+  async getRule(tenantId: string, id: string): Promise<NotificationRule | null> {
+    return this.ruleRepo.findOne({ where: { id, tenantId } });
+  }
+
+  async updateRule(tenantId: string, id: string, dto: UpdateNotificationRuleDto): Promise<NotificationRule | null> {
+    const rule = await this.getRule(tenantId, id);
+    if (!rule) return null;
+
+    Object.assign(rule, dto);
+    return this.ruleRepo.save(rule);
+  }
+
+  async deleteRule(tenantId: string, id: string): Promise<void> {
+    await this.ruleRepo.delete({ id, tenantId });
+  }
+
+  // ============ Notification Templates ============
+
+  async createTemplate(tenantId: string, dto: CreateNotificationTemplateDto): Promise<NotificationTemplate> {
+    const template = this.templateRepo.create({
+      tenantId,
+      name: dto.name,
+      eventType: dto.eventType,
+      channel: dto.channel,
+      subject: dto.subject,
+      body: dto.body,
+      variables: dto.variables || this.templateRenderer.extractVariables(dto.body),
+      isSystem: dto.isSystem ?? false,
+    });
+    return this.templateRepo.save(template);
+  }
+
+  async listTemplates(tenantId: string, query: NotificationRuleQueryDto): Promise<{ data: NotificationTemplate[]; total: number }> {
+    const where: Record<string, unknown> = { tenantId };
+    if (query.eventType) where.eventType = query.eventType;
+    if (query.isEnabled !== undefined) where.isSystem = !query.isEnabled; // isEnabled in query maps to isSystem=false
+
+    const [data, total] = await this.templateRepo.findAndCount({
+      where,
+      order: { eventType: "ASC", channel: "ASC" },
+      take: query.limit,
+      skip: query.offset,
+    });
+    return { data, total };
+  }
+
+  async getTemplate(tenantId: string, id: string): Promise<NotificationTemplate | null> {
+    return this.templateRepo.findOne({ where: { id, tenantId } });
+  }
+
+  async updateTemplate(tenantId: string, id: string, dto: UpdateNotificationTemplateDto): Promise<NotificationTemplate | null> {
+    const template = await this.getTemplate(tenantId, id);
+    if (!template) return null;
+
+    Object.assign(template, dto);
+    if (dto.body) {
+      template.variables = this.templateRenderer.extractVariables(dto.body);
+    }
+    return this.templateRepo.save(template);
+  }
+
+  async deleteTemplate(tenantId: string, id: string): Promise<void> {
+    await this.templateRepo.delete({ id, tenantId });
+  }
+
+  // ============ Quota ============
+
+  async getQuota(tenantId: string, channel?: NotificationChannel): Promise<{ channel: NotificationChannel; used: number; limit: number; remaining: number }[]> {
+    const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+    const where: Record<string, unknown> = { tenantId, month: currentMonth };
+
+    const quotas = await this.quotaRepo.find({ where });
+    
+    if (quotas.length === 0) {
+      // Return default quotas if none configured
+      const defaultChannels = channel ? [channel] : [NotificationChannel.EMAIL, NotificationChannel.SMS, NotificationChannel.WHATSAPP, NotificationChannel.CONSOLE];
+      return defaultChannels.map((ch) => ({
+        channel: ch,
+        used: 0,
+        limit: ch === NotificationChannel.EMAIL ? 1000 : ch === NotificationChannel.CONSOLE ? 5000 : 500,
+        remaining: ch === NotificationChannel.EMAIL ? 1000 : ch === NotificationChannel.CONSOLE ? 5000 : 500,
+      }));
+    }
+
+    // The quota entity stores per-channel data in separate columns
+    const quota = quotas[0];
+    const result: { channel: NotificationChannel; used: number; limit: number; remaining: number }[] = [];
+    
+    const channelsToCheck = channel ? [channel] : [NotificationChannel.EMAIL, NotificationChannel.SMS, NotificationChannel.WHATSAPP, NotificationChannel.CONSOLE];
+    
+    for (const ch of channelsToCheck) {
+      let used = 0;
+      let limit = 0;
+      switch (ch) {
+        case NotificationChannel.EMAIL:
+          used = quota.emailSent;
+          limit = quota.emailLimit;
+          break;
+        case NotificationChannel.SMS:
+          used = quota.smsSent;
+          limit = quota.smsLimit;
+          break;
+        case NotificationChannel.WHATSAPP:
+          used = quota.whatsappSent;
+          limit = quota.whatsappLimit;
+          break;
+        case NotificationChannel.CONSOLE:
+          used = quota.consoleSent;
+          limit = quota.consoleLimit;
+          break;
+      }
+      result.push({
+        channel: ch,
+        used,
+        limit,
+        remaining: Math.max(0, limit - used),
+      });
+    }
+    
+    return result;
+  }
+
+  // ============ Customer Preferences ============
+
+  async getCustomerPreferences(tenantId: string, customerId: string): Promise<CustomerNotificationPreferences | null> {
+    const prefs = await this.prefRepo.findOne({ where: { tenantId, customerId } });
+    return prefs || null;
+  }
+
+  async updateCustomerPreferences(
+    tenantId: string,
+    customerId: string,
+    dto: CustomerNotificationPreferencesDto,
+  ): Promise<CustomerNotificationPreferences> {
+    let prefs = await this.getCustomerPreferences(tenantId, customerId);
+    if (!prefs) {
+      prefs = this.prefRepo.create({
+        tenantId,
+        customerId,
+        emailOptIn: dto.emailEnabled ?? true,
+        smsOptIn: dto.smsEnabled ?? true,
+        whatsappOptIn: dto.whatsappEnabled ?? true,
+        marketingOptIn: dto.marketing ?? false,
+      });
+    } else {
+      // Map DTO fields to entity fields
+      if (dto.emailEnabled !== undefined) prefs.emailOptIn = dto.emailEnabled;
+      if (dto.smsEnabled !== undefined) prefs.smsOptIn = dto.smsEnabled;
+      if (dto.whatsappEnabled !== undefined) prefs.whatsappOptIn = dto.whatsappEnabled;
+      if (dto.marketing !== undefined) prefs.marketingOptIn = dto.marketing;
+    }
+    return this.prefRepo.save(prefs);
   }
 }

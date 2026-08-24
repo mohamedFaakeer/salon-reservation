@@ -26,3 +26,8 @@ export * from "./attendance-day.entity";
 export * from "./attendance-edit-request.entity";
 export * from "./incentive-plan.entity";
 export * from "./incentive-payout.entity";
+export * from "./notification-rule.entity";
+export * from "./notification-log.entity";
+export * from "./notification-template.entity";
+export * from "./customer-notification-preferences.entity";
+export * from "./notification-quota.entity";

@@ -265,6 +265,159 @@ export interface NotificationRecord {
   createdAt: string;
 }
 
+export interface NotificationRuleRecord {
+  id: string;
+  tenantId: string;
+  name: string;
+  eventType?: string;
+  timingType: "BEFORE_APPT" | "DAY_OF_APPT" | "AFTER_BOOKING" | "AFTER_COMPLETION";
+  timingValue: {
+    offsetHours?: number;
+    windowMinutes?: number;
+    delayMinutes?: number;
+    atBooking?: boolean;
+    atCheckin?: boolean;
+  };
+  channels: ("console" | "email" | "sms" | "whatsapp")[];
+  templateSubject: string | null;
+  templateBody: string;
+  targeting: {
+    staffIds?: string[];
+    serviceIds?: string[];
+    customerTags?: string[];
+    minTotalAmount?: number;
+    maxTotalAmount?: number;
+    bookingSources?: string[];
+    isNewCustomer?: boolean;
+    custom?: Record<string, unknown>;
+  };
+  isEnabled: boolean;
+  priority: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateNotificationRuleInput {
+  name: string;
+  eventType: string;
+  timingType: "BEFORE_APPT" | "DAY_OF_APPT" | "AFTER_BOOKING" | "AFTER_COMPLETION";
+  timingValue: {
+    offsetHours?: number;
+    windowMinutes?: number;
+    delayMinutes?: number;
+    atBooking?: boolean;
+    atCheckin?: boolean;
+  };
+  channels: ("console" | "email" | "sms" | "whatsapp")[];
+  templateSubject?: string;
+  templateBody?: string;
+  targeting?: {
+    staffIds?: string[];
+    serviceIds?: string[];
+    customerTags?: string[];
+    minTotalAmount?: number;
+    maxTotalAmount?: number;
+    bookingSources?: string[];
+    isNewCustomer?: boolean;
+  };
+  priority?: number;
+  isEnabled?: boolean;
+}
+
+export type UpdateNotificationRuleInput = Partial<CreateNotificationRuleInput>;
+
+export interface NotificationTemplateRecord {
+  id: string;
+  tenantId: string;
+  name: string;
+  eventType: string;
+  channel: "console" | "email" | "sms" | "whatsapp";
+  subject: string | null;
+  body: string;
+  variables: string[];
+  isSystem: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateNotificationTemplateInput {
+  name: string;
+  eventType: string;
+  channel: "console" | "email" | "sms" | "whatsapp";
+  subject?: string;
+  body: string;
+  variables?: string[];
+  isSystem?: boolean;
+}
+
+export interface UpdateNotificationTemplateInput {
+  name?: string;
+  subject?: string;
+  body?: string;
+  variables?: string[];
+}
+
+export interface TestNotificationInput {
+  eventType: string;
+  channels: ("console" | "email" | "sms" | "whatsapp")[];
+  templateSubject?: string;
+  templateBody?: string;
+  appointmentId?: string;
+  mockData?: Record<string, unknown>;
+}
+
+export interface TestNotificationResult {
+  success: boolean;
+  evaluations?: Array<{
+    ruleId?: string;
+    ruleName?: string;
+    shouldSend: boolean;
+    matchedChannels: string[];
+    renderedSubject: string | null;
+    renderedBody: string;
+  }>;
+  renderedSubject?: string | null;
+  renderedBody?: string;
+  sentChannels?: string[];
+  error?: string;
+}
+
+export interface NotificationQuotaRecord {
+  month: string;
+  emailSent: number;
+  smsSent: number;
+  whatsappSent: number;
+  consoleSent: number;
+  emailLimit: number;
+  smsLimit: number;
+  whatsappLimit: number;
+  consoleLimit: number;
+  alertedAt?: string | null;
+}
+
+export interface CustomerNotificationPreferencesRecord {
+  id: string;
+  customerId: string;
+  emailOptIn: boolean;
+  smsOptIn: boolean;
+  whatsappOptIn: boolean;
+  consoleOptIn: boolean;
+  marketingOptIn: boolean;
+  quietHoursStart: string | null;
+  quietHoursEnd: string | null;
+  timezone: string;
+}
+
+export interface UpdateCustomerNotificationPreferencesInput {
+  emailOptIn?: boolean;
+  smsOptIn?: boolean;
+  whatsappOptIn?: boolean;
+  marketingOptIn?: boolean;
+  quietHoursStart?: string | null;
+  quietHoursEnd?: string | null;
+  timezone?: string;
+}
+
 export class ApiRequestError extends Error {
   readonly statusCode: number;
   readonly code: string;
@@ -1003,6 +1156,88 @@ export function fetchNotifications(status?: string): Promise<{ data: Notificatio
 
 export function retryNotification(id: string): Promise<NotificationRecord> {
   return request<NotificationRecord>(`/notifications/${id}/retry`, { method: "POST" });
+}
+
+export function fetchNotificationRules(params?: { eventType?: string; isEnabled?: boolean }): Promise<{ data: NotificationRuleRecord[] }> {
+  const qs = new URLSearchParams();
+  if (params?.eventType) qs.set("eventType", params.eventType);
+  if (params?.isEnabled !== undefined) qs.set("isEnabled", String(params.isEnabled));
+  const query = qs.toString();
+  return request<{ data: NotificationRuleRecord[] }>(`/notifications/rules${query ? `?${query}` : ""}`);
+}
+
+export function fetchNotificationRule(id: string): Promise<NotificationRuleRecord> {
+  return request<NotificationRuleRecord>(`/notifications/rules/${id}`);
+}
+
+export function createNotificationRule(input: CreateNotificationRuleInput): Promise<NotificationRuleRecord> {
+  return request<NotificationRuleRecord>("/notifications/rules", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateNotificationRule(id: string, input: UpdateNotificationRuleInput): Promise<NotificationRuleRecord> {
+  return request<NotificationRuleRecord>(`/notifications/rules/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteNotificationRule(id: string): Promise<void> {
+  return request<void>(`/notifications/rules/${id}`, { method: "DELETE" });
+}
+
+export function fetchNotificationTemplates(params?: { eventType?: string; channel?: string }): Promise<{ data: NotificationTemplateRecord[] }> {
+  const qs = new URLSearchParams();
+  if (params?.eventType) qs.set("eventType", params.eventType);
+  if (params?.channel) qs.set("channel", params.channel);
+  const query = qs.toString();
+  return request<{ data: NotificationTemplateRecord[] }>(`/notifications/templates${query ? `?${query}` : ""}`);
+}
+
+export function fetchNotificationTemplate(id: string): Promise<NotificationTemplateRecord> {
+  return request<NotificationTemplateRecord>(`/notifications/templates/${id}`);
+}
+
+export function createNotificationTemplate(input: CreateNotificationTemplateInput): Promise<NotificationTemplateRecord> {
+  return request<NotificationTemplateRecord>("/notifications/templates", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateNotificationTemplate(id: string, input: UpdateNotificationTemplateInput): Promise<NotificationTemplateRecord> {
+  return request<NotificationTemplateRecord>(`/notifications/templates/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteNotificationTemplate(id: string): Promise<void> {
+  return request<void>(`/notifications/templates/${id}`, { method: "DELETE" });
+}
+
+export function sendTestNotification(input: TestNotificationInput): Promise<TestNotificationResult> {
+  return request<TestNotificationResult>("/notifications/test", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function fetchNotificationQuota(channel?: string): Promise<NotificationQuotaRecord> {
+  return request<NotificationQuotaRecord>(`/notifications/quota${channel ? `?channel=${channel}` : ""}`);
+}
+
+export function fetchCustomerNotificationPreferences(customerId: string): Promise<CustomerNotificationPreferencesRecord> {
+  return request<CustomerNotificationPreferencesRecord>(`/notifications/customers/${customerId}/preferences`);
+}
+
+export function updateCustomerNotificationPreferences(customerId: string, input: UpdateCustomerNotificationPreferencesInput): Promise<CustomerNotificationPreferencesRecord> {
+  return request<CustomerNotificationPreferencesRecord>(`/notifications/customers/${customerId}/preferences`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
 }
 
 export type PlanTier = "LITE" | "PRO";
