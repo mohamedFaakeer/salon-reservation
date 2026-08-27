@@ -1756,3 +1756,49 @@ inventing a look for one screen would have made it read as a different product.
    this change. Confidence instead comes from the mechanism being
    unmodified, already-proven code shared with six other controllers; not
    worth un-suspending a test fixture to force a redundant demonstration.
+
+## 43. Public, no-login unsubscribe link for marketing messages (2026-08-28)
+
+1. **Phase 4b of the SMS plan.** Win-back/marketing messages had no
+   self-serve opt-out mechanism at all — a customer's only recourse was
+   calling the salon and asking staff to flip `marketingOptOut` for them via
+   `PATCH /customers/:id`. Sri Lanka's telecom rules expect a promotional
+   message to offer a way to stop it, and this closes that gap.
+2. **`GET/POST /customers/:id/unsubscribe` is deliberately tenant-agnostic**
+   — the customer's own id (a UUID primary key, globally unique) is the only
+   credential, not the `(tenantId, phone)` pair `CustomerController`'s
+   `findById` requires. A one-tap link from an SMS/email can't ask its
+   recipient to re-type identifying details to prove ownership. The
+   accepted tradeoff: the worst case of this id being guessed or leaked is
+   a customer opting out of marketing they never chose to see — mildly
+   annoying and staff-reversible, not a destructive or financial action —
+   the same "low friction over cryptographic rigor" posture
+   `bookingReference` already carries for cancel/reschedule links, just
+   without even that link's second factor (phone), because there is no
+   appointment/phone pairing to check for a message with no appointment
+   behind it.
+3. **Lives in its own `@Public()` controller**
+   (`CustomerUnsubscribeController`), not bolted onto the existing
+   `CustomerController` — that controller carries a class-level
+   `@Permissions(MANAGE_CUSTOMERS)` guard, and fighting that for one route
+   risked accidentally weakening it for the others. Same shape
+   `BookingController` already uses for its own self-service routes: a
+   whole controller marked public, sharing a path prefix with a protected
+   sibling controller without colliding.
+4. **GET, not just POST, and a confirm-then-submit page, not a bare
+   GET-triggers-the-action link** — an SMS/email link-preview crawler
+   fetching the URL to render a rich preview must not silently opt someone
+   out. The public `apps/web` page at `/unsubscribe/[customerId]` reads
+   state via `GET` (safe to fetch blindly) and only mutates on the
+   customer's explicit button press (`POST`), mirroring `/receipts/[id]`
+   and `/booking/[reference]`'s existing "id in the URL, no login" shape.
+5. **`{unsubscribeUrl}` is honored where the Owner places it, but appended
+   automatically if they don't** (`winback.service.ts`'s `personalize()`)
+   — compliance shouldn't depend on every Owner remembering to include the
+   token in every custom message. Wording is deliberately channel-neutral
+   ("Visit … to stop these messages", not "Reply STOP"): `sendCampaignMessage()`
+   only ever fires CONSOLE+EMAIL today, never SMS (win-back campaigns are
+   not yet wired to the Rules/SMS path at all — a separate, undecided
+   question from this fix, noted here rather than silently addressed), so
+   an SMS-specific instruction would be actively wrong for an email
+   recipient.

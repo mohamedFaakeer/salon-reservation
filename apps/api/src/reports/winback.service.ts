@@ -79,7 +79,7 @@ export class WinbackService {
         continue;
       }
 
-      const message = personalize(dto.message, customer.firstName, tenant.name, dto.giftCardCode);
+      const message = personalize(dto.message, customer, tenant, dto.giftCardCode);
       await this.notificationService.sendCampaignMessage(tenant, customer, message);
       await this.audit.record({
         tenantId: tenant.id,
@@ -96,10 +96,30 @@ export class WinbackService {
   }
 }
 
-function personalize(message: string, firstName: string, salonName: string, giftCardCode?: string): string {
-  const substituted = message.replace(/\{firstName\}/g, firstName).replace(/\{salonName\}/g, salonName);
-  if (!giftCardCode) {
-    return substituted;
+/**
+ * DECISIONS.md §43 — every win-back message carries a working opt-out,
+ * whether or not the Owner remembered to type `{unsubscribeUrl}`: this is
+ * the one message type sent purely for marketing, and Sri Lanka's telecom
+ * rules expect promotional messages to offer a way to stop them. If the
+ * Owner did place the token, it's substituted where they put it; otherwise
+ * one is appended, so compliance never depends on the sender remembering.
+ */
+function personalize(message: string, customer: Customer, tenant: Tenant, giftCardCode?: string): string {
+  const baseUrl = (tenant.settings as { publicBookingUrl?: string })?.publicBookingUrl || "https://salon.example.com";
+  const unsubscribeUrl = `${baseUrl}/unsubscribe/${customer.id}`;
+
+  let result = message.replace(/\{firstName\}/g, customer.firstName).replace(/\{salonName\}/g, tenant.name);
+  const hadExplicitUnsubscribeToken = result.includes("{unsubscribeUrl}");
+  result = result.replace(/\{unsubscribeUrl\}/g, unsubscribeUrl);
+
+  if (giftCardCode) {
+    result = `${result}\n\nUse code ${giftCardCode.trim().toUpperCase()} at checkout.`;
   }
-  return `${substituted}\n\nUse code ${giftCardCode.trim().toUpperCase()} at checkout.`;
+  if (!hadExplicitUnsubscribeToken) {
+    // Channel-neutral wording: sendCampaignMessage() only ever fires
+    // CONSOLE+EMAIL today (never SMS — DECISIONS.md §43), so "reply STOP"
+    // would be actively wrong for an email recipient.
+    result = `${result}\n\nVisit ${unsubscribeUrl} to stop these messages.`;
+  }
+  return result;
 }

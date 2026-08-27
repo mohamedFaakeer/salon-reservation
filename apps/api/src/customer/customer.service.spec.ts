@@ -355,4 +355,54 @@ describe("CustomerService", () => {
       expect(result.ratingCount).toBe(0);
     });
   });
+
+  describe("getUnsubscribeInfo / unsubscribeFromMarketing (DECISIONS.md §43, public link)", () => {
+    function fakeCustomerWithTenant(overrides: Partial<Customer> = {}): Customer {
+      return {
+        id: "cust-1",
+        tenantId: "tenant-1",
+        firstName: "Sanduni",
+        marketingOptOut: false,
+        tenant: { id: "tenant-1", name: "Elegance Salon" },
+        ...overrides,
+      } as Customer;
+    }
+
+    it("404s with a link-specific message when the id doesn't resolve — no tenantId required, unlike findById", async () => {
+      vi.mocked(customers.findOne).mockResolvedValue(null);
+      await expect(service.getUnsubscribeInfo("missing")).rejects.toMatchObject({
+        statusCode: 404,
+        code: "CUSTOMER_NOT_FOUND",
+      });
+      // Confirms the lookup is by id alone — no tenantId in the where clause.
+      expect(customers.findOne).toHaveBeenCalledWith({ where: { id: "missing" }, relations: { tenant: true } });
+    });
+
+    it("reports whether the customer has already opted out, without changing anything", async () => {
+      vi.mocked(customers.findOne).mockResolvedValue(fakeCustomerWithTenant({ marketingOptOut: true }));
+
+      const info = await service.getUnsubscribeInfo("cust-1");
+
+      expect(info).toEqual({ customerFirstName: "Sanduni", salonName: "Elegance Salon", alreadyOptedOut: true });
+      expect(customers.save).not.toHaveBeenCalled();
+    });
+
+    it("sets marketingOptOut on confirm", async () => {
+      const customer = fakeCustomerWithTenant({ marketingOptOut: false });
+      vi.mocked(customers.findOne).mockResolvedValue(customer);
+
+      const result = await service.unsubscribeFromMarketing("cust-1");
+
+      expect(customers.save).toHaveBeenCalledWith(expect.objectContaining({ marketingOptOut: true }));
+      expect(result).toEqual({ customerFirstName: "Sanduni", salonName: "Elegance Salon" });
+    });
+
+    it("is idempotent — confirming an already-opted-out customer doesn't write again", async () => {
+      vi.mocked(customers.findOne).mockResolvedValue(fakeCustomerWithTenant({ marketingOptOut: true }));
+
+      await service.unsubscribeFromMarketing("cust-1");
+
+      expect(customers.save).not.toHaveBeenCalled();
+    });
+  });
 });

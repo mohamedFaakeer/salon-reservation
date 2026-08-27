@@ -7,7 +7,7 @@ import { BusyLabel } from "./spinner";
 import { errorCopy } from "../lib/error-copy";
 
 const MESSAGE_MAX = 500;
-const TOKENS = ["{firstName}", "{salonName}"];
+const TOKENS = ["{firstName}", "{salonName}", "{unsubscribeUrl}"];
 
 function defaultTemplate(): string {
   return "Hi {firstName}, it's been a while since your last visit to {salonName}! We'd love to see you again soon — book your next appointment whenever suits you.";
@@ -163,6 +163,9 @@ export function WinbackCampaignDrawer({
             <span className="text-xs tabular-nums text-slate-400">
               {message.length} / {MESSAGE_MAX}
             </span>
+          </span>
+          <span className="text-xs text-slate-500">
+            An opt-out link is added automatically if you don't place {"{unsubscribeUrl}"} yourself.
           </span>
         </label>
 

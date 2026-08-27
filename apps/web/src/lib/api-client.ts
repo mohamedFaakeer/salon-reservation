@@ -318,6 +318,21 @@ export function fetchRetailSaleReceipt(id: string): Promise<RetailSaleReceiptVie
   return request<RetailSaleReceiptView>(`/retail-sale-receipts/${id}`);
 }
 
+/** Backs `/unsubscribe/[customerId]` — the public, no-login opt-out link carried in marketing messages. */
+export interface UnsubscribeInfo {
+  customerFirstName: string;
+  salonName: string;
+  alreadyOptedOut: boolean;
+}
+
+export function fetchUnsubscribeInfo(customerId: string): Promise<UnsubscribeInfo> {
+  return request<UnsubscribeInfo>(`/customers/${customerId}/unsubscribe`);
+}
+
+export function confirmUnsubscribe(customerId: string): Promise<{ customerFirstName: string; salonName: string }> {
+  return request(`/customers/${customerId}/unsubscribe`, { method: "POST" });
+}
+
 export function cancelBooking(
   reference: string,
   phone: string,

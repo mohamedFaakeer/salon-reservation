@@ -6,11 +6,12 @@ import { AppointmentServiceLine } from "../entities/appointment-service.entity";
 import { Payment } from "../entities/payment.entity";
 import { Rating } from "../entities/rating.entity";
 import { CustomerController } from "./customer.controller";
+import { CustomerUnsubscribeController } from "./customer-unsubscribe.controller";
 import { CustomerService } from "./customer.service";
 
 @Module({
   imports: [TypeOrmModule.forFeature([Customer, Appointment, AppointmentServiceLine, Payment, Rating])],
-  controllers: [CustomerController],
+  controllers: [CustomerController, CustomerUnsubscribeController],
   providers: [CustomerService],
   exports: [CustomerService],
 })

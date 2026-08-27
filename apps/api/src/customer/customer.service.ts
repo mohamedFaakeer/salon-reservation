@@ -223,6 +223,48 @@ export class CustomerService {
   }
 
   /**
+   * DECISIONS.md §43 — backs the public, no-login `{{unsubscribeUrl}}` link
+   * carried in marketing messages. Deliberately tenant-agnostic (`id` alone,
+   * a customer's primary key — globally unique, not the `(tenantId, phone)`
+   * pair `findById` requires): a one-tap SMS link can't ask the recipient to
+   * re-enter identifying details, and the worst case of this credential
+   * being guessed is a customer opting out of marketing they never chose to
+   * see, not a destructive or financial action — the same "low friction
+   * over cryptographic rigor" tradeoff `bookingReference` already accepts.
+   */
+  private async findByIdPublic(id: string): Promise<Customer> {
+    const customer = await this.customers.findOne({ where: { id }, relations: { tenant: true } });
+    if (!customer) {
+      throw new ApiError({
+        statusCode: 404,
+        code: "CUSTOMER_NOT_FOUND",
+        message: "This link is no longer valid.",
+      });
+    }
+    return customer;
+  }
+
+  /** GET (public) — lets the unsubscribe page greet the customer by name before they confirm. */
+  async getUnsubscribeInfo(id: string): Promise<{ customerFirstName: string; salonName: string; alreadyOptedOut: boolean }> {
+    const customer = await this.findByIdPublic(id);
+    return {
+      customerFirstName: customer.firstName,
+      salonName: customer.tenant.name,
+      alreadyOptedOut: customer.marketingOptOut,
+    };
+  }
+
+  /** POST (public) — idempotent; re-confirming an already-opted-out customer is a no-op, not an error. */
+  async unsubscribeFromMarketing(id: string): Promise<{ customerFirstName: string; salonName: string }> {
+    const customer = await this.findByIdPublic(id);
+    if (!customer.marketingOptOut) {
+      customer.marketingOptOut = true;
+      await this.customers.save(customer);
+    }
+    return { customerFirstName: customer.firstName, salonName: customer.tenant.name };
+  }
+
+  /**
    * What this customer is worth to this salon, and how reliable they are.
    *
    * Every figure is aggregated in the database rather than tallied from a page

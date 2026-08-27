@@ -59,11 +59,37 @@ describe("WinbackService", () => {
     expect(notificationService.sendCampaignMessage).toHaveBeenCalledWith(
       fakeTenant(),
       expect.objectContaining({ id: "cust-1" }),
-      "Hi Sanduni, come back to Elegance Salon!",
+      "Hi Sanduni, come back to Elegance Salon!\n\nVisit https://salon.example.com/unsubscribe/cust-1 to stop these messages.",
     );
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ action: "WINBACK_CAMPAIGN_SENT", entityId: "cust-1" }),
     );
+  });
+
+  it("appends a working opt-out link even when the Owner's message doesn't mention it (DECISIONS.md §43)", async () => {
+    vi.mocked(customersRepo.find).mockResolvedValueOnce([fakeCustomer()]);
+
+    await service.send(fakeTenant(), { customerIds: ["cust-1"], message: "Come back soon!" }, "user-1");
+
+    expect(notificationService.sendCampaignMessage).toHaveBeenCalledWith(
+      fakeTenant(),
+      expect.anything(),
+      expect.stringContaining("/unsubscribe/cust-1"),
+    );
+  });
+
+  it("substitutes {unsubscribeUrl} in place rather than also appending a second one, when the Owner placed it explicitly", async () => {
+    vi.mocked(customersRepo.find).mockResolvedValueOnce([fakeCustomer()]);
+
+    await service.send(
+      fakeTenant(),
+      { customerIds: ["cust-1"], message: "Come back soon! Opt out here: {unsubscribeUrl}" },
+      "user-1",
+    );
+
+    const sentMessage = vi.mocked(notificationService.sendCampaignMessage).mock.calls[0][2] as string;
+    expect(sentMessage).toContain("Opt out here: https://salon.example.com/unsubscribe/cust-1");
+    expect(sentMessage.match(/unsubscribe\/cust-1/g)?.length).toBe(1);
   });
 
   it("skips a customer who has opted out of marketing, without sending", async () => {
