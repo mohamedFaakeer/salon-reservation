@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 // Repository must stay a VALUE import: NestJS resolves constructor
 // injection via design:paramtypes metadata at runtime; `import type` would
@@ -40,8 +40,32 @@ export interface NotificationListResult {
   meta: { total: number; limit: number; offset: number };
 }
 
+type QuotaSentColumn = "emailSent" | "smsSent" | "whatsappSent" | "consoleSent";
+type QuotaLimitColumn = "emailLimit" | "smsLimit" | "whatsappLimit" | "consoleLimit";
+
+/** `NotificationQuota.month` is `YYYY-MM` — one shared definition so every reader/writer agrees. */
+function currentQuotaMonth(): string {
+  return new Date().toISOString().slice(0, 7);
+}
+
+function quotaColumnsFor(channel: NotificationChannel): { sentCol: QuotaSentColumn; limitCol: QuotaLimitColumn } {
+  switch (channel) {
+    case NotificationChannel.EMAIL:
+      return { sentCol: "emailSent", limitCol: "emailLimit" };
+    case NotificationChannel.SMS:
+      return { sentCol: "smsSent", limitCol: "smsLimit" };
+    case NotificationChannel.WHATSAPP:
+      return { sentCol: "whatsappSent", limitCol: "whatsappLimit" };
+    case NotificationChannel.CONSOLE:
+    default:
+      return { sentCol: "consoleSent", limitCol: "consoleLimit" };
+  }
+}
+
 @Injectable()
 export class NotificationService {
+  private readonly logger = new Logger(NotificationService.name);
+
   constructor(
     @InjectRepository(Notification) private readonly notifications: Repository<Notification>,
     @InjectRepository(NotificationRule) private readonly ruleRepo: Repository<NotificationRule>,
@@ -245,9 +269,28 @@ export class NotificationService {
     return this.attemptDelivery(notification);
   }
 
+  /**
+   * DECISIONS.md §41 — quota is enforced here, not just displayed. CONSOLE
+   * is deliberately exempt from the block (never from the counter): it's
+   * the codebase's own documented "guaranteed-offline, always succeeds"
+   * fallback (Decision Q4), and every single lifecycle event fires one —
+   * gating it the same way as paid SMS would risk locking a busy salon out
+   * of its own booking/payment/reminder confirmations over a free channel.
+   */
   private async attemptDelivery(notification: Notification): Promise<Notification> {
     const provider = this.providers.resolve(notification.channel);
     const { subject, body } = await this.buildMessage(notification);
+
+    const quota = await this.ensureQuotaRow(notification.tenantId);
+    const { sentCol, limitCol } = quotaColumnsFor(notification.channel);
+    const isMetered = notification.channel !== NotificationChannel.CONSOLE;
+
+    if (isMetered && quota[sentCol] >= quota[limitCol]) {
+      notification.status = NotificationStatus.FAILED;
+      notification.lastError = `Monthly ${notification.channel} quota reached (${quota[limitCol]} messages this month). Contact support to raise this tenant's limit.`;
+      notification.nextRetryAt = null;
+      return this.notifications.save(notification);
+    }
 
     try {
       const result = await provider.send({ recipient: notification.recipient, subject, body });
@@ -255,6 +298,7 @@ export class NotificationService {
       notification.providerMessageId = result.providerMessageId;
       notification.lastError = null;
       notification.nextRetryAt = null;
+      await this.recordQuotaUsage(quota, sentCol, limitCol);
     } catch (err) {
       notification.retryCount += 1;
       notification.lastError = err instanceof Error ? err.message : "Unknown delivery error.";
@@ -269,6 +313,60 @@ export class NotificationService {
     }
 
     return this.notifications.save(notification);
+  }
+
+  /**
+   * This month's quota row for a tenant, creating one at the schema's
+   * default limits if it doesn't exist yet. Defaults are passed explicitly
+   * into `create()` (matching `recordAndSend`'s own convention elsewhere in
+   * this file) rather than relying on the DB's column defaults reflecting
+   * back onto the saved object — the very next line reads these fields
+   * in-memory to decide whether to block the send.
+   */
+  private async ensureQuotaRow(tenantId: string): Promise<NotificationQuota> {
+    const month = currentQuotaMonth();
+    const existing = await this.quotaRepo.findOne({ where: { tenantId, month } });
+    if (existing) {
+      return existing;
+    }
+    return this.quotaRepo.save(
+      this.quotaRepo.create({
+        tenantId,
+        month,
+        emailSent: 0,
+        smsSent: 0,
+        whatsappSent: 0,
+        consoleSent: 0,
+        emailLimit: 1000,
+        smsLimit: 500,
+        whatsappLimit: 500,
+        consoleLimit: 5000,
+      }),
+    );
+  }
+
+  /**
+   * Atomic `col = col + 1` (TypeORM's `increment`, not a read-modify-write)
+   * so two concurrent sends can't clobber each other's count. Only called
+   * after a confirmed successful send — a message that failed at the
+   * gateway was never actually delivered, so it shouldn't count against
+   * the tenant's monthly allowance.
+   */
+  private async recordQuotaUsage(
+    quota: NotificationQuota,
+    sentCol: QuotaSentColumn,
+    limitCol: QuotaLimitColumn,
+  ): Promise<void> {
+    await this.quotaRepo.increment({ id: quota.id }, sentCol, 1);
+
+    const usedAfter = quota[sentCol] + 1;
+    const limit = quota[limitCol];
+    if (limit > 0 && usedAfter / limit >= 0.8 && !quota.alertedAt) {
+      this.logger.warn(
+        `Tenant ${quota.tenantId} has used ${usedAfter}/${limit} (${Math.round((usedAfter / limit) * 100)}%) of its monthly ${sentCol} quota.`,
+      );
+      await this.quotaRepo.update({ id: quota.id }, { alertedAt: new Date() });
+    }
   }
 
   /**
@@ -448,7 +546,7 @@ export class NotificationService {
   // ============ Quota ============
 
   async getQuota(tenantId: string, channel?: NotificationChannel): Promise<{ channel: NotificationChannel; used: number; limit: number; remaining: number }[]> {
-    const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+    const currentMonth = currentQuotaMonth();
     const where: Record<string, unknown> = { tenantId, month: currentMonth };
 
     const quotas = await this.quotaRepo.find({ where });

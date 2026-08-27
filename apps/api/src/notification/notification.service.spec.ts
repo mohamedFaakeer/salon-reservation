@@ -22,6 +22,8 @@ function mockRepo<T extends ObjectLiteral>() {
     findOne: vi.fn(async () => null as T | null),
     findAndCount: vi.fn(async () => [[], 0] as [T[], number]),
     delete: vi.fn(async () => ({ affected: 1 })),
+    increment: vi.fn(async () => ({ affected: 1, raw: [], generatedMaps: [] })),
+    update: vi.fn(async () => ({ affected: 1, raw: [], generatedMaps: [] })),
   } as unknown as Repository<T>;
 }
 
@@ -46,6 +48,24 @@ function fakeTenant(overrides: Partial<Tenant> = {}): Tenant {
     settings: { reminderOffsets: [24, 2] },
     ...overrides,
   } as Tenant;
+}
+
+function fakeQuota(overrides: Partial<NotificationQuota> = {}): NotificationQuota {
+  return {
+    id: "quota-1",
+    tenantId: "tenant-1",
+    month: new Date().toISOString().slice(0, 7),
+    emailSent: 0,
+    smsSent: 0,
+    whatsappSent: 0,
+    consoleSent: 0,
+    emailLimit: 1000,
+    smsLimit: 500,
+    whatsappLimit: 500,
+    consoleLimit: 5000,
+    alertedAt: null,
+    ...overrides,
+  } as NotificationQuota;
 }
 
 describe("NotificationService", () => {
@@ -265,6 +285,102 @@ describe("NotificationService", () => {
       expect(sendMock).toHaveBeenCalledWith(
         expect.objectContaining({ subject: "A message from your salon", body: "Come back soon!" }),
       );
+    });
+  });
+
+  describe("quota enforcement (DECISIONS.md §41)", () => {
+    it("blocks an SMS send once the monthly quota is reached, without calling the provider", async () => {
+      vi.mocked(quotaRepo.findOne).mockResolvedValue(fakeQuota({ smsSent: 500, smsLimit: 500 }));
+      const appointment = fakeAppointment();
+      const customer = fakeCustomer();
+
+      // @ts-expect-error — accessing the private method directly for a focused unit test.
+      const result: Notification = await service.attemptDelivery({
+        id: "notif-1",
+        tenantId: "tenant-1",
+        appointmentId: appointment.id,
+        channel: NotificationChannel.SMS,
+        type: NotificationEvent.BOOKING_CONFIRMATION,
+        recipient: customer.phone,
+        retryCount: 0,
+      } as Notification);
+
+      expect(sendMock).not.toHaveBeenCalled();
+      expect(result.status).toBe(NotificationStatus.FAILED);
+      expect(result.lastError).toContain("quota");
+    });
+
+    it("never blocks CONSOLE even when its counter is at or over its limit", async () => {
+      vi.mocked(quotaRepo.findOne).mockResolvedValue(fakeQuota({ consoleSent: 999_999, consoleLimit: 5000 }));
+      const tenant = fakeTenant();
+      const appointment = fakeAppointment();
+      const customer = fakeCustomer();
+
+      await service.fire(tenant, NotificationEvent.BOOKING_CONFIRMATION, appointment, customer);
+
+      expect(sendMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("increments the right counter — atomically, via increment() — only after a confirmed successful send", async () => {
+      const quota = fakeQuota();
+      vi.mocked(quotaRepo.findOne).mockResolvedValue(quota);
+      const tenant = fakeTenant();
+      const appointment = fakeAppointment();
+      const customer = fakeCustomer({ email: "a@b.com" });
+
+      await service.fire(tenant, NotificationEvent.BOOKING_CONFIRMATION, appointment, customer);
+
+      // CONSOLE and EMAIL both sent successfully — each increments its own column.
+      expect(quotaRepo.increment).toHaveBeenCalledWith({ id: quota.id }, "consoleSent", 1);
+      expect(quotaRepo.increment).toHaveBeenCalledWith({ id: quota.id }, "emailSent", 1);
+    });
+
+    it("does not increment quota when the send itself fails", async () => {
+      sendMock.mockRejectedValueOnce(new Error("SMTP down"));
+      vi.mocked(quotaRepo.findOne).mockResolvedValue(fakeQuota());
+      const tenant = fakeTenant();
+      const appointment = fakeAppointment();
+      const customer = fakeCustomer({ email: null });
+
+      await service.fire(tenant, NotificationEvent.BOOKING_CONFIRMATION, appointment, customer);
+
+      expect(quotaRepo.increment).not.toHaveBeenCalled();
+    });
+
+    it("sets alertedAt once usage crosses 80% of the limit, and only once", async () => {
+      const quota = fakeQuota({ smsSent: 399, smsLimit: 500, alertedAt: null }); // 400/500 = 80% after this send
+      vi.mocked(quotaRepo.findOne).mockResolvedValue(quota);
+
+      // @ts-expect-error — accessing the private method directly for a focused unit test.
+      await service.attemptDelivery({
+        id: "notif-1",
+        tenantId: "tenant-1",
+        appointmentId: "appt-1",
+        channel: NotificationChannel.SMS,
+        type: NotificationEvent.BOOKING_CONFIRMATION,
+        recipient: "+94771234567",
+        retryCount: 0,
+      } as Notification);
+
+      expect(quotaRepo.update).toHaveBeenCalledWith({ id: quota.id }, { alertedAt: expect.any(Date) });
+    });
+
+    it("does not re-alert once alertedAt is already set this month", async () => {
+      const quota = fakeQuota({ smsSent: 499, smsLimit: 500, alertedAt: new Date() });
+      vi.mocked(quotaRepo.findOne).mockResolvedValue(quota);
+
+      // @ts-expect-error — accessing the private method directly for a focused unit test.
+      await service.attemptDelivery({
+        id: "notif-1",
+        tenantId: "tenant-1",
+        appointmentId: "appt-1",
+        channel: NotificationChannel.SMS,
+        type: NotificationEvent.BOOKING_CONFIRMATION,
+        recipient: "+94771234567",
+        retryCount: 0,
+      } as Notification);
+
+      expect(quotaRepo.update).not.toHaveBeenCalled();
     });
   });
 

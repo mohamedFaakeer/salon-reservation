@@ -1698,3 +1698,36 @@ inventing a look for one screen would have made it read as a different product.
    toggles now answer two different, non-overlapping questions: "should
    this event send at all" (this section) vs. "which starting-point text
    would an as-yet-unbuilt template-based Rule use" (§39.4).
+
+## 41. Notification quota is enforced, not just displayed — CONSOLE stays unmetered (2026-08-28)
+
+1. **Phase 2 of the SMS plan.** `NotificationQuota` (migration
+   `NotificationQuota1750000500000`) had columns for monthly per-channel
+   sent counts and limits, and `GET /notifications/quota` read them, but
+   nothing ever incremented a counter or blocked a send at the limit — the
+   quota card in the admin UI showed real limits against permanently-zero
+   usage. `NotificationService.attemptDelivery()` now checks the tenant's
+   current-month row before calling the provider, and increments the right
+   column — atomically, via TypeORM's `increment()` (`col = col + 1` at the
+   DB level, not read-then-write) — only after a *confirmed successful*
+   send. A message that failed at the gateway was never actually delivered,
+   so it doesn't count against the tenant's allowance.
+2. **CONSOLE is deliberately exempt from being blocked, though its usage is
+   still counted for reporting.** It's the codebase's own documented
+   "guaranteed-offline, always succeeds" fallback (Decision Q4) — `fire()`
+   creates one for every single lifecycle event, so a busy salon could
+   plausibly approach its default 5000/month console cap through entirely
+   ordinary volume. Gating it the same way as paid SMS would risk locking
+   an Owner out of their own booking/payment/reminder confirmations over a
+   channel that costs nothing and was explicitly designed to never fail.
+   EMAIL/SMS/WHATSAPP are all enforced — a blocked send is recorded
+   `FAILED` immediately (not queued into the retry backoff, since retrying
+   sooner won't help until the counter resets next month) with a message
+   naming the exceeded quota, not a generic failure.
+3. **The existing `alertedAt` column is now used**: crossing 80% of a
+   channel's monthly limit logs a warning and stamps `alertedAt` once, so
+   repeat sends in the same month don't re-log. This is intentionally the
+   simplest possible mechanism — a server log line, not a new notification
+   channel of its own — appropriate for how far this project's alerting
+   needs to go today; a dashboard banner or an actual email-to-owner alert
+   is a natural next step if this proves not enough.
