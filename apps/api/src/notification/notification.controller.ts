@@ -20,6 +20,7 @@ import {
 import { getTenantContext } from "../tenant/tenant-context";
 import { Permissions } from "../common/authorization/permissions.decorator";
 import { Permission } from "../common/authorization/permission.enum";
+import { RequiresModule } from "../common/authorization/module.decorator";
 // NotificationService and NotificationEvaluatorService must stay VALUE
 // imports: NestJS resolves constructor injection via design:paramtypes
 // metadata at runtime; `import type` would erase them and break DI.
@@ -28,10 +29,18 @@ import { NotificationService } from "./notification.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { NotificationEvaluatorService } from "./services/notification-evaluator.service";
 
-/** API.md §3 "Notifications". */
+/**
+ * API.md §3 "Notifications". DECISIONS.md §42 — the `notifications`
+ * entitlement key existed (`packages/shared/tenant-entitlements.ts`) but
+ * nothing enforced it: a Lite-plan tenant could configure and fire real,
+ * billable SMS with no gate at all. Every other module-gated feature
+ * (`reports`, `inventory`, `attendance`, ...) already applies
+ * `@RequiresModule` at the controller level — this was the one gap.
+ */
 @ApiTags("notifications")
 @ApiBearerAuth()
 @Controller("notifications")
+@RequiresModule("notifications")
 export class NotificationController {
   constructor(
     private readonly notifications: NotificationService,

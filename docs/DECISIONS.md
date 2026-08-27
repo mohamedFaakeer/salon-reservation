@@ -1731,3 +1731,28 @@ inventing a look for one screen would have made it read as a different product.
    channel of its own — appropriate for how far this project's alerting
    needs to go today; a dashboard banner or an actual email-to-owner alert
    is a natural next step if this proves not enough.
+
+## 42. Closed the `notifications` module-gate gap — every other module-gated feature already had this (2026-08-28)
+
+1. **Phase 4 of the SMS plan.** The `notifications` entitlement key has
+   existed since the Lite/Pro split (`packages/shared/tenant-entitlements
+   .ts` §34) and `ModuleGuard`/`@RequiresModule` is the established,
+   already-working mechanism enforcing it — `reports`, `inventory`,
+   `attendance`, `incentives`, `invoices`, and `auditLog` controllers all
+   apply it. `NotificationController` was the one gate never wired up,
+   flagged as a known gap as far back as the original UAT plan. A Lite-plan
+   tenant could reach every notification endpoint — Rules, Templates,
+   real SMS sends, quota — with nothing stopping them. Fixed with the same
+   one-line `@RequiresModule("notifications")` every sibling controller
+   already carries; no new guard logic, no new pattern.
+2. **Verified safe before shipping, not assumed.** The local demo tenant
+   (`elegance`) is explicitly `entitlements.tier: "PRO"`, confirmed
+   unaffected live (`GET /notifications` and `/notifications/event-settings`
+   both still 200). A second local tenant with no tier override (defaults
+   to LITE, per `resolveModules`) turned out to already be suspended from
+   earlier test fixtures — blocked one guard layer earlier
+   (`TENANT_SUSPENDED`) before ever reaching this one — so the specific
+   `MODULE_NOT_ENABLED` 403 wasn't independently re-demonstrated live for
+   this change. Confidence instead comes from the mechanism being
+   unmodified, already-proven code shared with six other controllers; not
+   worth un-suspending a test fixture to force a redundant demonstration.
