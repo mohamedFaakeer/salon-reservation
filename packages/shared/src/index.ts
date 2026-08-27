@@ -1,4 +1,5 @@
 export * from "./enums";
+export * from "./phone";
 export * from "./tenant-settings";
 export * from "./tenant-entitlements";
 export * from "./dto/auth.dto";

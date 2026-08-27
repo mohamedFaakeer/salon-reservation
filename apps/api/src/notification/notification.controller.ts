@@ -1,10 +1,10 @@
-import { Controller, Get, HttpCode, Param, Post, Query, Req, Body, Patch, Delete } from "@nestjs/common";
+import { Controller, Get, HttpCode, Param, ParseEnumPipe, Post, Query, Req, Body, Patch, Delete } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 // DTOs must stay VALUE imports: ValidationPipe resolves them via
 // design:paramtypes metadata at runtime; `import type` would erase them.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import { 
+import {
   NotificationQueryDto,
   CreateNotificationRuleDto,
   UpdateNotificationRuleDto,
@@ -14,12 +14,18 @@ import {
   TestNotificationDto,
   NotificationQuotaQueryDto,
   CustomerNotificationPreferencesDto,
+  UpdateNotificationEventSettingDto,
+  NotificationEvent,
 } from "@salon/shared";
 import { getTenantContext } from "../tenant/tenant-context";
 import { Permissions } from "../common/authorization/permissions.decorator";
 import { Permission } from "../common/authorization/permission.enum";
+// NotificationService and NotificationEvaluatorService must stay VALUE
+// imports: NestJS resolves constructor injection via design:paramtypes
+// metadata at runtime; `import type` would erase them and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { NotificationService } from "./notification.service";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { NotificationEvaluatorService } from "./services/notification-evaluator.service";
 
 /** API.md §3 "Notifications". */
@@ -128,6 +134,26 @@ export class NotificationController {
   async testNotification(@Req() req: Request, @Body() dto: TestNotificationDto) {
     const ctx = getTenantContext(req);
     return this.evaluator.evaluateAndSendTest(ctx.tenantId, dto);
+  }
+
+  // ============ Event Settings (DECISIONS.md §40) ============
+  @Get("event-settings")
+  @Permissions(Permission.VIEW_NOTIFICATIONS)
+  async listEventSettings(@Req() req: Request) {
+    const ctx = getTenantContext(req);
+    return this.notifications.listEventSettings(ctx.tenantId);
+  }
+
+  @Patch("event-settings/:eventType")
+  @Permissions(Permission.MANAGE_NOTIFICATION_RULES)
+  async setEventEnabled(
+    @Req() req: Request,
+    @Param("eventType", new ParseEnumPipe(NotificationEvent)) eventType: NotificationEvent,
+    @Body() dto: UpdateNotificationEventSettingDto,
+  ) {
+    const ctx = getTenantContext(req);
+    await this.notifications.setEventEnabled(ctx.tenantId, eventType, dto.isEnabled);
+    return { eventType, isEnabled: dto.isEnabled };
   }
 
   // ============ Quota ============

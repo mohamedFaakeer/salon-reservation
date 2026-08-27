@@ -1526,3 +1526,175 @@ inventing a look for one screen would have made it read as a different product.
     lookup (`GET /product-variants?barcode=`) already built for a
     USB/BT scanner-gun's Enter keystroke serves the camera path too;
     no new backend endpoint was needed for this feature.
+
+## 38. SMS/WhatsApp gateway ownership — one shared platform account, not per-salon (2026-08-28)
+
+1. **Confirmed with the product owner ahead of building any real
+   SMS/WhatsApp adapter**, because it decides who holds the provider
+   account, who eats the per-message cost, and what a tenant's settings
+   screen needs to contain — none of which was written down anywhere
+   (`PRD.md`, `SECURITY.md`, and this file were all silent on it), and
+   `CLAUDE.md` §1.11 explicitly keeps real SMS/WhatsApp stubbed until a
+   decision like this one is made.
+2. **The platform will hold one shared gateway account (e.g. Twilio,
+   Dialog, or a local aggregator) that every tenant's messages send
+   through, metered per tenant** — not a bring-your-own-credentials model
+   where each salon owner signs up for and configures their own provider.
+   Reasoning: the target owner is a small unisex salon in Sri Lanka, not
+   a technical operator who can self-serve a Twilio/Dialog account and
+   paste API keys correctly; a shared gateway means a salon gets SMS/
+   WhatsApp the moment a plan enables it, with zero setup. The platform
+   absorbs the messaging cost and recovers it through subscription/plan
+   pricing rather than passing a provider bill straight through.
+3. **This matches infrastructure already built, not just a preference
+   going forward.** `NotificationQuota` (migration `NotificationQuota
+   1750000500000`) already tracks a monthly send count and limit per
+   tenant per channel (email/SMS/WhatsApp/console) — a shape that only
+   makes sense under one shared account being metered per tenant. There
+   is no schema anywhere for a tenant to store its own provider
+   credentials, and building that (encrypted secret storage, a
+   credentials settings UI, per-provider error mapping, validation) would
+   have been substantial net-new work this decision avoids for the MVP.
+4. **Not a permanent close on bring-your-own.** If a specific salon later
+   wants its messages to send from its own locally-recognized number, a
+   BYO-credentials option can be added as a later, opt-in upsell without
+   disturbing the shared-gateway default — it was deliberately left open
+   rather than designed away.
+5. **Still not implemented.** `SmsNotificationProvider` and
+   `WhatsAppNotificationProvider` remain interface-only stubs that throw
+   `501 NOT_IMPLEMENTED` (§ providers). This decision fixes the ownership
+   model for whenever that real adapter is actually built and approved —
+   it does not itself turn SMS/WhatsApp on.
+6. **When the real `SmsNotificationProvider` is built, it targets a local
+   Sri Lankan SMS aggregator (e.g. Notify.lk / Text.lk class of provider),
+   not a global provider like Twilio.** Confirmed with the product owner
+   alongside the shared-gateway decision above: this product sends only
+   to Sri Lankan numbers, and a local aggregator is materially cheaper
+   per message, has a faster/simpler path to a locally-recognized alpha
+   sender ID, and avoids international routing markup. The specific
+   vendor (Notify.lk vs. Text.lk vs. another) is still open and should be
+   picked at implementation time based on live pricing/reliability, but
+   the *class* of provider is fixed so the adapter is built against a
+   simple local REST API, not a heavier SDK like Twilio's.
+7. **The vendor is Text.lk**, chosen by the product owner. `Sms
+   NotificationProvider` calls its OAuth/Bearer REST API
+   (`POST https://app.text.lk/api/v3/sms/send`), falling back to
+   console-logging when `TEXTLK_API_TOKEN`/`TEXTLK_SENDER_ID` are unset —
+   the same unconfigured-credential fallback shape `EmailNotificationProvider`
+   already uses for SMTP, so local/demo environments never break. A new
+   `normalizeSriLankanPhone()` in `packages/shared` converts whatever shape
+   a customer's/staff's phone was typed in (`0771234567`, `+94771234567`,
+   `94771234567`) to the bare-digits E.164 form the gateway expects, and
+   rejects anything that doesn't resolve to a plausible 9-digit Sri Lankan
+   subscriber number rather than forwarding garbage to the gateway. Text.lk
+   documents no outbound delivery-receipt webhook for this account tier —
+   only an *inbound* webhook for replies — so delivery confirmation for now
+   is whatever the synchronous send response reports; a later phase could
+   poll `GET /sms/{uid}` if firmer delivery confirmation is needed.
+
+## 39. Notification Rules engine actually dispatches; one reminder scheduler, not two (2026-08-28)
+
+1. **The Rules engine (`NotificationEvaluatorService`) could not have sent
+   anything, on any channel, before this — including SMS.** `execute()` was
+   a stub that only logged `"Would send..."`; the scheduler's own
+   "already sent?" dedup check queried `notification_log`, a table the
+   Activity Log screen never reads, and unconditionally wrote a fabricated
+   `status: 'SENT'` row there regardless of whether anything was actually
+   sent. Discovered while wiring Text.lk in — building the real SMS
+   provider (§38.7) would have had no visible effect without this fix, and
+   the existing behavior silently lied to whoever read that log. `execute()`
+   now calls `NotificationService.sendForRule()`, a new method that creates
+   a real `Notification` row (visible in the Activity Log, participating in
+   quota/retry like any other channel) and dispatches it through the same
+   provider machinery every other send path uses. A channel is skipped with
+   a logged reason (not silently dropped) when the customer has no
+   email/phone on file for that channel.
+2. **Two independent reminder schedulers were running at once, and only one
+   should exist going forward — confirmed with the product owner.** The
+   original P15 scheduler (`notification.scheduler.ts`, every 15 min) fired
+   a hardcoded CONSOLE+EMAIL 24h/2h reminder unconditionally, for every
+   tenant, regardless of any Rule. The newer `NotificationSchedulerService`
+   evaluates each tenant's Rules — but before this fix, that engine did
+   nothing (point 1), so the two were dormant-compatible by accident. Making
+   Rules actually send meant an Owner configuring a "24h reminder" Rule
+   would receive both the old automatic email and the new Rule's email/SMS —
+   a real duplicate, and real duplicate cost once SMS carries a per-message
+   price. Decision: the Rules engine replaces the old scheduler outright,
+   not "old scheduler stays as an unbreakable baseline" and not "just turn
+   the old one off with nothing to replace it" — either alternative was
+   rejected, the first for keeping two permanent parallel paths (this
+   project's own single-engine convention, applied here as much as to
+   availability/pricing/refunds), the second for silently regressing every
+   tenant's existing reminders to nothing.
+3. **Every ACTIVE tenant is backfilled with two default Rules** (24h and 2h
+   before appointment, channels `console`+`email`, matching the retired
+   scheduler's exact behavior) via migration `DefaultReminderRules
+   1750000600000`, idempotent on `(tenantId, timingType, offsetHours)` so
+   re-running it is a no-op. The old scheduler's cron method is deleted, not
+   just disabled, along with its now-dead `NotificationService.runReminderScan`/
+   `scanAndFireReminders` and their tests. Existing behavior is unchanged
+   the moment this runs, but it is now a real, editable Rule an Owner can
+   see in Notifications > Rules and change — add SMS, adjust timing, add
+   targeting — instead of fixed, invisible code.
+4. **Notification templates gained an `isEnabled` toggle** (migration
+   `NotificationTemplateEnabled1750000700000`, defaulting every existing row
+   to enabled), surfaced as a switch in the admin Templates tab for
+   whichever roles already hold `MANAGE_NOTIFICATION_TEMPLATES`
+   (Owner/Manager). `NotificationEvaluatorService`'s system-template
+   fallback now only selects `isEnabled: true` rows. Caveat disclosed, not
+   hidden: today, every Rule created through the admin Rule drawer always
+   carries its own inline `templateBody` (the field is required), so it
+   never falls back to a system template — meaning disabling a system
+   template currently has no effect on a Rule-driven send, only on the
+   fallback path itself. The toggle is still real and correctly enforced
+   where templates *are* consulted; it just isn't yet the only thing
+   standing between an Owner and a send, which would need the Rule drawer
+   to support "use the system default" as an alternative to an inline body.
+5. **Not fixed here, left as a known follow-up:** `SystemTemplatesService
+   .seedForTenant()` (which seeds the 31 default templates) and an
+   equivalent seed for the two default reminder Rules are never called from
+   live tenant-provisioning code — today they exist only because a
+   migration backfilled them for tenants that already existed at the time
+   each migration ran. A tenant provisioned after both migrations have
+   already run would get zero system templates and zero default reminder
+   Rules. Not fixed in this pass to keep it scoped to making SMS work
+   correctly; worth wiring into tenant provisioning before a real second
+   salon onboards.
+
+## 40. Per-event kill switch — "don't send Cancellation messages at all," not a per-template toggle (2026-08-28)
+
+1. **§39.4's `NotificationTemplate.isEnabled` toggle didn't do what the
+   product owner actually wanted, and they caught it immediately.** That
+   toggle only affects the one, narrow fallback path used when a Rule has
+   no inline message text — and every Rule made through the admin drawer
+   always has inline text (the field is required), so disabling a system
+   template currently has zero effect on any real send. The actual ask was
+   simpler and more useful: "if I turn off Cancellation, cancellation
+   messages stop going out — on every channel, everywhere" — a tenant-wide
+   kill switch per `NotificationEvent`, not per channel-variant of text.
+2. **New `notification_event_setting` table** (tenantId, eventType,
+   isEnabled — unique per pair), checked via `NotificationService
+   .isEventEnabled()` before *any* dispatch for that event: inside `fire()`
+   (the hardcoded lifecycle path — booking/payment/cancellation/reschedule/
+   no-show/late-arrival), inside `sendCampaignMessage()` for WINBACK_OFFER,
+   and at the top of `NotificationEvaluatorService.evaluate()` for the
+   Rules/reminder path — so a disabled event returns zero results before
+   even reading Rules, rather than "matched but every channel happened to
+   skip." No row for a (tenant, event) pair means enabled, deliberately: a
+   `NotificationEvent` added in the future defaults to "on" with no
+   migration required to say so, and no existing tenant needed backfilling.
+3. **Surfaced as a new "Notification Types" tab** in the admin Notifications
+   screen — one row per event (Booking Confirmation, Payment Confirmation,
+   24h/2h Reminder, Cancellation Confirmation, Reschedule Confirmation,
+   No-Show, Late Arrival, Win-Back Offer), each a single on/off switch,
+   Owner/Manager only (`MANAGE_NOTIFICATION_RULES`), with the event's
+   trigger described in plain language rather than the enum name. Placed
+   first among the tabs — "should this even send" is more fundamental than
+   the Rules/Templates/Log tabs that follow it.
+4. **The §39.4 template toggle was kept, not removed** — it's still
+   correctly wired to the one fallback path it actually governs, and stays
+   useful once a Rule can be built to reference a system template instead
+   of always carrying inline text (§39.4's own noted follow-up). The two
+   toggles now answer two different, non-overlapping questions: "should
+   this event send at all" (this section) vs. "which starting-point text
+   would an as-yet-unbuilt template-based Rule use" (§39.4).

@@ -4,8 +4,8 @@ import { InjectRepository } from "@nestjs/typeorm";
 // injection via design:paramtypes metadata at runtime; `import type` would
 // erase it and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import { Between, In, LessThanOrEqual, Repository } from "typeorm";
-import { AppointmentStatus, ApiError, NotificationChannel, NotificationEvent, NotificationStatus } from "@salon/shared";
+import { LessThanOrEqual, Repository } from "typeorm";
+import { ApiError, NotificationChannel, NotificationEvent, NotificationStatus } from "@salon/shared";
 import type { 
   NotificationQueryDto,
   CreateNotificationRuleDto,
@@ -20,19 +20,20 @@ import { NotificationRule } from "../entities/notification-rule.entity";
 import { NotificationTemplate } from "../entities/notification-template.entity";
 import { CustomerNotificationPreferences } from "../entities/customer-notification-preferences.entity";
 import { NotificationQuota } from "../entities/notification-quota.entity";
+import { NotificationEventSetting } from "../entities/notification-event-setting.entity";
 import { Appointment } from "../entities/appointment.entity";
 import type { Customer } from "../entities/customer.entity";
-import { Tenant } from "../entities/tenant.entity";
-import { TenantStatus } from "../enums/tenant-status.enum";
+import type { Tenant } from "../entities/tenant.entity";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { NotificationProviderResolver } from "./providers/resolve-notification-provider";
+// TemplateRendererService must stay a VALUE import: NestJS resolves
+// constructor injection via design:paramtypes metadata at runtime;
+// `import type` would erase it and break DI.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { TemplateRendererService } from "./services/template-renderer.service";
 
 /** Fixed backoff, minutes after each failed attempt; index = retryCount - 1. Exhausted → FAILED permanently (manual retry still available). */
 const RETRY_BACKOFF_MINUTES = [1, 5, 15, 60];
-
-/** How far past a reminder cron tick a candidate window reaches — a little wider than the 15-min tick interval so nothing slips through; the per-appointment dedup check (below) absorbs the resulting overlap. */
-const REMINDER_SCAN_WINDOW_MINUTES = 20;
 
 export interface NotificationListResult {
   data: Notification[];
@@ -48,19 +49,56 @@ export class NotificationService {
     @InjectRepository(CustomerNotificationPreferences) private readonly prefRepo: Repository<CustomerNotificationPreferences>,
     @InjectRepository(NotificationQuota) private readonly quotaRepo: Repository<NotificationQuota>,
     @InjectRepository(Appointment) private readonly appointments: Repository<Appointment>,
-    @InjectRepository(Tenant) private readonly tenantRepo: Repository<Tenant>,
+    @InjectRepository(NotificationEventSetting) private readonly eventSettingRepo: Repository<NotificationEventSetting>,
     private readonly providers: NotificationProviderResolver,
     private readonly templateRenderer: TemplateRendererService,
   ) {}
+
+  /**
+   * DECISIONS.md §40 — a per-tenant, per-event kill switch checked before
+   * *any* dispatch for that event, independent of channel/Rule/Template. No
+   * row for (tenantId, eventType) means enabled, so a brand new event type
+   * defaults to "on" without needing a migration to say so.
+   */
+  async isEventEnabled(tenantId: string, eventType: NotificationEvent): Promise<boolean> {
+    const setting = await this.eventSettingRepo.findOne({ where: { tenantId, eventType } });
+    return setting?.isEnabled ?? true;
+  }
+
+  /** GET /notifications/event-settings — every event type, defaulting missing rows to enabled. */
+  async listEventSettings(tenantId: string): Promise<{ eventType: NotificationEvent; isEnabled: boolean }[]> {
+    const settings = await this.eventSettingRepo.find({ where: { tenantId } });
+    const overrides = new Map(settings.map((s) => [s.eventType, s.isEnabled]));
+    return Object.values(NotificationEvent).map((eventType) => ({
+      eventType,
+      isEnabled: overrides.get(eventType) ?? true,
+    }));
+  }
+
+  /** PATCH /notifications/event-settings/:eventType */
+  async setEventEnabled(tenantId: string, eventType: NotificationEvent, isEnabled: boolean): Promise<void> {
+    const existing = await this.eventSettingRepo.findOne({ where: { tenantId, eventType } });
+    if (existing) {
+      existing.isEnabled = isEnabled;
+      await this.eventSettingRepo.save(existing);
+    } else {
+      await this.eventSettingRepo.save(this.eventSettingRepo.create({ tenantId, eventType, isEnabled }));
+    }
+  }
 
   /**
    * The one place `Notification` rows are created. Always fires a `CONSOLE`
    * row (Decision Q4's guaranteed-offline channel); fires an `EMAIL` row too
    * only if the customer has an email on file. Never throws — a delivery
    * failure is captured on the row, not propagated to the caller (PRD §3.10:
-   * "notification failure never cancels or alters an appointment").
+   * "notification failure never cancels or alters an appointment"). Skips
+   * entirely — no row created at all — when the Owner has turned this event
+   * off tenant-wide (§40).
    */
   async fire(tenant: Tenant, event: NotificationEvent, appointment: Appointment, customer: Customer): Promise<void> {
+    if (!(await this.isEventEnabled(tenant.id, event))) {
+      return;
+    }
     await this.recordAndSend(tenant.id, event, NotificationChannel.CONSOLE, customer.phone, appointment, customer);
     if (customer.email) {
       await this.recordAndSend(tenant.id, event, NotificationChannel.EMAIL, customer.email, appointment, customer);
@@ -76,6 +114,9 @@ export class NotificationService {
    * message rather than falling back to a generic one.
    */
   async sendCampaignMessage(tenant: Tenant, customer: Customer, message: string): Promise<Notification[]> {
+    if (!(await this.isEventEnabled(tenant.id, NotificationEvent.WINBACK_OFFER))) {
+      return [];
+    }
     const sent = [
       await this.recordCampaignAndSend(tenant.id, customer, NotificationChannel.CONSOLE, customer.phone, message),
     ];
@@ -124,43 +165,6 @@ export class NotificationService {
     }
   }
 
-  /** Cron: every 15 min, fires REMINDER_24H/REMINDER_2H for appointments entering each configured offset's window. */
-  async runReminderScan(): Promise<void> {
-    const tenants = await this.tenantRepo.find({ where: { status: TenantStatus.ACTIVE } });
-    for (const tenant of tenants) {
-      if (tenant.settings.reminderOffsets.includes(24)) {
-        await this.scanAndFireReminders(tenant, 24, NotificationEvent.REMINDER_24H);
-      }
-      if (tenant.settings.reminderOffsets.includes(2)) {
-        await this.scanAndFireReminders(tenant, 2, NotificationEvent.REMINDER_2H);
-      }
-    }
-  }
-
-  private async scanAndFireReminders(
-    tenant: Tenant,
-    offsetHours: number,
-    event: NotificationEvent,
-  ): Promise<void> {
-    const windowStart = new Date(Date.now() + offsetHours * 60 * 60_000);
-    const windowEnd = new Date(windowStart.getTime() + REMINDER_SCAN_WINDOW_MINUTES * 60_000);
-    const candidates = await this.appointments.find({
-      where: {
-        tenantId: tenant.id,
-        status: In([AppointmentStatus.CONFIRMED, AppointmentStatus.CHECKED_IN]),
-        startTime: Between(windowStart, windowEnd),
-      },
-      relations: { customer: true },
-    });
-    for (const appointment of candidates) {
-      const alreadySent = await this.notifications.findOne({ where: { appointmentId: appointment.id, type: event } });
-      if (alreadySent) {
-        continue;
-      }
-      await this.fire(tenant, event, appointment, appointment.customer);
-    }
-  }
-
   private async recordAndSend(
     tenantId: string,
     type: NotificationEvent,
@@ -197,6 +201,40 @@ export class NotificationService {
         appointmentId: null,
         customerId: customer.id,
         type: NotificationEvent.WINBACK_OFFER,
+        channel,
+        recipient,
+        body,
+        status: NotificationStatus.PENDING,
+        retryCount: 0,
+      }),
+    );
+    return this.attemptDelivery(notification);
+  }
+
+  /**
+   * The dispatch path for `NotificationEvaluatorService` (the Rules engine —
+   * custom reminders/win-back rules an Owner configures). Mirrors
+   * `recordCampaignAndSend`'s "store the rendered text on `body`, then send"
+   * shape rather than `recordAndSend`'s "look up type-specific text from
+   * `buildMessage()`" shape, because a rule's message is already rendered
+   * from its own template and must not be regenerated from the generic
+   * per-event text on a later retry.
+   */
+  async sendForRule(
+    tenantId: string,
+    customer: Customer,
+    appointment: Appointment | null,
+    eventType: NotificationEvent,
+    channel: NotificationChannel,
+    recipient: string,
+    body: string,
+  ): Promise<Notification> {
+    const notification = await this.notifications.save(
+      this.notifications.create({
+        tenantId,
+        appointmentId: appointment?.id ?? null,
+        customerId: customer.id,
+        type: eventType,
         channel,
         recipient,
         body,

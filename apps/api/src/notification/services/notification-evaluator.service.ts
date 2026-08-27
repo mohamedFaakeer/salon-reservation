@@ -1,12 +1,23 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, In } from "typeorm";
+import type { Repository} from "typeorm";
+import { In } from "typeorm";
 import { NotificationRule } from "../../entities/notification-rule.entity";
 import { NotificationTemplate } from "../../entities/notification-template.entity";
-import { Appointment } from "../../entities/appointment.entity";
-import { Customer } from "../../entities/customer.entity";
-import { Tenant } from "../../entities/tenant.entity";
+import type { Notification } from "../../entities/notification.entity";
+import type { Appointment } from "../../entities/appointment.entity";
+import type { Customer } from "../../entities/customer.entity";
+import type { Tenant } from "../../entities/tenant.entity";
+// TemplateRendererService must stay a VALUE import: NestJS resolves
+// constructor injection via design:paramtypes metadata at runtime;
+// `import type` would erase it and break DI.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { TemplateRendererService } from "./template-renderer.service";
+// NotificationService must stay a VALUE import: NestJS resolves constructor
+// injection via design:paramtypes metadata at runtime; `import type` would
+// erase it and break DI.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { NotificationService } from "../notification.service";
 import { NotificationChannel, NotificationEvent } from "@salon/shared";
 import type { TestNotificationDto } from "@salon/shared";
 
@@ -47,13 +58,21 @@ export class NotificationEvaluatorService {
     @InjectRepository(NotificationTemplate)
     private readonly templateRepo: Repository<NotificationTemplate>,
     private readonly templateRenderer: TemplateRendererService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   /**
    * Evaluate all enabled rules for a tenant against an event context.
-   * Returns a list of evaluation results (one per matching rule).
+   * Returns a list of evaluation results (one per matching rule). Checked
+   * first: the tenant-wide, per-event kill switch (DECISIONS.md §40) — an
+   * Owner who turned an event off entirely should see zero matches, not
+   * "matched but every channel skipped."
    */
   async evaluate(context: EvaluationContext): Promise<EvaluationResult[]> {
+    if (!(await this.notificationService.isEventEnabled(context.tenant.id, context.eventType))) {
+      return [];
+    }
+
     const rules = await this.getEnabledRulesForTenant(context.tenant.id);
     const results: EvaluationResult[] = [];
 
@@ -318,13 +337,15 @@ export class NotificationEvaluatorService {
     }
 
     // TODO: Support linking to a stored template by ID
-    // For now, fall back to system template
+    // For now, fall back to system template — only one an Owner/Manager
+    // hasn't turned off (`isEnabled`).
     const systemTemplate = await this.templateRepo.findOne({
       where: {
         tenantId: context.tenant.id,
         eventType: context.eventType,
         channel: In(rule.channels),
         isSystem: true,
+        isEnabled: true,
       },
       order: { channel: "ASC" }, // Prefer console > email > sms > whatsapp order
     });
@@ -436,23 +457,48 @@ export class NotificationEvaluatorService {
   }
 
   /**
-   * Execute the evaluated notifications (send them).
-   * This is separated from evaluation for testing and observability.
+   * Execute the evaluated notifications (send them) via
+   * `NotificationService.sendForRule`, which creates a real `Notification`
+   * row and dispatches through the same provider/retry machinery every
+   * other channel uses — so a Rule-driven SMS/WhatsApp/email send shows up
+   * in the Activity Log and participates in quota/retry exactly like any
+   * other notification. Separated from `evaluate()` for testing and
+   * observability.
    */
-  async execute(results: EvaluationResult[]): Promise<void> {
+  async execute(results: EvaluationResult[], context: EvaluationContext): Promise<Notification[]> {
+    const sent: Notification[] = [];
     for (const result of results) {
       if (!result.shouldSend) continue;
 
-      // For now, use the existing notification service
-      // In the future, this would use a multi-channel sender
       for (const channel of result.matchedChannels) {
-        // The notification service's fire method handles CONSOLE + EMAIL
-        // We need to extend it for SMS/WhatsApp
-        this.logger.log(
-          `Would send ${result.rule.name} via ${channel} to ${result.matchedChannels.join(", ")}`,
+        const recipient = this.resolveRecipient(channel, context.customer);
+        if (!recipient) {
+          this.logger.warn(
+            `Skipping rule "${result.rule.name}" on channel ${channel}: customer ${context.customer.id} has no ${
+              channel === NotificationChannel.EMAIL ? "email" : "phone number"
+            } on file.`,
+          );
+          continue;
+        }
+
+        const notification = await this.notificationService.sendForRule(
+          context.tenant.id,
+          context.customer,
+          context.appointment,
+          context.eventType,
+          channel,
+          recipient,
+          result.renderedBody,
         );
+        sent.push(notification);
       }
     }
+    return sent;
+  }
+
+  /** Email uses the customer's email; every other channel is phone-based. */
+  private resolveRecipient(channel: NotificationChannel, customer: Customer): string | null {
+    return channel === NotificationChannel.EMAIL ? customer.email || null : customer.phone || null;
   }
 
   /**

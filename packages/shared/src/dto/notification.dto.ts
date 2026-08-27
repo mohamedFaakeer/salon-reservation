@@ -217,6 +217,11 @@ export class UpdateNotificationTemplateDto {
   @IsArray()
   @IsString({ each: true })
   variables?: string[];
+
+  /** Owner/Manager on/off switch for a predefined (system) template — off means it's never selected as a Rule's fallback. */
+  @IsOptional()
+  @IsBoolean()
+  isEnabled?: boolean;
 }
 
 /** POST /notifications/test — Test a notification. */
@@ -282,4 +287,20 @@ export class CustomerNotificationPreferencesDto {
   @IsOptional()
   @IsBoolean()
   marketing?: boolean;
+}
+
+/**
+ * PATCH /notifications/event-settings/:eventType — DECISIONS.md §40. A
+ * per-tenant, per-event kill switch: "don't send Cancellation Confirmation
+ * messages at all", independent of channel, Rule, or Template.
+ */
+export class UpdateNotificationEventSettingDto {
+  @IsBoolean()
+  isEnabled: boolean;
+}
+
+/** One row of GET /notifications/event-settings. */
+export class NotificationEventSettingRecordDto {
+  eventType: NotificationEvent;
+  isEnabled: boolean;
 }

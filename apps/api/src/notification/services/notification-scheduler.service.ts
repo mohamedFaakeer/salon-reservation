@@ -1,10 +1,16 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import type { Repository } from "typeorm";
 import { Cron, CronExpression } from "@nestjs/schedule";
 import { Appointment } from "../../entities/appointment.entity";
 import { Tenant } from "../../entities/tenant.entity";
-import { NotificationEvaluatorService, EvaluationContext, EvaluationResult } from "./notification-evaluator.service";
+import { Notification } from "../../entities/notification.entity";
+import type { EvaluationContext } from "./notification-evaluator.service";
+// NotificationEvaluatorService must stay a VALUE import: NestJS resolves
+// constructor injection via design:paramtypes metadata at runtime;
+// `import type` would erase it and break DI.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { NotificationEvaluatorService } from "./notification-evaluator.service";
 import { AppointmentStatus } from "@salon/shared";
 import { TenantStatus } from "../../enums/tenant-status.enum";
 import { NotificationEvent } from "@salon/shared";
@@ -22,6 +28,8 @@ export class NotificationSchedulerService {
     private readonly appointmentRepo: Repository<Appointment>,
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
+    @InjectRepository(Notification)
+    private readonly notificationRepo: Repository<Notification>,
     private readonly evaluator: NotificationEvaluatorService,
   ) {}
 
@@ -120,67 +128,28 @@ export class NotificationSchedulerService {
       const results = await this.evaluator.evaluate(context);
 
       if (results.length > 0) {
-        // Execute the notifications
-        await this.evaluator.execute(results);
-        
-        // Log the sent notifications
-        await this.logReminderSent(appointment.id, eventType, results);
-        
-        this.logger.log(
-          `Sent ${eventType} reminder for appointment ${appointment.bookingReference} (${results.length} rules matched)`,
-        );
+        // Actually dispatch — creates real `Notification` rows via
+        // NotificationService.sendForRule, which is also what makes them
+        // visible in the Activity Log and the dedup check below correct.
+        const sent = await this.evaluator.execute(results, context);
+
+        if (sent.length > 0) {
+          this.logger.log(
+            `Sent ${eventType} reminder for appointment ${appointment.bookingReference} (${sent.length} notification(s))`,
+          );
+        }
       }
     }
   }
 
   /**
-   * Check if a reminder was already sent for this appointment/event.
-   * Uses the notification_log table.
+   * Check if a reminder was already sent for this appointment/event, against
+   * the real `notification` table — the same one the Activity Log reads —
+   * so this check and what a staff member sees can never disagree.
    */
   private async wasReminderSent(appointmentId: string, eventType: NotificationEvent): Promise<boolean> {
-    const count = await this.appointmentRepo.manager
-      .createQueryBuilder()
-      .select("count(*)")
-      .from("notification_log", "log")
-      .where("log.appointmentId = :appointmentId", { appointmentId })
-      .andWhere("log.eventType = :eventType", { eventType })
-      .andWhere("log.status = 'SENT'")
-      .getRawOne();
-
-    return Number(count?.count) > 0;
-  }
-
-  /**
-   * Log that a reminder was sent.
-   */
-  private async logReminderSent(
-    appointmentId: string,
-    eventType: NotificationEvent,
-    results: EvaluationResult[],
-  ): Promise<void> {
-    for (const result of results) {
-      for (const channel of result.matchedChannels) {
-        await this.appointmentRepo.manager
-          .createQueryBuilder()
-          .insert()
-          .into("notification_log")
-          .values({
-            tenantId: result.rule.tenantId,
-            appointmentId,
-            ruleId: result.rule.id,
-            templateId: result.matchedTemplate?.id,
-            channel,
-            eventType,
-            subject: result.renderedSubject,
-            body: result.renderedBody,
-            recipient: result.matchedChannels.join(","), // Simplified
-            status: "SENT",
-            sentAt: new Date(),
-            metadata: { ruleName: result.rule.name, priority: result.rule.priority },
-          })
-          .execute();
-      }
-    }
+    const count = await this.notificationRepo.count({ where: { appointmentId, type: eventType } });
+    return count > 0;
   }
 
   /**
@@ -208,7 +177,7 @@ export class NotificationSchedulerService {
     };
 
     const results = await this.evaluator.evaluate(context);
-    await this.evaluator.execute(results);
+    await this.evaluator.execute(results, context);
 
     this.logger.log(`Manually triggered ${eventType} for appointment ${appointment.bookingReference}`);
   }

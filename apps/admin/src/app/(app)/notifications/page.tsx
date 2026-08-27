@@ -5,12 +5,16 @@ import {
   ApiRequestError,
   deleteNotificationRule,
   deleteNotificationTemplate,
+  fetchNotificationEventSettings,
   fetchNotificationQuota,
   fetchNotificationRules,
   fetchNotifications,
   fetchNotificationTemplates,
   retryNotification,
+  updateNotificationEventSetting,
   updateNotificationRule,
+  updateNotificationTemplate,
+  type NotificationEventSettingRecord,
   type NotificationQuotaRecord,
   type NotificationRecord,
   type NotificationRuleRecord,
@@ -41,6 +45,19 @@ const CHANNEL_STYLES: Record<string, string> = {
   whatsapp: "bg-emerald-100 text-emerald-800",
 };
 
+/** One row per `NotificationEvent` — what triggers it, in the Owner's own terms, not the enum name. */
+const EVENT_TYPE_INFO: Record<string, { label: string; description: string }> = {
+  BOOKING_CONFIRMATION: { label: "Booking confirmation", description: "Sent the moment a new appointment is booked." },
+  PAYMENT_CONFIRMATION: { label: "Payment confirmation", description: "Sent when a payment is recorded against an appointment." },
+  REMINDER_24H: { label: "24-hour reminder", description: "Sent about a day before an upcoming appointment." },
+  REMINDER_2H: { label: "2-hour reminder", description: "Sent a couple of hours before an upcoming appointment." },
+  CANCELLATION_CONFIRMATION: { label: "Cancellation confirmation", description: "Sent when an appointment is cancelled." },
+  RESCHEDULE_CONFIRMATION: { label: "Reschedule confirmation", description: "Sent when an appointment is moved to a new time." },
+  NO_SHOW: { label: "No-show notice", description: "Sent when a customer is marked as a no-show." },
+  LATE_ARRIVAL: { label: "Late arrival notice", description: "Sent when a customer's late arrival is noted." },
+  WINBACK_OFFER: { label: "Win-back offer", description: "The message sent from Reports → Worth a call to a lapsed customer." },
+};
+
 function humanize(value: string): string {
   const lower = value.replace(/_/g, " ").toLowerCase();
   return lower.charAt(0).toUpperCase() + lower.slice(1);
@@ -51,7 +68,12 @@ export default function NotificationsPage() {
   const canManage = canManageNotifications(user?.roles ?? []);
   const canConfigure = canConfigureNotifications(user?.roles ?? []);
 
-  const [activeTab, setActiveTab] = useState<"rules" | "templates" | "logs" | "quota">("rules");
+  const [activeTab, setActiveTab] = useState<"types" | "rules" | "templates" | "logs" | "quota">("rules");
+
+  // Notification Types state — per-event kill switch (DECISIONS.md §40)
+  const [eventSettings, setEventSettings] = useState<NotificationEventSettingRecord[]>([]);
+  const [eventSettingsLoading, setEventSettingsLoading] = useState(true);
+  const [togglingEventType, setTogglingEventType] = useState<string | null>(null);
 
   // Rules state
   const [rules, setRules] = useState<NotificationRuleRecord[]>([]);
@@ -115,12 +137,35 @@ export default function NotificationsPage() {
       .catch(() => {});
   }, []);
 
+  const loadEventSettings = useCallback(() => {
+    setEventSettingsLoading(true);
+    fetchNotificationEventSettings()
+      .then(setEventSettings)
+      .catch((err: unknown) => {
+        setError(err instanceof ApiRequestError ? err.message : "Could not load notification types.");
+      })
+      .finally(() => setEventSettingsLoading(false));
+  }, []);
+
   useEffect(() => {
+    loadEventSettings();
     loadRules();
     loadTemplates();
     loadLogs();
     loadQuota();
-  }, [loadRules, loadTemplates, loadLogs, loadQuota]);
+  }, [loadEventSettings, loadRules, loadTemplates, loadLogs, loadQuota]);
+
+  async function handleToggleEventSetting(setting: NotificationEventSettingRecord) {
+    setTogglingEventType(setting.eventType);
+    try {
+      await updateNotificationEventSetting(setting.eventType, !setting.isEnabled);
+      loadEventSettings();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to update this notification type.");
+    } finally {
+      setTogglingEventType(null);
+    }
+  }
 
   async function handleRetry(id: string): Promise<void> {
     setRetryingId(id);
@@ -150,6 +195,15 @@ export default function NotificationsPage() {
       loadRules();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to delete rule.");
+    }
+  }
+
+  async function handleToggleTemplate(template: NotificationTemplateRecord) {
+    try {
+      await updateNotificationTemplate(template.id, { isEnabled: !template.isEnabled });
+      loadTemplates();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to update template.");
     }
   }
 
@@ -222,6 +276,17 @@ export default function NotificationsPage() {
       <div className="flex border-b border-slate-200 text-xs font-semibold text-slate-600">
         <button
           type="button"
+          onClick={() => setActiveTab("types")}
+          className={`border-b-2 px-4 py-2.5 transition-colors ${
+            activeTab === "types"
+              ? "border-teal-700 text-teal-800"
+              : "border-transparent text-slate-500 hover:text-slate-900"
+          }`}
+        >
+          Notification Types
+        </button>
+        <button
+          type="button"
           onClick={() => setActiveTab("rules")}
           className={`border-b-2 px-4 py-2.5 transition-colors ${
             activeTab === "rules"
@@ -254,6 +319,61 @@ export default function NotificationsPage() {
           Activity Log ({notifications.length})
         </button>
       </div>
+
+      {/* Tab: Notification Types — per-event kill switch */}
+      {activeTab === "types" && (
+        <div className="space-y-4">
+          <p className="text-xs text-slate-500">
+            Turn a message off entirely and it stops sending, on every channel, everywhere it would otherwise fire —
+            not just a starting-point template you can still edit.
+          </p>
+          {eventSettingsLoading ? (
+            <TableSkeleton />
+          ) : (
+            <div className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">
+              {eventSettings.map((setting) => {
+                const info = EVENT_TYPE_INFO[setting.eventType] ?? {
+                  label: humanize(setting.eventType),
+                  description: "",
+                };
+                return (
+                  <div key={setting.eventType} className="flex items-center justify-between gap-4 px-4 py-3.5">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{info.label}</p>
+                      {info.description ? <p className="text-xs text-slate-500">{info.description}</p> : null}
+                    </div>
+                    {canConfigure ? (
+                      <button
+                        type="button"
+                        disabled={togglingEventType === setting.eventType}
+                        onClick={() => handleToggleEventSetting(setting)}
+                        aria-label={setting.isEnabled ? `Turn off ${info.label}` : `Turn on ${info.label}`}
+                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:cursor-wait disabled:opacity-60 ${
+                          setting.isEnabled ? "bg-teal-700" : "bg-slate-200"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${
+                            setting.isEnabled ? "translate-x-4" : "translate-x-0"
+                          }`}
+                        />
+                      </button>
+                    ) : (
+                      <span
+                        className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+                          setting.isEnabled ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-700"
+                        }`}
+                      >
+                        {setting.isEnabled ? "On" : "Off"}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Tab: Rules */}
       {activeTab === "rules" && (
@@ -405,6 +525,7 @@ export default function NotificationsPage() {
                     <th className="px-4 py-2.5">Channel</th>
                     <th className="px-4 py-2.5">Type</th>
                     <th className="px-4 py-2.5">Preview</th>
+                    <th className="px-4 py-2.5">Status</th>
                     <th className="px-4 py-2.5" />
                   </tr>
                 </thead>
@@ -435,6 +556,32 @@ export default function NotificationsPage() {
                       </td>
                       <td className="px-4 py-3 max-w-xs truncate font-mono text-xs text-slate-500">
                         {t.body}
+                      </td>
+                      <td className="px-4 py-3">
+                        {canConfigure ? (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleTemplate(t)}
+                            aria-label={t.isEnabled ? `Disable ${t.name}` : `Enable ${t.name}`}
+                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                              t.isEnabled ? "bg-teal-700" : "bg-slate-200"
+                            }`}
+                          >
+                            <span
+                              className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${
+                                t.isEnabled ? "translate-x-4" : "translate-x-0"
+                              }`}
+                            />
+                          </button>
+                        ) : (
+                          <span
+                            className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+                              t.isEnabled ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-700"
+                            }`}
+                          >
+                            {t.isEnabled ? "Enabled" : "Disabled"}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right">
                         {canConfigure && (

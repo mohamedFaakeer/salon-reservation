@@ -6,6 +6,7 @@ import { NotificationTemplate } from "../entities/notification-template.entity";
 import { NotificationLog } from "../entities/notification-log.entity";
 import { CustomerNotificationPreferences } from "../entities/customer-notification-preferences.entity";
 import { NotificationQuota } from "../entities/notification-quota.entity";
+import { NotificationEventSetting } from "../entities/notification-event-setting.entity";
 import { Appointment } from "../entities/appointment.entity";
 import { Tenant } from "../entities/tenant.entity";
 import { Customer } from "../entities/customer.entity";
@@ -31,6 +32,7 @@ import { NotificationProviderResolver } from "./providers/resolve-notification-p
       NotificationLog,
       CustomerNotificationPreferences,
       NotificationQuota,
+      NotificationEventSetting,
       Appointment,
       Tenant,
       Customer,

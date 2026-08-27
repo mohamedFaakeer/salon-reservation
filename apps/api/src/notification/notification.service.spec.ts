@@ -8,10 +8,11 @@ import type { Customer } from "../entities/customer.entity";
 import type { Tenant } from "../entities/tenant.entity";
 import type { NotificationProviderResolver } from "./providers/resolve-notification-provider";
 import { TemplateRendererService } from "./services/template-renderer.service";
-import { NotificationRule } from "../entities/notification-rule.entity";
-import { NotificationTemplate } from "../entities/notification-template.entity";
-import { CustomerNotificationPreferences } from "../entities/customer-notification-preferences.entity";
-import { NotificationQuota } from "../entities/notification-quota.entity";
+import type { NotificationRule } from "../entities/notification-rule.entity";
+import type { NotificationTemplate } from "../entities/notification-template.entity";
+import type { CustomerNotificationPreferences } from "../entities/customer-notification-preferences.entity";
+import type { NotificationQuota } from "../entities/notification-quota.entity";
+import type { NotificationEventSetting } from "../entities/notification-event-setting.entity";
 
 function mockRepo<T extends ObjectLiteral>() {
   return {
@@ -54,7 +55,7 @@ describe("NotificationService", () => {
   let prefRepo: Repository<CustomerNotificationPreferences>;
   let quotaRepo: Repository<NotificationQuota>;
   let appointmentsRepo: Repository<Appointment>;
-  let tenantRepo: Repository<Tenant>;
+  let eventSettingRepo: Repository<NotificationEventSetting>;
   let providers: NotificationProviderResolver;
   let sendMock: ReturnType<typeof vi.fn>;
   let templateRenderer: TemplateRendererService;
@@ -67,7 +68,7 @@ describe("NotificationService", () => {
     prefRepo = mockRepo<CustomerNotificationPreferences>();
     quotaRepo = mockRepo<NotificationQuota>();
     appointmentsRepo = mockRepo<Appointment>();
-    tenantRepo = mockRepo<Tenant>();
+    eventSettingRepo = mockRepo<NotificationEventSetting>();
 
     sendMock = vi.fn(async () => ({ providerMessageId: "msg-1" }));
     providers = {
@@ -85,13 +86,52 @@ describe("NotificationService", () => {
       prefRepo,
       quotaRepo,
       appointmentsRepo,
-      tenantRepo,
+      eventSettingRepo,
       providers,
       templateRenderer,
     );
   });
 
+  describe("isEventEnabled / setEventEnabled (DECISIONS.md §40)", () => {
+    it("defaults to enabled when no row exists for the tenant/event", async () => {
+      vi.mocked(eventSettingRepo.findOne).mockResolvedValue(null);
+      await expect(service.isEventEnabled("tenant-1", NotificationEvent.CANCELLATION_CONFIRMATION)).resolves.toBe(true);
+    });
+
+    it("respects a disabled row", async () => {
+      vi.mocked(eventSettingRepo.findOne).mockResolvedValue({
+        id: "s1",
+        tenantId: "tenant-1",
+        eventType: NotificationEvent.CANCELLATION_CONFIRMATION,
+        isEnabled: false,
+      } as NotificationEventSetting);
+      await expect(service.isEventEnabled("tenant-1", NotificationEvent.CANCELLATION_CONFIRMATION)).resolves.toBe(false);
+    });
+
+    it("listEventSettings returns every NotificationEvent, defaulting missing rows to enabled", async () => {
+      vi.mocked(eventSettingRepo.find).mockResolvedValue([
+        { tenantId: "tenant-1", eventType: NotificationEvent.CANCELLATION_CONFIRMATION, isEnabled: false } as NotificationEventSetting,
+      ]);
+      const settings = await service.listEventSettings("tenant-1");
+      expect(settings).toContainEqual({ eventType: NotificationEvent.CANCELLATION_CONFIRMATION, isEnabled: false });
+      expect(settings).toContainEqual({ eventType: NotificationEvent.BOOKING_CONFIRMATION, isEnabled: true });
+      expect(settings.length).toBe(Object.values(NotificationEvent).length);
+    });
+  });
+
   describe("fire", () => {
+    it("skips entirely — no row created, nothing sent — when the event is disabled for the tenant", async () => {
+      vi.mocked(eventSettingRepo.findOne).mockResolvedValue({ isEnabled: false } as NotificationEventSetting);
+      const tenant = fakeTenant();
+      const appointment = fakeAppointment();
+      const customer = fakeCustomer({ email: "a@b.com" });
+
+      await service.fire(tenant, NotificationEvent.CANCELLATION_CONFIRMATION, appointment, customer);
+
+      expect(notificationsRepo.create).not.toHaveBeenCalled();
+      expect(sendMock).not.toHaveBeenCalled();
+    });
+
     it("always creates + sends a CONSOLE notification", async () => {
       const tenant = fakeTenant();
       const appointment = fakeAppointment();
@@ -166,6 +206,17 @@ describe("NotificationService", () => {
   });
 
   describe("sendCampaignMessage", () => {
+    it("returns an empty array and sends nothing when WINBACK_OFFER is disabled for the tenant", async () => {
+      vi.mocked(eventSettingRepo.findOne).mockResolvedValue({ isEnabled: false } as NotificationEventSetting);
+      const tenant = fakeTenant();
+      const customer = fakeCustomer({ email: "a@b.com" });
+
+      const sent = await service.sendCampaignMessage(tenant, customer, "Come back soon!");
+
+      expect(sent).toEqual([]);
+      expect(sendMock).not.toHaveBeenCalled();
+    });
+
     it("always creates + sends a CONSOLE notification with the caller's exact text persisted as body", async () => {
       const tenant = fakeTenant();
       const customer = fakeCustomer({ email: null });
@@ -241,40 +292,6 @@ describe("NotificationService", () => {
 
       expect(sendMock).toHaveBeenCalledTimes(1);
       expect(result.status).toBe(NotificationStatus.SENT);
-    });
-  });
-
-  describe("runReminderScan", () => {
-    it("fires a reminder for a candidate appointment and skips already-notified ones", async () => {
-      vi.mocked(tenantRepo.find).mockResolvedValue([fakeTenant()]);
-      const candidate = fakeAppointment({ id: "appt-2" });
-      (candidate as unknown as { customer: Customer }).customer = fakeCustomer();
-      vi.mocked(appointmentsRepo.find).mockResolvedValue([candidate]);
-      vi.mocked(notificationsRepo.findOne).mockResolvedValue(null); // not already notified
-
-      await service.runReminderScan();
-
-      expect(sendMock).toHaveBeenCalled();
-    });
-
-    it("skips appointments that already have a reminder notification of that type", async () => {
-      vi.mocked(tenantRepo.find).mockResolvedValue([fakeTenant()]);
-      const candidate = fakeAppointment({ id: "appt-2" });
-      (candidate as unknown as { customer: Customer }).customer = fakeCustomer();
-      vi.mocked(appointmentsRepo.find).mockResolvedValue([candidate]);
-      vi.mocked(notificationsRepo.findOne).mockResolvedValue({ id: "existing" } as Notification);
-
-      await service.runReminderScan();
-
-      expect(notificationsRepo.create).not.toHaveBeenCalled();
-    });
-
-    it("skips reminder offsets the tenant hasn't configured", async () => {
-      vi.mocked(tenantRepo.find).mockResolvedValue([fakeTenant({ settings: { reminderOffsets: [] } } as never)]);
-
-      await service.runReminderScan();
-
-      expect(appointmentsRepo.find).not.toHaveBeenCalled();
     });
   });
 });

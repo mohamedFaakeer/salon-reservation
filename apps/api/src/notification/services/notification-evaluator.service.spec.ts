@@ -3,6 +3,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { Repository } from "typeorm";
 import { NotificationEvaluatorService } from "./notification-evaluator.service";
 import { TemplateRendererService } from "./template-renderer.service";
+import type { NotificationService } from "../notification.service";
 import { NotificationRule } from "../../entities/notification-rule.entity";
 import { NotificationTemplate } from "../../entities/notification-template.entity";
 import { AppointmentStatus, NotificationEvent } from "@salon/shared";
@@ -21,13 +22,18 @@ describe("NotificationEvaluatorService", () => {
   let ruleRepo: Repository<NotificationRule>;
   let templateRepo: Repository<NotificationTemplate>;
   let templateRenderer: TemplateRendererService;
+  let notificationService: NotificationService;
   let service: NotificationEvaluatorService;
 
   beforeEach(() => {
     ruleRepo = mockRepo<NotificationRule>();
     templateRepo = mockRepo<NotificationTemplate>();
     templateRenderer = new TemplateRendererService();
-    service = new NotificationEvaluatorService(ruleRepo, templateRepo, templateRenderer);
+    notificationService = {
+      isEventEnabled: vi.fn(async () => true),
+      sendForRule: vi.fn(async () => ({ id: "notif-1" })),
+    } as unknown as NotificationService;
+    service = new NotificationEvaluatorService(ruleRepo, templateRepo, templateRenderer, notificationService);
   });
 
   it("evaluates matching rules and renders template", async () => {
@@ -110,5 +116,27 @@ describe("NotificationEvaluatorService", () => {
     });
 
     expect(results.length).toBe(0);
+  });
+
+  it("returns no results at all — without even reading rules — when the event is disabled tenant-wide (DECISIONS.md §40)", async () => {
+    vi.mocked(notificationService.isEventEnabled).mockResolvedValue(false);
+    const tenant: Partial<Tenant> = { id: "tenant-1" };
+    const appointment: Partial<Appointment> = {
+      id: "appt-1",
+      startTime: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      status: AppointmentStatus.CONFIRMED,
+    };
+    const customer: Partial<Customer> = { id: "cust-1", phone: "+94771234567" };
+
+    const results = await service.evaluate({
+      tenant: tenant as Tenant,
+      appointment: appointment as Appointment,
+      customer: customer as Customer,
+      eventType: NotificationEvent.REMINDER_24H,
+      now: new Date(),
+    });
+
+    expect(results).toEqual([]);
+    expect(ruleRepo.find).not.toHaveBeenCalled();
   });
 });

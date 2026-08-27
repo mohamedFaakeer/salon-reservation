@@ -6,7 +6,16 @@ import { Cron } from "@nestjs/schedule";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { NotificationService } from "./notification.service";
 
-/** The retry scheduler + reminder scanner (DEVELOPMENT_PLAN.md P15 deliverables). */
+/**
+ * The retry scheduler (DEVELOPMENT_PLAN.md P15 deliverable). The reminder
+ * scan that used to live here was retired (DECISIONS.md §39): it fired a
+ * hardcoded CONSOLE+EMAIL 24h/2h reminder unconditionally, completely
+ * independent of the Notification Rules engine — once Rules could actually
+ * send (they couldn't, until §39), the two would have double-sent every
+ * reminder. `NotificationSchedulerService` (the Rules-based scanner) is now
+ * the only reminder path, seeded with default 24h/2h Rules per tenant so
+ * existing behavior carries over unchanged, but is now a real, editable Rule.
+ */
 @Injectable()
 export class NotificationScheduler {
   private readonly logger = new Logger(NotificationScheduler.name);
@@ -19,15 +28,6 @@ export class NotificationScheduler {
       await this.notifications.runScheduledRetries();
     } catch (err) {
       this.logger.error("Scheduled notification retry run failed", err instanceof Error ? err.stack : err);
-    }
-  }
-
-  @Cron("*/15 * * * *")
-  async handleReminderScan(): Promise<void> {
-    try {
-      await this.notifications.runReminderScan();
-    } catch (err) {
-      this.logger.error("Reminder scan failed", err instanceof Error ? err.stack : err);
     }
   }
 }

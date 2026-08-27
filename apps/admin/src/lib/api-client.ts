@@ -336,6 +336,7 @@ export interface NotificationTemplateRecord {
   body: string;
   variables: string[];
   isSystem: boolean;
+  isEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -355,6 +356,7 @@ export interface UpdateNotificationTemplateInput {
   subject?: string;
   body?: string;
   variables?: string[];
+  isEnabled?: boolean;
 }
 
 export interface TestNotificationInput {
@@ -1227,6 +1229,23 @@ export function sendTestNotification(input: TestNotificationInput): Promise<Test
 
 export function fetchNotificationQuota(channel?: string): Promise<NotificationQuotaRecord> {
   return request<NotificationQuotaRecord>(`/notifications/quota${channel ? `?channel=${channel}` : ""}`);
+}
+
+/** A per-tenant, per-event kill switch — "don't send this message at all," independent of channel/Rule/Template. */
+export interface NotificationEventSettingRecord {
+  eventType: string;
+  isEnabled: boolean;
+}
+
+export function fetchNotificationEventSettings(): Promise<NotificationEventSettingRecord[]> {
+  return request<NotificationEventSettingRecord[]>("/notifications/event-settings");
+}
+
+export function updateNotificationEventSetting(eventType: string, isEnabled: boolean): Promise<NotificationEventSettingRecord> {
+  return request<NotificationEventSettingRecord>(`/notifications/event-settings/${eventType}`, {
+    method: "PATCH",
+    body: JSON.stringify({ isEnabled }),
+  });
 }
 
 export function fetchCustomerNotificationPreferences(customerId: string): Promise<CustomerNotificationPreferencesRecord> {
