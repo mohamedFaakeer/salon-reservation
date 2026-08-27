@@ -1802,3 +1802,9 @@ inventing a look for one screen would have made it read as a different product.
    question from this fix, noted here rather than silently addressed), so
    an SMS-specific instruction would be actively wrong for an email
    recipient.
+6. **Delivery-status polling (`GET /sms/{uid}` for a message Text.lk's
+   synchronous response left non-final) was deliberately deferred, not
+   forgotten.** Confirmed with the product owner: build it once real
+   traffic through an actual Text.lk account shows messages that need it,
+   rather than speculatively now against a vendor response shape that's
+   only been read from documentation, never exercised live.
