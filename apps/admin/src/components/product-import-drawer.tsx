@@ -151,7 +151,7 @@ export function ProductImportDrawer({ onClose, onImported }: { onClose: () => vo
                   {rowErrors.map((rowError, i) => (
                     <tr key={i} className="border-b border-slate-100 last:border-b-0">
                       <td className="tabular px-3 py-2 font-mono text-slate-500">{rowError.row}</td>
-                      <td className="px-3 py-2 text-red-700">{rowError.message}</td>
+                      <td className="break-words px-3 py-2 text-red-700">{rowError.message}</td>
                     </tr>
                   ))}
                 </tbody>

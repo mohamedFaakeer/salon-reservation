@@ -267,7 +267,10 @@ function QuickSalePage() {
             Nothing matches &ldquo;{query}&rdquo;.
           </p>
         ) : (
-          <div className="grid grid-cols-2 gap-3 overflow-y-auto pb-4 sm:grid-cols-3 md:grid-cols-4">
+          // md:4 assumes the full viewport width; once `lg:` splits this
+          // column against the sidebar + 380px cart, that same column count
+          // is cramped until xl/2xl give the space back.
+          <div className="grid grid-cols-2 gap-3 overflow-y-auto pb-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {bundleResults.map((bundle) => {
               const outOfStock = bundle.availableCount <= 0;
               return (

@@ -11,6 +11,7 @@ import {
   type ReportPanelKey,
 } from "../../lib/api-client";
 import { AppSidebar } from "../../components/app-sidebar";
+import { AppTopbar } from "../../components/app-topbar";
 import { isStaffOnly } from "../../lib/permissions";
 import { ModulesProvider } from "../../context/modules-context";
 
@@ -21,6 +22,29 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [modules, setModules] = useState<Record<ModuleKey, boolean> | null>(null);
   const [reportPanels, setReportPanels] = useState<Record<ReportPanelKey, boolean> | null>(null);
+  const [navOpen, setNavOpen] = useState(false);
+
+  // Body-scroll lock while the mobile/tablet drawer is open.
+  useEffect(() => {
+    document.body.style.overflow = navOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [navOpen]);
+
+  // Resizing/rotating out to desktop width while the drawer is open must not
+  // leave the scroll-lock stuck on — the sidebar's `lg:` classes make it look
+  // like the normal static rail again, but body scroll would stay dead.
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    function onChange(e: MediaQueryListEvent): void {
+      if (e.matches) {
+        setNavOpen(false);
+      }
+    }
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
 
   useEffect(() => {
     if (loading) {
@@ -72,18 +96,45 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    // Sidebar beside content on desktop; stacked above it on tablet and
-    // narrower, where a fixed 224px rail would eat too much of the board.
+    // Sidebar beside content on desktop (`lg` and up, unchanged). Below `lg`
+    // it's an off-canvas drawer (docs/UX.md §5) opened via AppTopbar's
+    // hamburger, rather than stacking the whole ~23-item nav above the page.
     <ModulesProvider value={{ modules, reportPanels }}>
       <div className="min-h-screen bg-slate-100 lg:flex">
+        <AppTopbar
+          salonName={salonName}
+          logoUrl={logoUrl}
+          open={navOpen}
+          onToggle={() => setNavOpen((v) => !v)}
+        />
+        {/* Scrim: opacity-toggled rather than mounted/unmounted so it fades
+            in step with the panel's slide, not a beat behind it. */}
+        <div
+          aria-hidden="true"
+          onClick={() => setNavOpen(false)}
+          className={`fixed inset-0 z-[35] bg-slate-900/40 transition-opacity duration-[var(--motion-overlay)] lg:hidden ${
+            navOpen ? "opacity-100" : "pointer-events-none opacity-0"
+          }`}
+        />
         <AppSidebar
           roles={user.roles}
           salonName={salonName}
           logoUrl={logoUrl}
           userName={user.name}
           onLogout={() => void logout()}
+          open={navOpen}
+          onRequestClose={() => setNavOpen(false)}
         />
-        <main className="min-w-0 flex-1 p-6 lg:h-screen lg:overflow-y-auto">{children}</main>
+        <main
+          // Removes background content from tab order and the accessibility
+          // tree while the drawer is open — `navOpen` can only be true below
+          // `lg` (the topbar that sets it is `lg:hidden`), so this never
+          // fires at desktop width.
+          inert={navOpen}
+          className="min-w-0 flex-1 p-6 lg:h-screen lg:overflow-y-auto"
+        >
+          {children}
+        </main>
       </div>
     </ModulesProvider>
   );

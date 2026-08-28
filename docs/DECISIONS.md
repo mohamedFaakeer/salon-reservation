@@ -1940,3 +1940,62 @@ inventing a look for one screen would have made it read as a different product.
    dropped: the mockup's "Wrong number? Change it" link on the OTP
    screen — there is no endpoint yet to change a verified phone number, so
    showing a link that goes nowhere would be worse than not offering it.
+
+## 47. Admin desk shell: collapsible nav + a mobile-usability pass (2026-08-28)
+
+1. **The bug.** `apps/admin`'s sidebar (23 items across 7 groups) never
+   collapsed below `lg` (1024px) — it rendered as a full-width block
+   *stacked above* the page, pushing content down. `docs/UX.md` §5 already
+   specified the fix ("sidebar collapses to drawer" below 1024px); only
+   the "stack to single column" half of that spec had ever been built.
+   This finishes it: a new sticky `AppTopbar` (hamburger) below `lg`,
+   `AppSidebar` becomes a left-docked off-canvas panel driven by a
+   `transform` transition (not a keyframe, since — unlike every other
+   drawer in this app — it must stay permanently mounted; it's the same
+   element as the static `≥lg` rail), state lifted into `(app)/layout.tsx`.
+   Auto-closes on route change, Escape, and backdrop click; background
+   `<main>` goes `inert` while open; a `matchMedia` listener force-closes
+   it if the viewport crosses back to desktop width while open, so the
+   body-scroll lock can never get stuck on. `≥lg` is unchanged — same
+   classes, same static rail, verified pixel-identical via screenshot.
+2. **Two real clipping bugs, not just polish.** `globals.css` sets
+   `overflow-x: hidden` on `html, body`; a wide element without its own
+   `overflow-x-auto` silently clips on a narrow screen instead of
+   scrolling — the Attendance table (`overflow-hidden` instead of
+   `overflow-x-auto`) and the Reports "Product sales & margin" panel (no
+   wrapper at all) were both actually losing data on a phone, not just
+   looking squeezed. Fixed both; swept the other eight `reports/*.tsx`
+   panels and found no further occurrences.
+3. **Mobile-usability pass** (the deeper option, chosen when asked how far
+   to take this): the staff×service (`SkillsMatrix`) and staff×weekday
+   (`RotaGrid`) grids already scrolled but were genuinely hard to use on a
+   phone (rotated headers, thumbnail checkboxes) — each now swaps to a
+   `<lg` accordion (native `<details>`, no existing precedent either way
+   in this codebase) built on the exact same draft/save state as the grid,
+   presentation-only. Quick Sale's product/bundle results grid had its
+   column-count breakpoints re-tuned — `md:grid-cols-4` assumed full
+   viewport width, but at `lg` that same space is split against the
+   sidebar and a 380px cart, so it stepped back to 2 columns there and
+   climbs through `xl`/`2xl` as room returns. Added `break-words` to the
+   product-import error table's message cell (same silent-clip risk as
+   point 2, lower odds of firing).
+4. **Test-id collision, caught before it shipped.** The mobile accordions
+   initially reused the desktop grid's `data-testid`s. Since both mount
+   simultaneously (CSS just hides one via `lg:`), that would have broken
+   `staff.spec.ts`'s `[data-testid^="matrix-row-"]` locator the moment it
+   matched two elements instead of one — Playwright's strict mode. Every
+   mobile-variant id now leads with `mobile-` (`mobile-matrix-row-…`,
+   `mobile-rota-row-…`, …) so no existing prefix selector can ever match
+   both.
+5. **Verified, not just typechecked**: a standalone Playwright script
+   (not part of the e2e suite) drove the running dev server through the
+   drawer's full interaction set — open/close via toggle, nav-item tap,
+   Escape, backdrop click, the 1023/1024 breakpoint edge, body-scroll-lock
+   engaging and releasing — plus screenshots confirming the mobile
+   accordion and `≥lg` grid both render correctly and the desktop rail is
+   visually unchanged.
+6. **Not touched**: the Floor kiosk (`(floor)/**`, already mobile-first,
+   a deliberately separate surface per `apps/admin/PRODUCT.md`) and the
+   Platform/SUPER_ADMIN shell; `visible()`/module-gating logic; any shared
+   `Button` component (this app hand-styles buttons per call site — a
+   consolidation refactor is a separate decision, not bundled in here).

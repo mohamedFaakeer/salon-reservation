@@ -38,38 +38,40 @@ export function ProductSalesPanel({ data }: { data: ProductSalesReport | null })
           <Figure label="Cost" value={formatPriceCents(data.totalCostCents)} detail="weighted-average, at sale time" />
           <Figure label="Margin" value={formatPriceCents(data.totalMarginCents)} detail={`${marginPercent}% of revenue`} />
         </div>
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr>
-              <Th>Product</Th>
-              <Th>SKU</Th>
-              <Th align="right">Units</Th>
-              <Th align="right">Revenue</Th>
-              <Th align="right">Cost</Th>
-              <Th align="right">Margin</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.byProduct.map((row) => (
-              <tr key={row.variantId}>
-                <Td className="font-medium text-slate-900">{row.productName}</Td>
-                <Td className="font-mono text-[12px] text-slate-500">{row.sku ?? "Bundle"}</Td>
-                <Td align="right" className="tabular">
-                  {row.unitsSold}
-                </Td>
-                <Td align="right" className="tabular">
-                  {formatPriceCents(row.revenueCents)}
-                </Td>
-                <Td align="right" className="tabular">
-                  {formatPriceCents(row.costCents)}
-                </Td>
-                <Td align="right" className="tabular font-semibold text-emerald-700">
-                  {formatPriceCents(row.marginCents)}
-                </Td>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr>
+                <Th>Product</Th>
+                <Th>SKU</Th>
+                <Th align="right">Units</Th>
+                <Th align="right">Revenue</Th>
+                <Th align="right">Cost</Th>
+                <Th align="right">Margin</Th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.byProduct.map((row) => (
+                <tr key={row.variantId}>
+                  <Td className="font-medium text-slate-900">{row.productName}</Td>
+                  <Td className="font-mono text-[12px] text-slate-500">{row.sku ?? "Bundle"}</Td>
+                  <Td align="right" className="tabular">
+                    {row.unitsSold}
+                  </Td>
+                  <Td align="right" className="tabular">
+                    {formatPriceCents(row.revenueCents)}
+                  </Td>
+                  <Td align="right" className="tabular">
+                    {formatPriceCents(row.costCents)}
+                  </Td>
+                  <Td align="right" className="tabular font-semibold text-emerald-700">
+                    {formatPriceCents(row.marginCents)}
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </Card>
     </Panel>
   );

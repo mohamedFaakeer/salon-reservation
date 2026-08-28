@@ -38,7 +38,95 @@ export function RotaGrid({
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+    <>
+      {/* Same "grid gets hard to use on a phone" trade-off as SkillsMatrix —
+          one disclosure per stylist, days listed vertically, same lookups
+          and the same onEditDay callback driving both presentations. */}
+      <div className="flex flex-col gap-2 lg:hidden">
+        {staff.map((member) => {
+          const days = WEEKDAYS.map((_, i) => byStaffDay.get(`${member.id}:${i}`));
+          const worksAnyDay = days.some(Boolean);
+          return (
+            <details
+              key={member.id}
+              data-testid={`mobile-rota-row-${member.id}`}
+              className="rounded-lg border border-slate-200 bg-white"
+            >
+              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-3.5 py-2.5">
+                <span
+                  aria-hidden="true"
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: member.color ?? "#475569" }}
+                />
+                <span className="flex-1 font-medium text-slate-900">{member.name}</span>
+                {!worksAnyDay ? (
+                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                    no hours
+                  </span>
+                ) : null}
+              </summary>
+              <div className="flex flex-col border-t border-slate-100">
+                {!worksAnyDay ? (
+                  <div className="flex flex-wrap items-center justify-between gap-2 bg-amber-50 px-3.5 py-3">
+                    <span
+                      data-testid={`mobile-rota-nohours-${member.id}`}
+                      className="text-xs font-medium text-amber-800"
+                    >
+                      No hours set — {member.name} can&apos;t be booked on any day
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onEditDay(member, 0, undefined)}
+                      className="min-h-11 rounded border border-amber-400 px-2.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
+                    >
+                      Set hours
+                    </button>
+                  </div>
+                ) : (
+                  WEEKDAYS.map((label, dayIndex) => {
+                    const sched = days[dayIndex];
+                    const away = leaveOn(member.id, weekDates[dayIndex]);
+                    return (
+                      <button
+                        key={dayIndex}
+                        type="button"
+                        data-testid={`mobile-rota-cell-${member.id}-${dayIndex}`}
+                        onClick={() => onEditDay(member, dayIndex, sched)}
+                        className={`flex min-h-11 items-center justify-between gap-2 border-t border-slate-100 px-3.5 py-2 text-left first:border-t-0 hover:bg-slate-50 ${
+                          away ? "bg-amber-50" : ""
+                        }`}
+                      >
+                        <span className="text-sm text-slate-700">{label}</span>
+                        {away ? (
+                          <span className="text-right">
+                            <span className="block text-xs font-semibold text-amber-800">On leave</span>
+                            <span className="block text-[10px] text-amber-700">{away.reason ?? "Away"}</span>
+                          </span>
+                        ) : sched ? (
+                          <span className="text-right">
+                            <span className="tabular block text-xs font-semibold text-slate-900">
+                              {minutesToTime(sched.startMin)}–{minutesToTime(sched.endMin)}
+                            </span>
+                            {sched.breakStartMin !== null ? (
+                              <span className="tabular block text-[10px] text-slate-500">
+                                break {minutesToTime(sched.breakStartMin)}
+                              </span>
+                            ) : null}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-300">Off</span>
+                        )}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </details>
+          );
+        })}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-lg border border-slate-200 bg-white lg:block">
       <table className="w-full text-sm">
         <caption className="sr-only">Weekly working hours by stylist</caption>
         <thead>
@@ -140,6 +228,7 @@ export function RotaGrid({
           })}
         </tbody>
       </table>
-    </div>
+      </div>
+    </>
   );
 }

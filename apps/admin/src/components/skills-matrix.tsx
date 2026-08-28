@@ -90,7 +90,79 @@ export function SkillsMatrix({
         </p>
       ) : null}
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      {/* A staff × service grid gets wide fast with a real catalog — rotated
+          headers and thumbnail-sized checkboxes are workable with a mouse but
+          not on a phone. Below `lg` the same draft/save state drives a plain
+          vertical list instead: one disclosure per stylist. */}
+      <div className="flex flex-col gap-2 lg:hidden">
+        {staff.map((member) => {
+          const assigned = draft[member.id] ?? [];
+          const dirty = isDirty(member.id);
+          return (
+            <details
+              key={member.id}
+              data-testid={`mobile-matrix-row-${member.id}`}
+              className={`rounded-lg border border-slate-200 bg-white ${
+                assigned.length === 0 ? "bg-amber-50/60" : ""
+              }`}
+            >
+              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-3.5 py-2.5">
+                <span
+                  aria-hidden="true"
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: member.color ?? "#475569" }}
+                />
+                <span className={`flex-1 font-medium ${member.active ? "text-slate-900" : "text-slate-500"}`}>
+                  {member.name}
+                </span>
+                <span className="text-xs text-slate-400">
+                  {assigned.length} service{assigned.length === 1 ? "" : "s"}
+                </span>
+              </summary>
+              <div className="flex flex-col gap-0.5 border-t border-slate-100 px-3.5 py-2">
+                {services.map((service) => {
+                  const on = assigned.includes(service.id);
+                  return (
+                    <label
+                      key={service.id}
+                      className="flex min-h-11 cursor-pointer items-center justify-between gap-2 text-sm text-slate-700"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        {service.name}
+                        {coverage(service.id) === 0 ? (
+                          <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] font-semibold text-amber-800">
+                            uncovered
+                          </span>
+                        ) : null}
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={() => toggle(member.id, service.id)}
+                        data-testid={`mobile-skill-${member.id}-${service.id}`}
+                        className="h-4 w-4 shrink-0 accent-teal-600"
+                      />
+                    </label>
+                  );
+                })}
+                <button
+                  type="button"
+                  data-testid={`mobile-save-skills-${member.id}`}
+                  onClick={() => void saveRow(member.id)}
+                  disabled={!dirty || savingId === member.id}
+                  className="mt-1 min-h-11 rounded border border-slate-300 px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                >
+                  <BusyLabel busy={savingId === member.id} busyText="Saving…">
+                    Save
+                  </BusyLabel>
+                </button>
+              </div>
+            </details>
+          );
+        })}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-lg border border-slate-200 bg-white lg:block">
         <table className="w-full text-sm">
           <caption className="sr-only">
             Which services each stylist is qualified to perform

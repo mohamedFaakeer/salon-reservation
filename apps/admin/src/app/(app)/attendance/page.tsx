@@ -110,7 +110,7 @@ function AttendancePage() {
       ) : rows.length === 0 ? (
         <EmptyState title="No staff to show for this date." />
       ) : (
-        <div className="overflow-hidden rounded border border-slate-200 bg-white">
+        <div className="overflow-x-auto rounded border border-slate-200 bg-white">
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-xs font-medium uppercase tracking-wide text-slate-400">

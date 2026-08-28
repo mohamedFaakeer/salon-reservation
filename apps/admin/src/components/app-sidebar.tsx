@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import {
   canManageAppointments,
   canManageCustomers,
@@ -391,22 +391,71 @@ export function AppSidebar({
   logoUrl,
   userName,
   onLogout,
+  open,
+  onRequestClose,
 }: {
   roles: string[];
   salonName: string | null;
   logoUrl?: string | null;
   userName: string;
   onLogout: () => void;
+  /** Whether the off-canvas drawer is open below `lg`. Ignored at `lg` and above — the rail is always visible there. */
+  open: boolean;
+  onRequestClose: () => void;
 }) {
   const pathname = usePathname();
   const { modules } = useModules();
+  const navRef = useRef<HTMLElement>(null);
   const groups = GROUPS.map((g) => ({
     ...g,
     items: g.items.filter((i) => i.visible(roles) && (!i.module || !modules || modules[i.module])),
   })).filter((g) => g.items.length > 0);
 
+  // Closes the drawer on every navigation — a tapped nav item and browser
+  // back/forward both change `pathname`, so one effect covers both without
+  // wiring an onClick to all ~23 items individually.
+  useEffect(() => {
+    onRequestClose();
+    // Intentionally keyed on `pathname` alone — `onRequestClose` is a stable
+    // setState wrapper from the parent, and including it would risk re-firing
+    // this close on an identity change rather than an actual navigation.
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    function onKeyDown(e: KeyboardEvent): void {
+      if (e.key === "Escape") {
+        onRequestClose();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    // Focus the first nav link so keyboard users land inside the drawer, not
+    // still on the toggle button behind it.
+    navRef.current?.querySelector<HTMLElement>("a, button")?.focus();
+    return () => document.removeEventListener("keydown", onKeyDown);
+    // Intentionally keyed on `open` alone — `onRequestClose` is a stable
+    // setState wrapper from the parent; including it would re-run the
+    // focus-move on every render rather than only when `open` actually flips.
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      return;
+    }
+    // Send focus back to the button that opened the drawer, otherwise it
+    // falls to <body> and a keyboard user loses their place.
+    document.getElementById("app-nav-toggle")?.focus();
+  }, [open]);
+
   return (
-    <aside className="flex w-full shrink-0 flex-col border-b border-slate-200 bg-white lg:h-screen lg:w-56 lg:border-b-0 lg:border-r">
+    <aside
+      id="app-sidebar-nav"
+      className={`fixed inset-y-0 left-0 z-40 flex w-72 max-w-[85vw] flex-col border-r border-slate-200 bg-white shadow-xl transition-transform duration-[var(--motion-overlay)] ease-[var(--ease-out)] lg:static lg:inset-auto lg:z-auto lg:h-screen lg:w-56 lg:max-w-none lg:translate-x-0 lg:shadow-none ${
+        open ? "translate-x-0" : "-translate-x-full"
+      }`}
+    >
       <div className="flex items-center gap-2.5 border-b border-slate-200 px-4 py-3">
         {logoUrl ? (
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white p-0.5">
@@ -419,7 +468,7 @@ export function AppSidebar({
         </div>
       </div>
 
-      <nav aria-label="Main" className="flex-1 overflow-y-auto py-3">
+      <nav aria-label="Main" ref={navRef} className="flex-1 overflow-y-auto py-3">
         {groups.map((group) => (
           <div key={group.label} className="mb-4 last:mb-0">
             <p className="px-4 pb-1 text-[10px] font-medium uppercase tracking-[0.13em] text-slate-400">
