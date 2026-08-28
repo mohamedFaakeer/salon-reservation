@@ -157,7 +157,7 @@ export function OtpEntry({
         Enter the 6-digit code we sent to <b className="text-[var(--resist)]">{phone}</b>.
       </p>
 
-      <div className="mt-5 flex gap-2" role="group" aria-label="6-digit verification code">
+      <div className="mt-5 grid grid-cols-6 gap-2" role="group" aria-label="6-digit verification code">
         {digits.map((d, i) => (
           <input
             key={i}
@@ -172,7 +172,11 @@ export function OtpEntry({
             maxLength={CODE_LENGTH}
             disabled={status === "locked" || verifying}
             aria-label={`Digit ${i + 1} of ${CODE_LENGTH}`}
-            className={`display aspect-square flex-1 rounded-[13px] border-[1.5px] bg-[var(--dye-mid)] text-center text-[22px] text-[var(--resist)] outline-none transition-colors duration-[var(--t-tap)] disabled:opacity-35 ${
+            // `min-w-0` overrides the browser's intrinsic min-width for <input>
+            // (driven by its `size` attribute default) — without it, a grid/flex
+            // track can't shrink the box below that, and `aspect-square` then
+            // blows the height out to match the oversized width.
+            className={`display aspect-square w-full min-w-0 rounded-[13px] border-[1.5px] bg-[var(--dye-mid)] text-center text-[22px] text-[var(--resist)] outline-none transition-colors duration-[var(--t-tap)] disabled:opacity-35 ${
               status === "wrong"
                 ? "anim-shake border-[#E0665C] bg-[rgba(224,102,92,0.1)]"
                 : d
