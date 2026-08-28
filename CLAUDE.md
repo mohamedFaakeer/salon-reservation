@@ -66,6 +66,7 @@ Rules: lock exact versions in `package.json` + `package-lock.json`. Do not intro
 6. **Phase order is fixed** (P1–P19 in `docs/DEVELOPMENT_PLAN.md`). Do not skip ahead to the next phase until the current one is stable.
 7. **Do not reuse separate booking logic**; the availability engine is the single path (rule §1).
 8. **Commit after every important update, and always at the end of a completed phase.** Verification (typecheck/lint/test/build) must be green before that commit. Use plain `git commit` (new commits, not amends) with a message describing what changed and why.before commit show where you are going to commit. get the approval from user and then commit
+9. **Pushing new migrations is not the same as running them.** Before/when pushing any change that adds or edits a file under `apps/api/src/infrastructure/database/migrations/`, explicitly check whether production (Neon, via Render) is behind: compare the migration files in the push against what's actually been applied to prod. A migration sitting only in git is a live outage waiting to happen the moment the matching code deploys (a route/service that queries a table that doesn't exist yet in prod) — this already happened once (customer-auth signup, and separately a full notifications-engine migration set, both shipped to prod code without their migrations ever being run). Flag it to the user and get their go-ahead to run `npm run db:migrate:prod` (or walk them through doing it) as part of that same push — don't treat "pushed to main" as "done" when a migration is part of the change.
 
 ---
 
