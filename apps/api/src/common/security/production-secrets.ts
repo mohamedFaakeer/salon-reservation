@@ -17,6 +17,7 @@ export interface SecretsEnv {
   JWT_SECRET?: string;
   DATABASE_URL?: string;
   SUPER_ADMIN_PASSWORD?: string;
+  CORS_ORIGINS?: string;
   [key: string]: string | undefined;
 }
 
@@ -89,6 +90,19 @@ export function findProductionSecretProblems(env: SecretsEnv): string[] {
   const databaseUrl = env.DATABASE_URL ?? "";
   if (databaseUrl.includes("localhost") || databaseUrl.includes("127.0.0.1")) {
     problems.push("DATABASE_URL points at localhost, which cannot be right in production.");
+  }
+
+  // SECURITY_AUDIT_REPORT.md F-02: without this, an unset CORS_ORIGINS makes
+  // main.ts's CORS fall back to reflecting any origin AND makes
+  // CsrfOriginGuard fall back to allowing every origin — both defenses
+  // collapse from one missing variable, silently, unless this check catches
+  // it at boot instead.
+  if (!env.CORS_ORIGINS?.trim()) {
+    problems.push(
+      "CORS_ORIGINS is not set. Without it, CORS and the CSRF-origin guard both " +
+        "fall back to allowing any origin. Set it to the exact production origins, " +
+        "e.g. https://<web>.onrender.com,https://<admin>.onrender.com",
+    );
   }
 
   return problems;

@@ -27,6 +27,7 @@ describe("production secrets guard", () => {
       JWT_SECRET: STRONG_SECRET,
       SUPER_ADMIN_PASSWORD: STRONG_PASSWORD,
       DATABASE_URL: "postgresql://user:pw@ep-neon.aws.neon.tech/salon?sslmode=require",
+      CORS_ORIGINS: "https://web.example.com,https://admin.example.com",
     };
 
     it("accepts a properly configured environment", () => {
@@ -84,15 +85,26 @@ describe("production secrets guard", () => {
       expect(problems[0]).toContain("localhost");
     });
 
+    it("rejects a missing CORS_ORIGINS (SECURITY_AUDIT_REPORT.md F-02)", () => {
+      const problems = findProductionSecretProblems({ ...base, CORS_ORIGINS: undefined });
+      expect(problems[0]).toContain("CORS_ORIGINS is not set");
+    });
+
+    it("rejects a blank CORS_ORIGINS the same as unset", () => {
+      const problems = findProductionSecretProblems({ ...base, CORS_ORIGINS: "   " });
+      expect(problems[0]).toContain("CORS_ORIGINS is not set");
+    });
+
     it("reports every problem at once rather than one per restart", () => {
       const problems = findProductionSecretProblems({
         NODE_ENV: "production",
         JWT_SECRET: "dev-only-secret-change-me-min-32-bytes",
         SUPER_ADMIN_PASSWORD: "demo1234",
         DATABASE_URL: "postgresql://salon:salon@localhost:5432/salon",
+        CORS_ORIGINS: undefined,
       });
 
-      expect(problems).toHaveLength(3);
+      expect(problems).toHaveLength(4);
     });
 
     it("throws with all problems listed", () => {

@@ -77,6 +77,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${display.variable} ${body.variable}`}>
       <body>
+        {/* eslint-disable-next-line no-restricted-syntax -- DIRECTION_CONTRACT is the hardcoded literal defined above, with zero runtime interpolation of any kind; not reachable by user input (SECURITY_AUDIT_REPORT.md F-03) */}
         <div hidden aria-hidden="true" dangerouslySetInnerHTML={{ __html: DIRECTION_CONTRACT }} />
         <CustomerAuthProvider>
           {children}
