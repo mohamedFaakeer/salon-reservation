@@ -11,9 +11,12 @@ import {
 import { Tenant } from "./tenant.entity";
 
 /**
- * No login, no account (PRD.md Decision Q2) — customers are matched by
- * normalized phone within a tenant. No soft-delete column; customers are
- * never removed, only their appointments change status.
+ * Tenant-scoped booking history — matched by normalized phone within a
+ * tenant, and still exactly how a guest booking (no account) works (PRD.md
+ * Decision Q2). A separate, platform-level `CustomerAccount` now optionally
+ * exists alongside this (DECISIONS.md); `CustomerAccountSalonLink` connects
+ * the two without this entity itself changing. No soft-delete column;
+ * customers are never removed, only their appointments change status.
  */
 @Entity("customer")
 @Index(["tenantId", "phone"], { unique: true })

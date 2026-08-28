@@ -19,6 +19,7 @@ export * from "./dto/customer.dto";
 export * from "./dto/booking.dto";
 export * from "./dto/appointment.dto";
 export * from "./dto/appointment-lifecycle.dto";
+export * from "./dto/customer-auth.dto";
 export * from "./dto/payment.dto";
 export * from "./dto/rating.dto";
 export * from "./dto/inquiry.dto";

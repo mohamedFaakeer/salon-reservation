@@ -191,6 +191,26 @@ a {
     transform: rotate(360deg);
   }
 }
+/* A wrong OTP digit's own small "no" — never used for anything else. */
+@keyframes shake {
+  10%,
+  90% {
+    transform: translateX(-1px);
+  }
+  20%,
+  80% {
+    transform: translateX(2px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translateX(-4px);
+  }
+  40%,
+  60% {
+    transform: translateX(4px);
+  }
+}
 
 .anim-bloom {
   animation: dye-bloom var(--t-bloom) var(--ease) both;
@@ -207,6 +227,9 @@ a {
 }
 .motion-spin {
   animation: spin 0.8s linear infinite;
+}
+.anim-shake {
+  animation: shake 420ms var(--ease);
 }
 
 @media (prefers-reduced-motion: reduce) {

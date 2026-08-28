@@ -375,3 +375,75 @@ export function submitRating(
     body: JSON.stringify(input),
   });
 }
+
+/* ------------------------------------------------ customer accounts (DECISIONS.md §46) */
+/**
+ * Entirely optional, alongside guest booking (reference + phone) above,
+ * which none of this touches. One account works at every salon — the
+ * server, not this file, decides what that means; these are thin wrappers
+ * over `/customer-auth/*`, same shape as every other function here.
+ */
+
+export interface CustomerAccountPublic {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+  phoneVerified: boolean;
+}
+
+export interface CustomerAuthResult {
+  accessToken: string;
+  refreshToken: string;
+  account: CustomerAccountPublic;
+}
+
+export function customerSignup(input: {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+  password: string;
+  termsAccepted: boolean;
+}): Promise<{ account: CustomerAccountPublic }> {
+  return request(`/customer-auth/signup`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function sendPhoneOtp(phone: string): Promise<{ ok: true }> {
+  return request(`/customer-auth/otp/send`, {
+    method: "POST",
+    body: JSON.stringify({ phone }),
+  });
+}
+
+export function verifyPhoneOtp(phone: string, code: string): Promise<CustomerAuthResult> {
+  return request(`/customer-auth/otp/verify`, {
+    method: "POST",
+    body: JSON.stringify({ phone, code }),
+  });
+}
+
+export function customerLogin(phone: string, password: string): Promise<CustomerAuthResult> {
+  return request(`/customer-auth/login`, {
+    method: "POST",
+    body: JSON.stringify({ phone, password }),
+  });
+}
+
+export function customerRefresh(refreshToken: string): Promise<CustomerAuthResult> {
+  return request(`/customer-auth/refresh`, {
+    method: "POST",
+    body: JSON.stringify({ refreshToken }),
+  });
+}
+
+export function customerLogout(refreshToken?: string): Promise<{ ok: true }> {
+  return request(`/customer-auth/logout`, {
+    method: "POST",
+    body: JSON.stringify(refreshToken ? { refreshToken } : {}),
+  });
+}

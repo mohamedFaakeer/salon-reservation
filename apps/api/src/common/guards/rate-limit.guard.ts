@@ -134,6 +134,46 @@ const RULES: RateLimitRule[] = [
     max: 30,
     windowMs: 60_000,
   },
+  {
+    // Same reasoning as "sign-in" — brute-forceable credentials, phone
+    // instead of email.
+    name: "customer-login",
+    method: "POST",
+    pattern: /^\/customer-auth\/(login|refresh)$/,
+    max: 10,
+    windowMs: 60_000,
+    accountField: "phone",
+    accountMax: 5,
+  },
+  {
+    // Tight: each send is a real SMS through the paid Text.lk connection, on
+    // top of being a target for someone else's phone getting spammed.
+    name: "customer-otp-send",
+    method: "POST",
+    pattern: /^\/customer-auth\/otp\/send$/,
+    max: 10,
+    windowMs: 600_000,
+    accountField: "phone",
+    accountMax: 3,
+  },
+  {
+    // The OTP row itself caps wrong guesses (5, then must resend); this is
+    // the network-level backstop against hammering across many codes/IPs.
+    name: "customer-otp-verify",
+    method: "POST",
+    pattern: /^\/customer-auth\/otp\/verify$/,
+    max: 20,
+    windowMs: 600_000,
+    accountField: "phone",
+    accountMax: 10,
+  },
+  {
+    name: "customer-signup",
+    method: "POST",
+    pattern: /^\/customer-auth\/signup$/,
+    max: 10,
+    windowMs: 60_000,
+  },
 ];
 
 /** Health checks must never be throttled — a 429 here reads as an outage. */

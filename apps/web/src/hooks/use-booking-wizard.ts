@@ -18,6 +18,7 @@ import {
   type SalonProfile,
 } from "../lib/api-client";
 import { colomboToday } from "../lib/format";
+import { useCustomerAuth } from "../context/customer-auth-context";
 
 export type WizardStep =
   "services" | "staff" | "date" | "slots" | "details" | "payment" | "success";
@@ -36,7 +37,16 @@ function generateIdempotencyKey(): string {
  * straight from the server (CLAUDE.md "no client-side business logic").
  */
 export function useBookingWizard(salon: SalonProfile) {
+  const { suppressPrompt } = useCustomerAuth();
   const [step, setStep] = useState<WizardStep>("services");
+
+  // The timed account prompt is for someone still browsing — the instant
+  // they've committed to a service, it must never appear mid-task.
+  useEffect(() => {
+    if (step !== "services") {
+      suppressPrompt();
+    }
+  }, [step, suppressPrompt]);
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null); // null = "Any Available Staff"
   const [selectedDate, setSelectedDate] = useState<string>(colomboToday());

@@ -58,6 +58,9 @@ import { NotificationProviderResolver } from "./providers/resolve-notification-p
     NotificationSchedulerService,
     TemplateRendererService,
     SystemTemplatesService,
+    // Customer-account phone verification (customer-auth module) rides this
+    // same Text.lk connection rather than duplicating SMS-sending logic.
+    SmsNotificationProvider,
   ],
 })
 export class NotificationModule {}

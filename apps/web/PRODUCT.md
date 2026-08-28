@@ -11,8 +11,10 @@ web
 The primary user is a customer in Colombo, roughly 20–35, booking a salon
 appointment on a phone, usually on mobile data. They already use PickMe and food
 delivery daily and carry those expectations into this: instant, obvious, no
-sign-up ritual. They book with no account at all — a phone number and a booking
-reference are the entire identity mechanism.
+sign-up ritual forced on them. They can book with no account at all — a phone
+number and a booking reference are enough — and an optional account exists for
+someone who wants to skip re-typing their details next time (see Product
+Principles §2).
 
 A second audience evaluates this surface without ever booking: the salon owner
 being shown the product as a demo. They are deciding whether this is software
@@ -21,7 +23,7 @@ worth paying for, and they judge it in about a minute.
 ## Product Purpose
 
 Let a customer see a salon's genuinely open appointment slots and claim one in
-under sixty seconds, from a link, with no account. Success is a booked
+under sixty seconds, from a link, with no account required. Success is a booked
 appointment that appears on the salon's day board without anyone phoning anyone.
 
 ## Positioning
@@ -60,6 +62,10 @@ same record through the same engine.
 - Payment is record-only in this version. There is no real gateway, and the UI
   must not imply a card is being charged.
 - Multi-tenant: one deployment serves many salons, each at `/salon/<slug>`.
+- Optional customer accounts (2026-08-28): sign up with name, mobile, email,
+  and a password; a phone number is verified once by a 6-digit SMS code, the
+  same session then persists across every salon on the platform. Never a
+  precondition for booking — see Product Principles §2.
 
 ## Brand Commitments
 
@@ -86,8 +92,16 @@ same record through the same engine.
 
 1. **Never show a slot that cannot be booked.** An empty day is honest; a fake
    grid of greyed-out times is not.
-2. **No account, ever.** The reference code is the credential. Nothing in the
-   flow may ask a customer to register.
+2. **No account required, ever.** The reference code is always enough on its
+   own; nothing in the flow may block booking behind a sign-up wall or make
+   registering feel mandatory.
+   > **Note (2026-08-28):** this principle originally read "No account,
+   > ever" — full stop, no exception. It was loosened by an explicit product
+   > decision, not by drift: a platform-level customer account now optionally
+   > exists (one identity, usable at every salon, not per-tenant), offering
+   > faster repeat booking and phone-verified checkout. Guest booking is the
+   > default and is never degraded or interrupted by this — see
+   > `docs/DECISIONS.md` §46 for the full reasoning.
 3. **The server owns every number.** Prices, availability, deposits and refunds
    are displayed as received, never recomputed in the browser.
 4. **The booking reference is the artifact the customer leaves with.** It must be

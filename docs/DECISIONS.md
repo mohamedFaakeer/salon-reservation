@@ -1861,3 +1861,82 @@ inventing a look for one screen would have made it read as a different product.
    §44) the desk uses — not a second implementation of appointment status
    changes.
 
+## 46. Customer accounts, sign-up, and phone verification (2026-08-28)
+
+1. **Guest booking is untouched.** Phone + reference code, no login,
+   sub-60-second booking — the architecture CLAUDE.md §2 already commits
+   `apps/web` to — keeps working exactly as it does today. An account is
+   an optional, faster path for a repeat customer, never a requirement to
+   book.
+2. **One account works across every salon on the platform**, not one
+   account per tenant. `customer_account` is deliberately a new,
+   platform-level table — not tenant-scoped like the existing `Customer`
+   entity, which still means exactly what it always has ("this person's
+   booking history at this salon"). `customer_account_salon_link` is what
+   will connect the two once a logged-in account actually books somewhere;
+   the table exists now with the rest of the schema but nothing populates
+   it yet — booking-flow integration is later work, following the
+   frontend mockup.
+3. **Built ourselves — no Neon Auth.** Neon Auth (Neon's hosted auth
+   product) is built around email/password or social login, not
+   phone-number-plus-OTP; the OTP flow that's the actual point of this
+   feature would have to be hand-built either way, and the tenant-free
+   "one account, many salons" resolution isn't something it knows about
+   regardless. Bringing it in would add a dependency without removing the
+   part that's actually the work. `apps/api/src/customer-auth` instead
+   mirrors the existing staff auth module's already-proven pattern exactly
+   — argon2id (`PasswordService`, reused directly), an opaque
+   rotate-on-use refresh token with reuse detection
+   (`CustomerRefreshSession`, same design as `RefreshSession`), and a
+   short-lived HS256 access token — kept as fully separate tables/services
+   rather than generalizing the staff versions, because a customer session
+   carries no tenant or role to resolve, and forcing one code path to
+   handle both would mean every read branches on which kind of session it
+   found. The access token's audience (`salon-web-customer` vs. staff's
+   `salon-reservation`) is a real cryptographic boundary, not just a
+   naming convention — one kind of token is rejected outright by a guard
+   expecting the other.
+4. **Password logs a returning customer in on a new device; OTP is only
+   ever for verifying a phone number** (at signup, or if a phone number
+   ever needs to change later) — not re-required on every login. This
+   mirrors Uber/PickMe's actual behavior (verify once, then password or a
+   remembered session), and was called out explicitly during planning as
+   the one place a different reading of "just like Uber" was plausible.
+5. **OTP codes are never stored raw** — only a SHA-256 hash, same policy as
+   a refresh token — and sending rides the same `SmsNotificationProvider`
+   (Text.lk) notifications already use, now exported from
+   `NotificationModule`, rather than a second SMS integration. Capped at 5
+   wrong guesses per code (then a resend is required) plus network-level
+   rate limits tighter than ordinary login (`customer-otp-send`:
+   3-per-10-minutes per phone) — a send is a real cost through the paid
+   gateway, not just an abuse surface.
+6. **Frontend followed the project's standing UI workflow**: a static
+   mockup (via `/impeccable`, consulting `/ui-ux-pro-max` for the
+   timed-modal and OTP-input patterns) was reviewed and approved before
+   any real component was written, then built to match it — see points 7–8.
+7. **The whole optional-account flow lives in one place**:
+   `CustomerAuthProvider` (`apps/web/src/context`) holds the account, the
+   silent-refresh-on-load that makes a returning customer's login
+   persistent, and which of five screens (prompt/signup/created/login/otp)
+   is on screen, if any — rendered by one `AccountOverlay` mounted once in
+   the root layout. The booking-confirm button
+   (`payment-step.tsx`) opens straight to the `otp` screen through the same
+   context rather than a second OTP implementation. The timed prompt
+   (40s dwell, once per browser tab via `sessionStorage`) is suppressed the
+   instant `useBookingWizard`'s step leaves `"services"` — it must never
+   appear mid-task, only while someone is still just looking.
+   Password guidance is a live strength bar plus a three-item checklist
+   (length, a number/symbol, mixed case) that only ever *guides* — the one
+   rule that actually blocks submission is the server's real one, 8–128
+   characters.
+8. **Deliberately not wired yet, and worth naming rather than leaving
+   silent**: booking a slot while logged in does not look up or create a
+   `customer_account_salon_link`, and the booking-details form is not
+   pre-filled from the account — a verified customer still retypes their
+   name, phone, and email today. Wiring the account into
+   `BookingService.reserveAndConfirm` is the follow-up that actually
+   delivers "skip the form," and it touches core booking logic, so it
+   wasn't bundled into this pass without a separate go-ahead. Also
+   dropped: the mockup's "Wrong number? Change it" link on the OTP
+   screen — there is no endpoint yet to change a verified phone number, so
+   showing a link that goes nowhere would be worse than not offering it.

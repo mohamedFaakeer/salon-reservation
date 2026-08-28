@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { BookingWizard } from "../hooks/use-booking-wizard";
 import { formatPriceCents } from "../lib/format";
+import { useCustomerAuth } from "../context/customer-auth-context";
 import { DyeButton, Marker } from "./cloth";
 import { BusyLabel } from "./spinner";
 
@@ -157,12 +158,17 @@ function PackageEntry({ wizard }: { wizard: BookingWizard }) {
 export function PaymentStep({ wizard }: { wizard: BookingWizard }) {
   // Hooks run unconditionally — fall back to now when there is no hold yet.
   const hold = useHold(wizard.hold?.holdExpiresAt ?? new Date().toISOString());
+  const auth = useCustomerAuth();
   if (!wizard.hold) {
     return null;
   }
 
   const { advanceRequiredCents, balanceCents } = wizard.hold.paymentIntent;
   const expired = hold.state === "expired";
+  // A guest (no account at all) never sees any of this — the button has
+  // always just said "Book it". Only a logged-in, still-unverified account
+  // gets the extra step (DECISIONS.md §46, mockup review).
+  const needsVerification = Boolean(auth.account && !auth.account.phoneVerified);
 
   return (
     <div>
@@ -235,6 +241,12 @@ export function PaymentStep({ wizard }: { wizard: BookingWizard }) {
         </p>
       ) : null}
 
+      {needsVerification && !expired ? (
+        <p className="mt-3 rounded-[var(--radius-sm)] border border-[rgba(46,58,140,0.25)] bg-[rgba(46,58,140,0.08)] p-3 text-[13px] font-semibold text-[var(--indigo)]">
+          Verify your mobile number to finish booking — takes 30 seconds.
+        </p>
+      ) : null}
+
       <div className="mt-4 flex gap-2">
         {expired ? (
           <DyeButton onClick={() => wizard.goTo("slots")} className="flex-1">
@@ -247,12 +259,14 @@ export function PaymentStep({ wizard }: { wizard: BookingWizard }) {
             </DyeButton>
             <DyeButton
               testId="confirm-payment"
-              onClick={() => void wizard.confirm()}
+              onClick={() =>
+                needsVerification ? auth.openVerifyForCurrentAccount() : void wizard.confirm()
+              }
               disabled={wizard.submitting}
               className="flex-[2]"
             >
               <BusyLabel busy={wizard.submitting} busyText="Confirming…">
-                Book it
+                {needsVerification ? "Verify mobile number" : "Book it"}
               </BusyLabel>
             </DyeButton>
           </>

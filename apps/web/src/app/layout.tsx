@@ -2,6 +2,8 @@ import React from "react";
 import type { Metadata } from "next";
 import { Anybody, Familjen_Grotesk } from "next/font/google";
 import "./globals.css";
+import { CustomerAuthProvider } from "../context/customer-auth-context";
+import { AccountOverlay } from "../components/account-overlay";
 
 /**
  * Display: Anybody, a variable face whose width axis is the point — it
@@ -76,7 +78,10 @@ export default function RootLayout({
     <html lang="en" className={`${display.variable} ${body.variable}`}>
       <body>
         <div hidden aria-hidden="true" dangerouslySetInnerHTML={{ __html: DIRECTION_CONTRACT }} />
-        {children}
+        <CustomerAuthProvider>
+          {children}
+          <AccountOverlay />
+        </CustomerAuthProvider>
       </body>
     </html>
   );
