@@ -11,7 +11,7 @@
 
 This is a mature, deliberately-engineered codebase from a security standpoint. Every major boundary the template asks about — tenant isolation, authentication, session handling, authorization/RBAC, resource ownership, SQL injection, XSS, CSRF, secrets, file upload, error handling — was traced to real code and found correctly implemented, in most cases with an explicit design comment showing the author already reasoned through the exact attack this audit was checking for. `docs/SECURITY.md` and `docs/DEVELOPMENT_PLAN.md`'s own S1–S12 security test matrix make specific claims; this audit verified them against the actual implementation rather than taking them on trust, and found them accurate.
 
-No CRITICAL or HIGH code-level vulnerability was found. **One urgent, non-code action is outstanding**: the production Neon database connection string and the platform-admin password have been shared in working chat transcripts — at least twice, including once during this audit's own investigation (a migration had to be run and the credential was pasted into chat to do it). This is not a hypothetical; `docs/DEVELOPMENT_PLAN.md` already names it as an owed rotation. It should be rotated immediately, independent of anything else in this report.
+No CRITICAL or HIGH code-level vulnerability was found. **One urgent, non-code action was outstanding and has since been resolved**: the production Neon database connection string and the platform-admin password had been shared in working chat transcripts — at least twice, including once during this audit's own investigation (a migration had to be run and the credential was pasted into chat to do it). `docs/DEVELOPMENT_PLAN.md` had already named it as an owed rotation. Both credentials were rotated on 2026-08-28 (see F-01) — the values that were exposed are no longer valid.
 
 Two MEDIUM defense-in-depth gaps were found (detailed below) — neither is currently being exploited (one was verified live and found to be correctly configured today), but both represent a control that could silently fail without warning. A handful of INFORMATIONAL items round out the report, including one item worth stating precisely so it isn't mistaken for a new discovery: the customer "verify your phone" gate is confirmed, by a full-codebase grep, to have zero server-side authorization role — it is UI-only, exactly as `docs/DECISIONS.md` §46 already disclosed when it was built.
 
@@ -171,7 +171,7 @@ Per the scope agreed before this audit began: **no live Neon database-role privi
 | Privilege Escalation | VERIFIED | — | §4, §6 |
 | Mass Assignment | VERIFIED | — | §4 |
 | Secrets in code/git history | VERIFIED | — | §12 |
-| Secrets operational handling | **ACTION REQUIRED** | **HIGH (operational)** | §12 |
+| Secrets operational handling | **RESOLVED** | HIGH (operational) → resolved | §12 |
 | Error Handling | VERIFIED | — | §11 |
 | File Upload / Path Traversal | VERIFIED | — | §13 |
 | SSRF | N/A | — | §13 |
@@ -186,10 +186,9 @@ Per the scope agreed before this audit began: **no live Neon database-role privi
 
 ### F-01 — Production credentials shared in chat transcripts
 - **Severity**: HIGH (operational action, not a code defect)
+- **Status: RESOLVED (2026-08-28)** — all three rotation steps completed: (1) the Neon database role's password was reset in the Neon console and `DATABASE_URL` updated in Render; (2) the platform super-admin's actual account password was rotated via the existing `npm run user:set-password -w apps/api -- --email <email> --generate` script (already documented in `docs/DEPLOYMENT.md:129`), which also revoked every existing session for that account; (3) the `SUPER_ADMIN_PASSWORD` env var in Render was updated so a future from-scratch migration/disaster-recovery restore won't reseed the old leaked value. The credentials pasted into this session's transcript are no longer valid.
 - **Evidence**: `docs/DEVELOPMENT_PLAN.md` "Still open" section; this session's own transcript.
-- **Impact**: Anyone with access to the transcript(s) has the production database password and/or platform-admin password.
-- **Fix**: Rotate the Neon database role's password and `SUPER_ADMIN_PASSWORD` now. Update the Render env vars and any local `.env`. Treat both as already compromised.
-- **Regression test**: N/A (operational, not code) — confirm the old credentials no longer authenticate after rotation.
+- **Impact**: Anyone with access to the transcript(s) had the production database password and/or platform-admin password — now moot, both rotated.
 
 ### F-02 — `CORS_ORIGINS` absence not caught by the production boot-time check
 - **Severity**: MEDIUM (latent, not currently live — see §8)
@@ -251,7 +250,7 @@ All tenant-owned tables (`appointment`, `customer`, `payment`, `staff`, `service
 ## 20. Remediation Roadmap
 
 **Phase 0 — Emergency (do this regardless of anything else in this report)**
-- F-01: Rotate the Neon database password and `SUPER_ADMIN_PASSWORD`.
+- F-01: **RESOLVED** — Neon database password and `SUPER_ADMIN_PASSWORD`/account rotated.
 
 **Phase 1 — Tenant Isolation**
 - Nothing required — verified clean (§3).
@@ -280,10 +279,8 @@ The existing `docs/DEVELOPMENT_PLAN.md` §2.5 / `docs/SECURITY.md` §11 S1–S12
 
 ## 22. Production Readiness Verdict
 
-> 🟡 **MODERATE RISK — FIX BEFORE PRODUCTION**
-
-Driven entirely by F-01 (credential rotation), which is an operational action, not a code defect. No CRITICAL or HIGH code-level vulnerability was identified within the audited scope. F-02 and F-04 have since been fixed, and F-03 has a guard in place, all same-day as this audit (2026-08-28). Once the Neon and platform-admin credentials are rotated (F-01, via the existing `npm run user:set-password` tool documented in `docs/DEPLOYMENT.md`), this would read as:
-
 > 🟢 **NO CRITICAL/HIGH ISSUES IDENTIFIED — READY FOR FINAL SECURITY VALIDATION**
+
+No CRITICAL or HIGH code-level vulnerability was identified within the audited scope. All findings from this report — F-01 (credential rotation, resolved 2026-08-28), F-02 (CORS boot-check, fixed), F-03 (XSS-sink lint guard, added), F-04 (documentation drift, corrected) — are now closed. Remaining items (F-06, F-07) are informational, forward-looking notes with no action required today.
 
 No claim of "100% secure" is made. This audit traced attacker input → application → authorization → database → response for every category the supplied template asked about, adapted to this codebase's real stack, and found the documented security architecture (`docs/SECURITY.md`, `CLAUDE.md` §6) to be an accurate description of the actual implementation — a genuinely uncommon result, and worth stating plainly rather than hedging.
