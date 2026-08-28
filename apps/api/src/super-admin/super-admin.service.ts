@@ -15,6 +15,7 @@ import {
   type PaginationQueryDto,
   type TenantEntitlements,
   type UpdateTenantEntitlementsDto,
+  type UpdateTenantVisibilityDto,
   type ProvisionTenantDto,
 } from "@salon/shared";
 import { Appointment } from "../entities/appointment.entity";
@@ -151,7 +152,10 @@ export class SuperAdminService {
     query: PaginationQueryDto,
   ): Promise<{
     data: Array<
-      Pick<Tenant, "id" | "slug" | "name" | "status" | "currency" | "timezone" | "createdAt"> & {
+      Pick<
+        Tenant,
+        "id" | "slug" | "name" | "status" | "customerBookingEnabled" | "currency" | "timezone" | "createdAt"
+      > & {
         tier: TenantEntitlements["tier"];
         bookingsToday: number;
         overBookingLimit: boolean;
@@ -188,6 +192,7 @@ export class SuperAdminService {
           slug: t.slug,
           name: t.name,
           status: t.status,
+          customerBookingEnabled: t.customerBookingEnabled,
           currency: t.currency,
           timezone: t.timezone,
           createdAt: t.createdAt,
@@ -229,6 +234,33 @@ export class SuperAdminService {
     });
 
     return this.toEntitlementsView(tenant);
+  }
+
+  /**
+   * The activate/deactivate switch (DECISIONS.md) — deliberately separate
+   * from `updateEntitlements`/`status`: this only controls whether customers
+   * can discover/book the salon (`SalonService.list`, `TenantService.findActiveBySlug`),
+   * never staff/admin login, which `TenantGuard` gates from `status` alone.
+   */
+  async setCustomerVisibility(
+    tenantId: string,
+    dto: UpdateTenantVisibilityDto,
+    actorUserId: string,
+  ): Promise<Pick<Tenant, "id" | "customerBookingEnabled">> {
+    const tenant = await this.findOwned(tenantId);
+    tenant.customerBookingEnabled = dto.customerBookingEnabled;
+    await this.tenants.save(tenant);
+
+    await this.audit.record({
+      tenantId,
+      actorUserId,
+      action: "TENANT_CUSTOMER_VISIBILITY_UPDATED",
+      entityType: "Tenant",
+      entityId: tenantId,
+      metadata: { customerBookingEnabled: dto.customerBookingEnabled },
+    });
+
+    return { id: tenant.id, customerBookingEnabled: tenant.customerBookingEnabled };
   }
 
   private async findOwned(tenantId: string): Promise<Tenant> {

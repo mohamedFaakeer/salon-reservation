@@ -8,6 +8,29 @@ import { formatDateLong } from "../../../lib/format";
 import { sceneFor } from "../../../lib/imagery";
 
 /**
+ * A salon a platform admin has deactivated (DECISIONS.md) — distinct from a
+ * genuinely unknown slug, which stays a plain 404. The salon exists and is
+ * operating; it just isn't taking online bookings right now, so a bookmarked
+ * link should say that plainly rather than read as broken.
+ */
+function BookingDisabled() {
+  return (
+    <main className="mx-auto flex min-h-screen max-w-lg items-center px-5">
+      <Undyed className="w-full rounded-[var(--radius)] p-7 text-center">
+        <Marker>Not available</Marker>
+        <h1 className="display mt-2 text-[26px] text-[var(--ink)]">
+          This salon isn&apos;t taking
+          <span className="block">online bookings right now.</span>
+        </h1>
+        <p className="mt-3 text-[14px] text-[var(--ink)]/70">
+          Try again later, or contact the salon directly to book.
+        </p>
+      </Undyed>
+    </main>
+  );
+}
+
+/**
  * The salon.
  *
  * The name soaks in over the photograph — the one authored motion moment on
@@ -25,8 +48,15 @@ export default async function SalonProfilePage({ params }: { params: Promise<{ s
     if (err instanceof ApiRequestError && err.statusCode === 404) {
       notFound();
     }
+    if (err instanceof ApiRequestError && err.code === "SALON_BOOKING_DISABLED") {
+      return null;
+    }
     throw err;
   });
+
+  if (salon === null) {
+    return <BookingDisabled />;
+  }
 
   const place = [salon.city, salon.address].filter(Boolean).join(" · ");
 

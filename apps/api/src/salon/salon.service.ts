@@ -104,7 +104,10 @@ export class SalonService {
     const query = this.tenants
       .createQueryBuilder("t")
       .leftJoin(Branch, "b", 'b."tenantId" = t.id AND b.active = true')
-      .where("t.status = :status", { status: TenantStatus.ACTIVE })
+      // Both conditions live in the same .where() — .andWhere() below is
+      // reserved for the optional search term, matching the existing
+      // "no andWhere call when no term is given" test.
+      .where('t.status = :status AND t."customerBookingEnabled" = true', { status: TenantStatus.ACTIVE })
       .orderBy("t.name", "ASC");
 
     const term = q?.trim();

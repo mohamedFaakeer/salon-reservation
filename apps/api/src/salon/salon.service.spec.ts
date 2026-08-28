@@ -37,6 +37,7 @@ function fakeTenant(overrides: Partial<Tenant> = {}): Tenant {
     id: "tenant-1",
     slug: "elegance",
     name: "Elegance Salon",
+    customerBookingEnabled: true,
     settings: {
       advanceRule: AdvanceRule.NO_ADVANCE,
       advanceValueCents: null,
@@ -151,6 +152,15 @@ describe("SalonService", () => {
       expect(withTerm.andWhere).toHaveBeenCalledWith(expect.stringContaining("ILIKE"), {
         q: "%colombo%",
       });
+    });
+
+    it("excludes a deactivated salon from the public directory", async () => {
+      const qb = listReturning([]);
+      await service.list();
+      expect(qb.where).toHaveBeenCalledWith(
+        expect.stringContaining('"customerBookingEnabled"'),
+        expect.anything(),
+      );
     });
   });
 

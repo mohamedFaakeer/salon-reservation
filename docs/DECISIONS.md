@@ -1999,3 +1999,55 @@ inventing a look for one screen would have made it read as a different product.
    Platform/SUPER_ADMIN shell; `visible()`/module-gating logic; any shared
    `Button` component (this app hand-styles buttons per call site — a
    consolidation refactor is a separate decision, not bundled in here).
+
+## 48. Per-salon activate/deactivate — customer visibility, independent of staff access (2026-08-28)
+
+1. **The ask.** A platform admin needs to hide a specific salon from
+   customer-facing discovery/booking — e.g. a salon that's paused
+   operations — without cutting off its own staff's admin access.
+2. **Deliberately not `Tenant.status`.** `TenantStatus` (ACTIVE/SUSPENDED/
+   TRIAL) already gates staff/admin login live, on every request
+   (`TenantGuard`). Reusing it here would take staff access down along
+   with customer visibility — a different decision nobody asked for. New,
+   independent column instead: `Tenant.customerBookingEnabled` (boolean,
+   `DEFAULT true` so every existing tenant's current behavior is
+   unchanged). Two axes, two meanings, never conflated.
+3. **One shared choke point closes both discovery paths.** The public
+   salon directory (`SalonService.list`) already filtered
+   `WHERE status = ACTIVE`; it now also requires the new flag, folded into
+   the same `.where()` (not a second `.andWhere()`) to keep the existing
+   "no andWhere call without a search term" test's contract intact. More
+   importantly, `TenantService.findActiveBySlug` — already shared by the
+   salon profile page, the availability check, *and* booking creation —
+   got the same check added once, so all three call sites are protected
+   without three separate changes and without trusting a customer's
+   browser to have already seen a "come back later" state before it POSTs
+   a booking directly.
+4. **A distinct error code, not folded into 404.** An unknown/suspended
+   slug still 404s (`SALON_NOT_FOUND`) — a deactivated salon exists and is
+   operating, so it gets its own `403 SALON_BOOKING_DISABLED`. The
+   customer site (`apps/web`) catches that code specifically and renders a
+   branded "not accepting online bookings right now" page instead of
+   either the wizard or a dead-end 404.
+5. **Existing bookings are untouched, on purpose.** Self-service
+   cancel/reschedule-by-reference never routes through
+   `findActiveBySlug` — confirmed by checking every caller, not assumed —
+   so a customer with a confirmed appointment can still manage it after
+   their salon is deactivated. Self-service *reschedule* specifically was
+   left as-is (not additionally gated) since it wasn't part of what was
+   asked; picking a literal new slot at a deactivated salon via reschedule
+   remains possible today and would need its own decision to close.
+6. **Audited like every other platform-admin mutation.** `SuperAdminService
+   .setCustomerVisibility` records `TENANT_CUSTOMER_VISIBILITY_UPDATED`,
+   matching `updateEntitlements`'s existing audit shape exactly — same
+   `PLATFORM_ADMIN`-gated route pattern, same server-derived `tenantId`
+   (URL param, never trusted from a body), same DTO-whitelist-only input
+   (`UpdateTenantVisibilityDto` accepts exactly one boolean field).
+7. **Verified live**, not just unit-tested: deactivated a real local
+   tenant end-to-end — disappeared from `GET /salons`, its profile/booking
+   endpoints returned the new 403, staff login for that same tenant kept
+   succeeding throughout, the customer site rendered the friendly page,
+   and the admin platform page's new Activate/Deactivate button and
+   "Hidden from customers" pill round-tripped correctly in both
+   directions (screenshots taken at each step) — then reactivated to
+   leave the dev database as found.

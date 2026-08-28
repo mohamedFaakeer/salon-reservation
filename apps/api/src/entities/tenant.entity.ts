@@ -71,6 +71,16 @@ export class Tenant {
   @Column({ type: "varchar", length: 20, default: "ACTIVE" })
   status!: TenantStatus;
 
+  /**
+   * Independent of `status` on purpose: `status` already gates staff/admin
+   * login live on every request (TenantGuard) — reusing it here would take
+   * staff access down along with customer visibility, a different decision a
+   * platform admin didn't ask to make. This only affects whether customers
+   * can discover/book the salon (`SalonService.list`, `TenantService.findActiveBySlug`).
+   */
+  @Column({ type: "boolean", default: true })
+  customerBookingEnabled!: boolean;
+
   @Column({ type: "varchar", length: 3, default: "LKR" })
   currency!: string;
 

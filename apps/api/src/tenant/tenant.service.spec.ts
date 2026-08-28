@@ -19,6 +19,7 @@ function baseTenant(overrides: Partial<Tenant> = {}): Tenant {
     slug: "eagle",
     name: "Eagle Salon",
     status: "ACTIVE",
+    customerBookingEnabled: true,
     currency: "LKR",
     timezone: "Asia/Colombo",
     settings: DEFAULT_TENANT_SETTINGS,
@@ -154,5 +155,40 @@ describe("TenantService.uploadLogo — the four constraints, in order", () => {
     expect(settings.logoUrl).toBe("https://res.cloudinary.com/demo/logo.png");
     expect(cloudinary.uploadLogo).toHaveBeenCalledWith(expect.any(Buffer), "salon-logos/eagle");
     expect(tenants.save).toHaveBeenCalled();
+  });
+});
+
+describe("TenantService.findActiveBySlug — shared by the salon profile page and booking creation", () => {
+  let tenants: Repository<Tenant>;
+  let service: TenantService;
+
+  beforeEach(() => {
+    tenants = mockRepo<Tenant>();
+    const cloudinary = { uploadLogo: vi.fn() } as unknown as CloudinaryService;
+    service = new TenantService(tenants, cloudinary);
+  });
+
+  it("returns the tenant when active and visible to customers", async () => {
+    vi.mocked(tenants.findOne).mockResolvedValueOnce(baseTenant());
+
+    await expect(service.findActiveBySlug("eagle")).resolves.toMatchObject({ slug: "eagle" });
+  });
+
+  it("404s a slug that doesn't match an ACTIVE tenant — unknown and suspended read identically", async () => {
+    vi.mocked(tenants.findOne).mockResolvedValueOnce(null);
+
+    await expect(service.findActiveBySlug("nope")).rejects.toMatchObject({
+      statusCode: 404,
+      code: "SALON_NOT_FOUND",
+    });
+  });
+
+  it("rejects with a distinct code when the salon exists and is active but a platform admin deactivated customer bookings", async () => {
+    vi.mocked(tenants.findOne).mockResolvedValueOnce(baseTenant({ customerBookingEnabled: false }));
+
+    await expect(service.findActiveBySlug("eagle")).rejects.toMatchObject({
+      statusCode: 403,
+      code: "SALON_BOOKING_DISABLED",
+    });
   });
 });

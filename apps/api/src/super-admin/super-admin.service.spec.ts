@@ -23,6 +23,7 @@ function baseTenant(overrides: Partial<Tenant> = {}): Tenant {
     slug: "eagle",
     name: "Eagle Salon",
     status: "ACTIVE",
+    customerBookingEnabled: true,
     currency: "LKR",
     timezone: "Asia/Colombo",
     createdAt: new Date("2026-08-01T00:00:00Z"),
@@ -134,6 +135,62 @@ describe("SuperAdminService", () => {
 
       expect(result.data).toEqual([]);
       expect(appointments.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it("carries customerBookingEnabled through to the platform list", async () => {
+      vi.mocked(tenants.findAndCount).mockResolvedValueOnce([
+        [baseTenant({ customerBookingEnabled: false })],
+        1,
+      ]);
+
+      const result = await service.listTenants({ limit: 25, offset: 0 });
+
+      expect(result.data[0].customerBookingEnabled).toBe(false);
+    });
+  });
+
+  describe("setCustomerVisibility — the activate/deactivate switch", () => {
+    it("404s for an unknown tenant", async () => {
+      vi.mocked(tenants.findOne).mockResolvedValueOnce(null);
+
+      await expect(
+        service.setCustomerVisibility("nope", { customerBookingEnabled: false }, "super-admin-1"),
+      ).rejects.toMatchObject({ code: "TENANT_NOT_FOUND" });
+    });
+
+    it("deactivates a salon and records who did it", async () => {
+      vi.mocked(tenants.findOne).mockResolvedValueOnce(baseTenant());
+
+      const result = await service.setCustomerVisibility(
+        "tenant-1",
+        { customerBookingEnabled: false },
+        "super-admin-1",
+      );
+
+      expect(result).toEqual({ id: "tenant-1", customerBookingEnabled: false });
+      expect(tenants.save).toHaveBeenCalledWith(
+        expect.objectContaining({ customerBookingEnabled: false }),
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "TENANT_CUSTOMER_VISIBILITY_UPDATED",
+          tenantId: "tenant-1",
+          actorUserId: "super-admin-1",
+          metadata: { customerBookingEnabled: false },
+        }),
+      );
+    });
+
+    it("reactivates a previously deactivated salon", async () => {
+      vi.mocked(tenants.findOne).mockResolvedValueOnce(baseTenant({ customerBookingEnabled: false }));
+
+      const result = await service.setCustomerVisibility(
+        "tenant-1",
+        { customerBookingEnabled: true },
+        "super-admin-1",
+      );
+
+      expect(result.customerBookingEnabled).toBe(true);
     });
   });
 });

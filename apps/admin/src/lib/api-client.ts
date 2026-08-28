@@ -1279,6 +1279,8 @@ export interface PlatformTenant {
   slug: string;
   name: string;
   status: string;
+  /** Independent of `status` — never affects staff/admin login, only customer discovery/booking. */
+  customerBookingEnabled: boolean;
   currency: string;
   timezone: string;
   createdAt: string;
@@ -1331,6 +1333,20 @@ export function demoSeedTenant(tenantId: string): Promise<DemoSeedResult> {
     method: "POST",
     body: JSON.stringify({}),
   });
+}
+
+/**
+ * Activate/deactivate a salon's customer-facing visibility — never affects
+ * staff/admin login, which is gated by `status` alone.
+ */
+export function updateTenantVisibility(
+  tenantId: string,
+  customerBookingEnabled: boolean,
+): Promise<{ id: string; customerBookingEnabled: boolean }> {
+  return request<{ id: string; customerBookingEnabled: boolean }>(
+    `/super-admin/tenants/${tenantId}/customer-visibility`,
+    { method: "PATCH", body: JSON.stringify({ customerBookingEnabled }) },
+  );
 }
 
 /* ------------------------------------------------------- tenant entitlements */

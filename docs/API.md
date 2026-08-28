@@ -278,6 +278,7 @@ via `PATCH /staff/:id`, validated against the caller's own tenant.
 | GET | `/super-admin/tenants` | SUPER_ADMIN | List tenants — each row also carries `tier`, live `bookingsToday`, and `overBookingLimit` |
 | GET | `/super-admin/tenants/:id/entitlements` | SUPER_ADMIN | This tenant's tier, raw overrides, and the resolved effective modules/report panels/limits |
 | PATCH | `/super-admin/tenants/:id/entitlements` | SUPER_ADMIN | Whole-replace `{ tier, moduleOverrides?, reportPanelOverrides?, limitOverrides? }` — see DECISIONS.md §34 |
+| PATCH | `/super-admin/tenants/:id/customer-visibility` | SUPER_ADMIN | Activate/deactivate a salon's customer-facing discovery/booking `{ customerBookingEnabled }` — never affects staff/admin login (that's `status` alone); see DECISIONS.md §48 |
 
 Attendance, Incentives, Reports, the audit log and Invoices are each gated by
 the calling tenant's entitlements (`@RequiresModule`) in addition to their

@@ -5,6 +5,7 @@ import {
   ApiRequestError,
   demoSeedTenant,
   fetchTenants,
+  updateTenantVisibility,
   type DemoSeedResult,
   type ListMeta,
   type PlatformTenant,
@@ -52,6 +53,7 @@ export default function PlatformPage() {
     null,
   );
   const [managingPlan, setManagingPlan] = useState<PlatformTenant | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -80,6 +82,26 @@ export default function PlatformPage() {
       setError(err instanceof ApiRequestError ? err.message : "Could not seed this salon.");
     } finally {
       setSeedingId(null);
+    }
+  }
+
+  /**
+   * Never touches `status` — staff/admin login for this salon is unaffected
+   * either way. Updates the row in place rather than a full reload, since
+   * nothing else about the tenant changed.
+   */
+  async function toggleVisibility(tenant: PlatformTenant): Promise<void> {
+    setTogglingId(tenant.id);
+    setError(null);
+    try {
+      const result = await updateTenantVisibility(tenant.id, !tenant.customerBookingEnabled);
+      setTenants((prev) =>
+        prev.map((t) => (t.id === tenant.id ? { ...t, customerBookingEnabled: result.customerBookingEnabled } : t)),
+      );
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.message : "Could not update this salon's visibility.");
+    } finally {
+      setTogglingId(null);
     }
   }
 
@@ -198,6 +220,11 @@ export default function PlatformPage() {
                     <span className="font-medium text-white">{tenant.name}</span>
                     <StatusPill status={tenant.status} />
                     <TierPill tier={tenant.tier} />
+                    {!tenant.customerBookingEnabled ? (
+                      <span className="rounded bg-amber-900 px-2 py-0.5 text-xs font-medium text-amber-200">
+                        Hidden from customers
+                      </span>
+                    ) : null}
                     {tenant.overBookingLimit ? (
                       <span className="flex items-center gap-1 rounded bg-amber-900 px-2 py-0.5 text-xs font-medium text-amber-200">
                         <svg viewBox="0 0 16 16" width="11" height="11" fill="none" aria-hidden="true">
@@ -226,6 +253,21 @@ export default function PlatformPage() {
                     className="min-h-11 rounded border border-teal-500 px-3 text-xs font-medium text-teal-300 hover:bg-teal-950"
                   >
                     Manage plan
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`toggle-visibility-${tenant.slug}`}
+                    onClick={() => void toggleVisibility(tenant)}
+                    disabled={togglingId === tenant.id}
+                    className={`min-h-11 rounded border px-3 text-xs font-medium disabled:opacity-60 ${
+                      tenant.customerBookingEnabled
+                        ? "border-amber-600 text-amber-300 hover:bg-amber-950"
+                        : "border-teal-500 text-teal-300 hover:bg-teal-950"
+                    }`}
+                  >
+                    <BusyLabel busy={togglingId === tenant.id} busyText="Updating…">
+                      {tenant.customerBookingEnabled ? "Deactivate" : "Activate"}
+                    </BusyLabel>
                   </button>
                   <button
                     type="button"

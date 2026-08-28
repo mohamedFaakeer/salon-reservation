@@ -3,7 +3,12 @@ import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 // DTOs must stay VALUE imports: ValidationPipe resolves them via
 // design:paramtypes metadata at runtime; `import type` would erase them.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import { PaginationQueryDto, ProvisionTenantDto, UpdateTenantEntitlementsDto } from "@salon/shared";
+import {
+  PaginationQueryDto,
+  ProvisionTenantDto,
+  UpdateTenantEntitlementsDto,
+  UpdateTenantVisibilityDto,
+} from "@salon/shared";
 import type { AuthenticatedRequest } from "../tenant/tenant-context";
 import { Permissions } from "../common/authorization/permissions.decorator";
 import { Permission } from "../common/authorization/permission.enum";
@@ -62,5 +67,16 @@ export class SuperAdminController {
     @Body() dto: UpdateTenantEntitlementsDto,
   ) {
     return this.superAdmin.updateEntitlements(tenantId, dto, req.user.sub);
+  }
+
+  /** Activate/deactivate a salon's customer-facing visibility (DECISIONS.md) — never affects staff/admin login. */
+  @Patch(":tenantId/customer-visibility")
+  @Permissions(Permission.PLATFORM_ADMIN)
+  setCustomerVisibility(
+    @Req() req: AuthenticatedRequest,
+    @Param("tenantId", ParseUUIDPipe) tenantId: string,
+    @Body() dto: UpdateTenantVisibilityDto,
+  ) {
+    return this.superAdmin.setCustomerVisibility(tenantId, dto, req.user.sub);
   }
 }

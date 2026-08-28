@@ -2,6 +2,7 @@ import { Type } from "class-transformer";
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsEmail,
   IsEnum,
   IsIn,
@@ -51,6 +52,17 @@ export class ProvisionTenantDto {
   @IsOptional()
   @IsIn(["LITE", "PRO"])
   tier?: PlanTier;
+}
+
+/**
+ * PATCH /super-admin/tenants/:tenantId/customer-visibility — SUPER_ADMIN only.
+ * Deliberately its own single-field DTO, not folded into entitlements: this
+ * is an operational on/off switch a platform admin flips directly, not a
+ * plan/tier setting.
+ */
+export class UpdateTenantVisibilityDto {
+  @IsBoolean()
+  customerBookingEnabled!: boolean;
 }
 
 /** Nested inside TenantSettingsUpdateDto; all fields optional (PATCH semantics). */

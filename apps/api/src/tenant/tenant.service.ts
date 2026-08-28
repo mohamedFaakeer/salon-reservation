@@ -86,7 +86,18 @@ export class TenantService {
     return tenant;
   }
 
-  /** Public salon lookup (no auth) — never leaks suspended/unknown tenants beyond a plain 404. */
+  /**
+   * Public salon lookup (no auth) — never leaks suspended/unknown tenants
+   * beyond a plain 404. Shared by both the profile page and booking creation
+   * (BookingController), so this one check protects both — the server never
+   * trusts that a customer only reached booking creation via the profile
+   * page's own "not accepting bookings" state.
+   *
+   * `customerBookingEnabled` is checked separately from `status` and gets its
+   * own error code: unlike a genuinely unknown/suspended slug, this salon
+   * exists and is operating — the frontend renders a distinct, friendlier
+   * message for it rather than folding it into the generic "not found" case.
+   */
   async findActiveBySlug(slug: string): Promise<Tenant> {
     const tenant = await this.tenants.findOne({
       where: { slug, status: TenantStatus.ACTIVE },
@@ -96,6 +107,13 @@ export class TenantService {
         statusCode: 404,
         code: "SALON_NOT_FOUND",
         message: "Salon not found.",
+      });
+    }
+    if (!tenant.customerBookingEnabled) {
+      throw new ApiError({
+        statusCode: 403,
+        code: "SALON_BOOKING_DISABLED",
+        message: "This salon isn't accepting online bookings right now.",
       });
     }
     return tenant;
