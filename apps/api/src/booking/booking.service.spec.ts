@@ -10,6 +10,7 @@ import {
   type CreateBookingDto,
 } from "@salon/shared";
 import { BookingService } from "./booking.service";
+import { colomboNow } from "../availability/time.util";
 import { SlotHold, type BookingSnapshot } from "../entities/slot-hold.entity";
 import { Appointment } from "../entities/appointment.entity";
 import { AppointmentServiceLine } from "../entities/appointment-service.entity";
@@ -647,6 +648,9 @@ describe("BookingService", () => {
       staffId: "staff-1",
       customerId: "customer-1",
       status: AppointmentStatus.CONFIRMED,
+      // Fixed and clearly not "today" — moveAppointmentToToday tests override
+      // this explicitly; other describe blocks never read it.
+      appointmentDate: "2020-01-01",
       startTime: new Date(Date.now() + 10 * 60 * 60_000), // 10h from now
       endTime: new Date(Date.now() + 10 * 60 * 60_000 + 30 * 60_000),
       source: BookingSource.WALK_IN,
@@ -809,6 +813,182 @@ describe("BookingService", () => {
           isSelfService: false,
         }),
       ).rejects.toMatchObject({ statusCode: 409, code: "APPOINTMENT_NOT_CANCELLABLE" });
+    });
+
+    it("logs a date correction instead of a reschedule, and never notifies, when isDateCorrection is set", async () => {
+      const appointment = fakeAppointment();
+      vi.mocked(lineRepo.find).mockResolvedValue([
+        {
+          serviceId: "svc-1",
+          nameSnapshot: "Cut",
+          durationMinSnapshot: 30,
+          priceCentsSnapshot: 5000,
+          status: "ACTIVE",
+        } as AppointmentServiceLine,
+      ]);
+
+      await service.rescheduleAppointment(fakeTenant(), appointment, {
+        newStart: new Date(Date.now() + 20 * 60 * 60_000).toISOString(),
+        actorUserId: "user-1",
+        isSelfService: false,
+        isDateCorrection: true,
+      });
+
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "APPOINTMENT_DATE_CORRECTED" }),
+        expect.anything(),
+      );
+      expect(audit.record).not.toHaveBeenCalledWith(
+        expect.objectContaining({ action: "APPOINTMENT_RESCHEDULED" }),
+        expect.anything(),
+      );
+      expect(notifications.fire).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("moveAppointmentToToday", () => {
+    const TODAY = colomboNow(new Date()).date;
+
+    it("rejects when the appointment is already scheduled for today", async () => {
+      const appointment = fakeAppointment({ appointmentDate: TODAY });
+      await expect(
+        service.moveAppointmentToToday(fakeTenant(), appointment, { actorUserId: "user-1" }),
+      ).rejects.toMatchObject({ statusCode: 400, code: "BAD_STATE" });
+    });
+
+    it("rejects an already-terminal appointment, same as a real reschedule would", async () => {
+      const appointment = fakeAppointment({ status: AppointmentStatus.CANCELLED });
+      await expect(
+        service.moveAppointmentToToday(fakeTenant(), appointment, { actorUserId: "user-1" }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "APPOINTMENT_NOT_CANCELLABLE" });
+    });
+
+    describe("CONFIRMED — delegates to the real reschedule engine, silently", () => {
+      it("resolves to the same time-of-day today when that slot is free, without notifying", async () => {
+        const appointment = fakeAppointment({
+          status: AppointmentStatus.CONFIRMED,
+          startTime: new Date("2020-01-01T04:00:00.000Z"), // ~09:30 Colombo local
+          endTime: new Date("2020-01-01T04:30:00.000Z"),
+        });
+        vi.mocked(lineRepo.find).mockResolvedValue([
+          {
+            serviceId: "svc-1",
+            nameSnapshot: "Cut",
+            durationMinSnapshot: 30,
+            priceCentsSnapshot: 5000,
+            status: "ACTIVE",
+          } as AppointmentServiceLine,
+        ]);
+
+        const result = await service.moveAppointmentToToday(fakeTenant(), appointment, { actorUserId: "user-1" });
+
+        expect(result).toBeDefined();
+        // The real reschedule engine ran (a new appointment row via createAppointmentAtomic's insert).
+        expect(appointmentsRepo.save).toHaveBeenCalled();
+        expect(audit.record).toHaveBeenCalledWith(
+          expect.objectContaining({ action: "APPOINTMENT_DATE_CORRECTED" }),
+          expect.anything(),
+        );
+        expect(notifications.fire).not.toHaveBeenCalled();
+      });
+
+      it("honours an explicit newStart from the slot picker instead of guessing the same time", async () => {
+        const appointment = fakeAppointment({ status: AppointmentStatus.CONFIRMED });
+        vi.mocked(lineRepo.find).mockResolvedValue([
+          {
+            serviceId: "svc-1",
+            nameSnapshot: "Cut",
+            durationMinSnapshot: 30,
+            priceCentsSnapshot: 5000,
+            status: "ACTIVE",
+          } as AppointmentServiceLine,
+        ]);
+        const chosenStart = new Date(Date.now() + 3 * 60 * 60_000).toISOString();
+
+        await service.moveAppointmentToToday(fakeTenant(), appointment, {
+          newStart: chosenStart,
+          actorUserId: "user-1",
+        });
+
+        expect(appointmentsRepo.save).toHaveBeenCalledWith(
+          expect.objectContaining({ startTime: new Date(chosenStart) }),
+        );
+      });
+
+      it("rejects (same as any reschedule) when the resolved slot isn't actually free", async () => {
+        const appointment = fakeAppointment({ status: AppointmentStatus.CONFIRMED });
+        vi.mocked(lineRepo.find).mockResolvedValue([
+          {
+            serviceId: "svc-1",
+            nameSnapshot: "Cut",
+            durationMinSnapshot: 30,
+            priceCentsSnapshot: 5000,
+            status: "ACTIVE",
+          } as AppointmentServiceLine,
+        ]);
+        const chosenStart = new Date(Date.now() + 3 * 60 * 60_000);
+        const busyMin = colomboNow(chosenStart).minutes;
+        vi.mocked(availability.loadStaffContext).mockResolvedValue({
+          ...QUALIFIED_STAFF_CONTEXT,
+          busyIntervals: [{ startMin: busyMin, endMin: busyMin + 30 }],
+        });
+
+        await expect(
+          service.moveAppointmentToToday(fakeTenant(), appointment, {
+            newStart: chosenStart.toISOString(),
+            actorUserId: "user-1",
+          }),
+        ).rejects.toMatchObject({ statusCode: 409, code: "SLOT_UNAVAILABLE" });
+      });
+    });
+
+    describe("CHECKED_IN / IN_SERVICE — a quiet in-place fix, no new appointment", () => {
+      it("shifts startTime/endTime/appointmentDate to today, preserving the row, with no notification", async () => {
+        const appointment = fakeAppointment({
+          status: AppointmentStatus.CHECKED_IN,
+          appointmentDate: "2020-01-01",
+          startTime: new Date("2020-01-01T14:00:00.000Z"),
+          endTime: new Date("2020-01-01T14:30:00.000Z"),
+          checkedInAt: new Date("2020-01-01T14:02:00.000Z"),
+        });
+
+        await service.moveAppointmentToToday(fakeTenant(), appointment, { actorUserId: "user-1" });
+
+        expect(setSpy).toHaveBeenCalledWith(
+          expect.objectContaining({ appointmentDate: TODAY, startTime: expect.any(Date), endTime: expect.any(Date) }),
+        );
+        // No new appointment row — the fix mutates the existing one in place.
+        expect(appointmentsRepo.save).not.toHaveBeenCalled();
+        expect(audit.record).toHaveBeenCalledWith(
+          expect.objectContaining({
+            action: "APPOINTMENT_DATE_CORRECTED",
+            metadata: expect.objectContaining({ fromDate: "2020-01-01", toDate: TODAY }),
+          }),
+          expect.anything(),
+        );
+        expect(notifications.fire).not.toHaveBeenCalled();
+      });
+
+      it("also fixes an IN_SERVICE appointment in place", async () => {
+        const appointment = fakeAppointment({
+          status: AppointmentStatus.IN_SERVICE,
+          appointmentDate: "2020-01-01",
+        });
+
+        const result = await service.moveAppointmentToToday(fakeTenant(), appointment, { actorUserId: "user-1" });
+
+        expect(result).toBeDefined();
+        expect(appointmentsRepo.save).not.toHaveBeenCalled();
+      });
+
+      it("translates a same-slot conflict at the DB layer into SLOT_UNAVAILABLE", async () => {
+        const appointment = fakeAppointment({ status: AppointmentStatus.CHECKED_IN, appointmentDate: "2020-01-01" });
+        queryBuilderExecute.mockRejectedValueOnce(Object.assign(new Error("exclusion"), { code: "23P01" }));
+
+        await expect(
+          service.moveAppointmentToToday(fakeTenant(), appointment, { actorUserId: "user-1" }),
+        ).rejects.toMatchObject({ statusCode: 409, code: "SLOT_UNAVAILABLE" });
+      });
     });
   });
 

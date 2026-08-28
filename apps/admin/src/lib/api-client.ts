@@ -997,6 +997,19 @@ export function rescheduleAppointment(
   });
 }
 
+/**
+ * The fix offered when check-in/start-service/complete come back
+ * APPOINTMENT_DATE_MISMATCH. Omit `newStart` to let the server try the same
+ * time-of-day today first; pass it once the slot picker resolves a specific
+ * time. OWNER/MANAGER/RECEPTIONIST only — never callable for a STAFF login.
+ */
+export function moveAppointmentToToday(id: string, newStart?: string): Promise<AppointmentRecord> {
+  return request<AppointmentRecord>(`/appointments/${id}/move-to-today`, {
+    method: "POST",
+    body: JSON.stringify(newStart ? { newStart } : {}),
+  });
+}
+
 export function markNoShow(id: string): Promise<AppointmentRecord> {
   return request<AppointmentRecord>(`/appointments/${id}/no-show`, { method: "POST" });
 }

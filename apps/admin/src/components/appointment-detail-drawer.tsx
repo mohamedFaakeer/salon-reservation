@@ -16,6 +16,7 @@ import {
   fetchTenantSettings,
   inService,
   markNoShow,
+  moveAppointmentToToday,
   recordPayment,
   refundPayment,
   removeAppointmentService,
@@ -105,6 +106,15 @@ export function AppointmentDetailDrawer({
   const [loadingRescheduleSlots, setLoadingRescheduleSlots] = useState(false);
   const [rescheduleSubmitting, setRescheduleSubmitting] = useState(false);
   const [rescheduleError, setRescheduleError] = useState<string | null>(null);
+  // True while the slot picker above is being used for the "move to today"
+  // date-fix rather than a genuine reschedule — same UI, different endpoint
+  // and no customer notification (DECISIONS.md).
+  const [dateCorrectionMode, setDateCorrectionMode] = useState(false);
+
+  // Set when check-in/start-service/complete come back APPOINTMENT_DATE_MISMATCH.
+  // `retry` re-attempts whichever action triggered it, once the date is fixed.
+  const [dateMismatch, setDateMismatch] = useState<{ scheduledDate: string; retry: () => void } | null>(null);
+  const [movingToToday, setMovingToToday] = useState(false);
 
   const [showAddService, setShowAddService] = useState(false);
   const [addableServices, setAddableServices] = useState<ServiceItem[]>([]);
@@ -143,17 +153,52 @@ export function AppointmentDetailDrawer({
   async function runAction(action: () => Promise<unknown>, done: string): Promise<void> {
     setActing(true);
     setActionError(null);
+    setDateMismatch(null);
     try {
       await action();
       load();
       onChanged();
       toast.success(done);
     } catch (err) {
+      if (err instanceof ApiRequestError && err.code === "APPOINTMENT_DATE_MISMATCH") {
+        const scheduledDate = (err.details?.scheduledDate as string | undefined) ?? "another day";
+        setDateMismatch({ scheduledDate, retry: () => void runAction(action, done) });
+        return;
+      }
       const copy = errorCopy(err);
       setActionError(copy.title);
       toast.error(copy.title, copy.detail);
     } finally {
       setActing(false);
+    }
+  }
+
+  /**
+   * "Move to today" — tries the same time-of-day today first (silent, no
+   * customer notification per DECISIONS.md); if that slot isn't free, drops
+   * into the same slot picker Reschedule uses, in date-correction mode. Once
+   * the date is fixed, automatically retries whichever action was blocked.
+   */
+  async function handleMoveToToday(): Promise<void> {
+    if (!appointment) {
+      return;
+    }
+    const retry = dateMismatch?.retry;
+    setMovingToToday(true);
+    try {
+      await moveAppointmentToToday(appointment.id);
+      setDateMismatch(null);
+      toast.success("Moved to today");
+      load();
+      onChanged();
+      retry?.();
+    } catch {
+      // The same time-of-day wasn't free — let the operator pick another.
+      setDateCorrectionMode(true);
+      setShowRescheduleForm(true);
+      void loadRescheduleSlots(todayLocalDate());
+    } finally {
+      setMovingToToday(false);
     }
   }
 
@@ -283,17 +328,29 @@ export function AppointmentDetailDrawer({
     if (!appointment) {
       return;
     }
+    const retry = dateMismatch?.retry;
     setRescheduleSubmitting(true);
     setRescheduleError(null);
     try {
-      await rescheduleAppointment(appointment.id, {
-        newStart: slot.start,
-        newStaffId: slot.staffId,
-      });
+      if (dateCorrectionMode) {
+        await moveAppointmentToToday(appointment.id, slot.start);
+      } else {
+        await rescheduleAppointment(appointment.id, {
+          newStart: slot.start,
+          newStaffId: slot.staffId,
+        });
+      }
+      const wasCorrection = dateCorrectionMode;
       setShowRescheduleForm(false);
       setRescheduleSlots([]);
+      setDateCorrectionMode(false);
       load();
       onChanged();
+      if (wasCorrection) {
+        setDateMismatch(null);
+        toast.success("Moved to today");
+        retry?.();
+      }
     } catch (err) {
       setRescheduleError(
         err instanceof ApiRequestError ? err.message : "Could not reschedule this appointment.",
@@ -857,14 +914,22 @@ export function AppointmentDetailDrawer({
 
           {showRescheduleForm ? (
             <div className="rounded border border-slate-200 p-3">
-              <p className="text-sm font-medium text-slate-900">Choose a new time</p>
-              <input
-                type="date"
-                data-testid="drawer-reschedule-date"
-                value={rescheduleDate}
-                onChange={(e) => void loadRescheduleSlots(e.target.value)}
-                className="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-sm"
-              />
+              <p className="text-sm font-medium text-slate-900">
+                {dateCorrectionMode ? "Pick a time today" : "Choose a new time"}
+              </p>
+              {dateCorrectionMode ? (
+                <p className="mt-1 text-xs text-slate-500">
+                  The same time today wasn&apos;t free — pick another. This won&apos;t notify the customer.
+                </p>
+              ) : (
+                <input
+                  type="date"
+                  data-testid="drawer-reschedule-date"
+                  value={rescheduleDate}
+                  onChange={(e) => void loadRescheduleSlots(e.target.value)}
+                  className="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                />
+              )}
               {loadingRescheduleSlots ? (
                 <p className="mt-2 text-xs text-slate-500">Loading times…</p>
               ) : rescheduleSlots.length === 0 ? (
@@ -892,7 +957,10 @@ export function AppointmentDetailDrawer({
               ) : null}
               <button
                 type="button"
-                onClick={() => setShowRescheduleForm(false)}
+                onClick={() => {
+                  setShowRescheduleForm(false);
+                  setDateCorrectionMode(false);
+                }}
                 className="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
               >
                 Never mind
@@ -904,6 +972,32 @@ export function AppointmentDetailDrawer({
             <p role="alert" className="text-sm text-red-600">
               {actionError}
             </p>
+          ) : null}
+
+          {dateMismatch && !showRescheduleForm ? (
+            <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm">
+              <p className="font-medium text-amber-900">Scheduled for {dateMismatch.scheduledDate} — not today</p>
+              {canManageAppointments(roles) ? (
+                <>
+                  <p className="mt-1 text-xs text-amber-800">Move it to today to continue.</p>
+                  <button
+                    type="button"
+                    data-testid="action-move-to-today"
+                    disabled={movingToToday}
+                    onClick={() => void handleMoveToToday()}
+                    className="mt-2 rounded bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
+                  >
+                    <BusyLabel busy={movingToToday} busyText="Moving…">
+                      Move to today
+                    </BusyLabel>
+                  </button>
+                </>
+              ) : (
+                <p className="mt-1 text-xs text-amber-800">
+                  Ask the front desk to move this appointment to today.
+                </p>
+              )}
+            </div>
           ) : null}
 
           <div className="flex flex-col gap-2">

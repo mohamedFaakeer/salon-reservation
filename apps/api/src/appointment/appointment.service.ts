@@ -14,6 +14,7 @@ import {
   type AppointmentQueryDto,
   type CancelAppointmentDto,
   type CreateAppointmentDto,
+  type MoveAppointmentToTodayDto,
   type RemoveAppointmentServiceDto,
   type RescheduleAppointmentDto,
   type SetAppointmentDiscountDto,
@@ -21,6 +22,7 @@ import {
 import { Appointment } from "../entities/appointment.entity";
 import { AppointmentServiceLine } from "../entities/appointment-service.entity";
 import { Staff } from "../entities/staff.entity";
+import { colomboNow } from "../availability/time.util";
 import type { TenantContextData } from "../tenant/tenant-context";
 // TenantService/BookingService must stay VALUE imports: NestJS resolves
 // constructor injection via design:paramtypes metadata at runtime;
@@ -138,6 +140,7 @@ export class AppointmentService {
   /** OWNER/MANAGER/RECEPTIONIST only — gated at the controller, no ownership check needed here. */
   async checkIn(tenantId: string, id: string): Promise<Appointment> {
     const appointment = await this.findOwned(tenantId, id);
+    this.assertOnCurrentDate(appointment, "check in");
     if (appointment.status !== AppointmentStatus.CONFIRMED) {
       throw new ApiError({
         statusCode: 400,
@@ -169,6 +172,7 @@ export class AppointmentService {
   async inService(tenantId: string, id: string, ctx: TenantContextData): Promise<Appointment> {
     const appointment = await this.findOwned(tenantId, id);
     await this.assertOwnershipIfStaffOnly(tenantId, ctx, appointment);
+    this.assertOnCurrentDate(appointment, "start service on");
     if (appointment.status !== AppointmentStatus.CHECKED_IN) {
       throw new ApiError({
         statusCode: 400,
@@ -184,6 +188,7 @@ export class AppointmentService {
   async complete(tenantId: string, id: string, ctx: TenantContextData): Promise<Appointment> {
     const appointment = await this.findOwned(tenantId, id);
     await this.assertOwnershipIfStaffOnly(tenantId, ctx, appointment);
+    this.assertOnCurrentDate(appointment, "complete");
     if (
       appointment.status !== AppointmentStatus.CHECKED_IN &&
       appointment.status !== AppointmentStatus.IN_SERVICE
@@ -230,6 +235,26 @@ export class AppointmentService {
       newStaffId: dto.newStaffId,
       actorUserId,
       isSelfService: false,
+    });
+  }
+
+  /**
+   * OWNER/MANAGER/RECEPTIONIST only — gated at the controller. The fix
+   * offered when check-in/start-service/complete are blocked by
+   * `assertOnCurrentDate` below; never reachable by a STAFF-only login, who
+   * sees "ask the front desk" instead (DECISIONS.md).
+   */
+  async moveToToday(
+    tenantId: string,
+    id: string,
+    dto: MoveAppointmentToTodayDto,
+    actorUserId: string,
+  ): Promise<Appointment> {
+    const appointment = await this.findOwned(tenantId, id);
+    const tenant = await this.tenantService.findById(tenantId);
+    return this.booking.moveAppointmentToToday(tenant, appointment, {
+      newStart: dto.newStart,
+      actorUserId,
     });
   }
 
@@ -328,6 +353,25 @@ export class AppointmentService {
     }
     const ownStaff = await this.staff.findOne({ where: { tenantId, userId: ctx.userId } });
     return ownStaff?.id ?? NO_MATCH_STAFF_ID;
+  }
+
+  /**
+   * A stale or future-dated appointment can't be checked in, started, or
+   * completed as-is — the receptionist/stylist standing there is dealing
+   * with today, not whatever day the appointment happens to say. `details`
+   * carries both dates so the frontend can offer "Move to today" without a
+   * second round-trip (DECISIONS.md).
+   */
+  private assertOnCurrentDate(appointment: Appointment, action: string): void {
+    const todayDate = colomboNow(new Date()).date;
+    if (appointment.appointmentDate !== todayDate) {
+      throw new ApiError({
+        statusCode: 409,
+        code: "APPOINTMENT_DATE_MISMATCH",
+        message: `This appointment is scheduled for ${appointment.appointmentDate}. Move it to today before you can ${action} it.`,
+        details: { scheduledDate: appointment.appointmentDate, todayDate },
+      });
+    }
   }
 
   /** S6 (SECURITY.md) — a STAFF member may only mutate their own appointments. */

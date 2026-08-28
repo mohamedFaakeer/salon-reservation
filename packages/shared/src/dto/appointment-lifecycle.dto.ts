@@ -27,6 +27,20 @@ export class RescheduleAppointmentDto {
   newStaffId?: string;
 }
 
+/**
+ * POST /appointments/:id/move-to-today (API.md §3) — OWNER, MANAGER,
+ * RECEPTIONIST only. The fix offered when check-in/start-service/complete
+ * are blocked because the appointment isn't dated today. `newStart` is only
+ * used when the appointment is still CONFIRMED and the slot picker resolved
+ * to a specific time; omit it to let the server try the same time-of-day
+ * today first.
+ */
+export class MoveAppointmentToTodayDto {
+  @IsOptional()
+  @IsDateString()
+  newStart?: string;
+}
+
 /** POST /bookings/:reference/reschedule (API.md §2) — public, phone proves ownership. */
 export class SelfServiceRescheduleDto {
   @IsString()

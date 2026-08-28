@@ -23,6 +23,18 @@ const ITEMS: Array<{ href: string; label: string; icon: ReactNode; module?: "inc
     ),
   },
   {
+    href: "/floor/schedule",
+    label: "Schedule",
+    icon: (
+      <svg viewBox="0 0 16 16" width="20" height="20" fill="none" aria-hidden="true">
+        <circle cx="2.6" cy="4" r="1" fill="currentColor" />
+        <circle cx="2.6" cy="8" r="1" fill="currentColor" />
+        <circle cx="2.6" cy="12" r="1" fill="currentColor" />
+        <path d="M5.6 4h7.8M5.6 8h7.8M5.6 12h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
     href: "/floor/history",
     label: "History",
     icon: (

@@ -1,6 +1,7 @@
 import type { ObjectLiteral, Repository } from "typeorm";
 import { AppointmentStatus, UserRole } from "@salon/shared";
 import { AppointmentService } from "./appointment.service";
+import { colomboNow } from "../availability/time.util";
 import type { Appointment } from "../entities/appointment.entity";
 import type { AppointmentServiceLine } from "../entities/appointment-service.entity";
 import type { Staff } from "../entities/staff.entity";
@@ -26,6 +27,8 @@ function elevatedCtx(): TenantContextData {
 function staffCtx(userId = "user-staff"): TenantContextData {
   return { userId, email: "s@x.com", name: "Staff", tenantId: "tenant-1", branchId: null, roles: [UserRole.STAFF] };
 }
+
+const TODAY = colomboNow(new Date()).date;
 
 describe("AppointmentService", () => {
   let appointments: Repository<Appointment>;
@@ -123,6 +126,7 @@ describe("AppointmentService", () => {
       vi.mocked(appointments.findOne).mockResolvedValue({
         id: "appt-1",
         status: AppointmentStatus.CHECKED_IN,
+        appointmentDate: TODAY,
       } as Appointment);
 
       await expect(service.checkIn("tenant-1", "appt-1")).rejects.toMatchObject({
@@ -136,6 +140,7 @@ describe("AppointmentService", () => {
       vi.mocked(appointments.findOne).mockResolvedValue({
         id: "appt-1",
         status: AppointmentStatus.CONFIRMED,
+        appointmentDate: TODAY,
         startTime,
       } as Appointment);
 
@@ -145,6 +150,20 @@ describe("AppointmentService", () => {
       expect(result.checkedInAt).toBeInstanceOf(Date);
       expect(result.lateMinutes).toBeGreaterThanOrEqual(19);
     });
+
+    it("blocks checking in an appointment dated for another day, with both dates in details", async () => {
+      vi.mocked(appointments.findOne).mockResolvedValue({
+        id: "appt-1",
+        status: AppointmentStatus.CONFIRMED,
+        appointmentDate: "2020-01-01",
+      } as Appointment);
+
+      await expect(service.checkIn("tenant-1", "appt-1")).rejects.toMatchObject({
+        statusCode: 409,
+        code: "APPOINTMENT_DATE_MISMATCH",
+        details: { scheduledDate: "2020-01-01", todayDate: TODAY },
+      });
+    });
   });
 
   describe("inService / complete", () => {
@@ -153,6 +172,7 @@ describe("AppointmentService", () => {
         id: "appt-1",
         staffId: "staff-mine",
         status: AppointmentStatus.CONFIRMED,
+        appointmentDate: TODAY,
       } as Appointment);
 
       await expect(service.inService("tenant-1", "appt-1", elevatedCtx())).rejects.toMatchObject({
@@ -166,6 +186,7 @@ describe("AppointmentService", () => {
         id: "appt-1",
         staffId: "staff-other",
         status: AppointmentStatus.CHECKED_IN,
+        appointmentDate: TODAY,
       } as Appointment);
       vi.mocked(staff.findOne).mockResolvedValue({ id: "staff-mine" } as Staff);
 
@@ -175,17 +196,63 @@ describe("AppointmentService", () => {
       });
     });
 
+    it("blocks starting service on a CHECKED_IN appointment whose date rolled to another day", async () => {
+      vi.mocked(appointments.findOne).mockResolvedValue({
+        id: "appt-1",
+        staffId: "staff-mine",
+        status: AppointmentStatus.CHECKED_IN,
+        appointmentDate: "2020-01-01",
+      } as Appointment);
+      vi.mocked(staff.findOne).mockResolvedValue({ id: "staff-mine" } as Staff);
+
+      await expect(service.inService("tenant-1", "appt-1", staffCtx())).rejects.toMatchObject({
+        statusCode: 409,
+        code: "APPOINTMENT_DATE_MISMATCH",
+      });
+    });
+
     it("completes an IN_SERVICE appointment", async () => {
       vi.mocked(appointments.findOne).mockResolvedValue({
         id: "appt-1",
         staffId: "staff-mine",
         status: AppointmentStatus.IN_SERVICE,
+        appointmentDate: TODAY,
       } as Appointment);
       vi.mocked(staff.findOne).mockResolvedValue({ id: "staff-mine" } as Staff);
 
       const result = await service.complete("tenant-1", "appt-1", staffCtx());
       expect(result.status).toBe(AppointmentStatus.COMPLETED);
       expect(result.completedAt).toBeInstanceOf(Date);
+    });
+
+    it("blocks completing an appointment dated for another day", async () => {
+      vi.mocked(appointments.findOne).mockResolvedValue({
+        id: "appt-1",
+        staffId: "staff-mine",
+        status: AppointmentStatus.IN_SERVICE,
+        appointmentDate: "2020-01-01",
+      } as Appointment);
+      vi.mocked(staff.findOne).mockResolvedValue({ id: "staff-mine" } as Staff);
+
+      await expect(service.complete("tenant-1", "appt-1", staffCtx())).rejects.toMatchObject({
+        statusCode: 409,
+        code: "APPOINTMENT_DATE_MISMATCH",
+      });
+    });
+  });
+
+  describe("moveToToday", () => {
+    it("loads the appointment and tenant, then delegates to BookingService.moveAppointmentToToday", async () => {
+      vi.mocked(appointments.findOne).mockResolvedValue({ id: "appt-1", staffId: "staff-1" } as Appointment);
+      booking.moveAppointmentToToday = vi.fn(async () => ({ id: "appt-1" }) as Appointment);
+
+      await service.moveToToday("tenant-1", "appt-1", { newStart: "2026-01-02T04:00:00.000Z" }, "user-1");
+
+      expect(booking.moveAppointmentToToday).toHaveBeenCalledWith(
+        { id: "tenant-1", settings: { noShowGraceMinutes: 15 } },
+        expect.objectContaining({ id: "appt-1" }),
+        { newStart: "2026-01-02T04:00:00.000Z", actorUserId: "user-1" },
+      );
     });
   });
 

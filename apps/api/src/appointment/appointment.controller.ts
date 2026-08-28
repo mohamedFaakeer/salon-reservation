@@ -21,6 +21,7 @@ import {
   AppointmentQueryDto,
   CancelAppointmentDto,
   CreateAppointmentDto,
+  MoveAppointmentToTodayDto,
   RemoveAppointmentServiceDto,
   SetAppointmentDiscountDto,
   RescheduleAppointmentDto,
@@ -114,6 +115,19 @@ export class AppointmentController {
   reschedule(@Req() req: Request, @Param("id") id: string, @Body() dto: RescheduleAppointmentDto) {
     const ctx = getTenantContext(req);
     return this.appointments.reschedule(ctx.tenantId, id, dto, ctx.userId);
+  }
+
+  /**
+   * The fix offered when check-in/start-service/complete are blocked by a
+   * stale date. Front-desk only — never MANAGE_OWN_APPOINTMENT — a stylist
+   * always has to ask the front desk to move their own appointment (DECISIONS.md).
+   */
+  @Post(":id/move-to-today")
+  @HttpCode(200)
+  @Permissions(Permission.MANAGE_APPOINTMENTS)
+  moveToToday(@Req() req: Request, @Param("id") id: string, @Body() dto: MoveAppointmentToTodayDto) {
+    const ctx = getTenantContext(req);
+    return this.appointments.moveToToday(ctx.tenantId, id, dto, ctx.userId);
   }
 
   @Post(":id/services")

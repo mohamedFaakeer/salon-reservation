@@ -1808,3 +1808,56 @@ inventing a look for one screen would have made it read as a different product.
    traffic through an actual Text.lk account shows messages that need it,
    rather than speculatively now against a vendor response shape that's
    only been read from documentation, never exercised live.
+
+## 44. Appointments must be dated today before check-in/start-service/complete (2026-08-28)
+
+1. **The rule.** Check-in, start-service, and complete are all blocked
+   (`APPOINTMENT_DATE_MISMATCH`, 409) unless the appointment's stored
+   `appointmentDate` is today (Asia/Colombo). A stale `CONFIRMED` booking
+   nobody checked in on its day, or a future one someone's trying to serve
+   early, must be moved to today first — the system never silently treats
+   "whatever day it says" as "now."
+2. **Two different fixes for two different situations, both reached through
+   one new endpoint, `POST /appointments/:id/move-to-today`
+   (`MANAGE_APPOINTMENTS` only — never `MANAGE_OWN_APPOINTMENT`, so a
+   stylist can never self-correct a date; they're told to ask the front
+   desk).** A `CONFIRMED` appointment hasn't been claimed onto today's
+   calendar for real, so it goes through the *same* reschedule engine every
+   other date change uses (`BookingService.rescheduleAppointment`, now
+   accepting an `isDateCorrection` flag) — same availability check, same
+   GiST-backed safety, just logged as `APPOINTMENT_DATE_CORRECTED` instead
+   of `APPOINTMENT_RESCHEDULED` and never firing `RESCHEDULE_CONFIRMATION`.
+   A `CHECKED_IN`/`IN_SERVICE` appointment is already actively happening —
+   closing it out and creating a new appointment row would lose
+   `checkedInAt`/`inServiceAt` and hand the visit a new booking reference
+   mid-service, so that case is a plain in-place date correction on the
+   same row (no new appointment, no slot re-check — the DB's exclusion
+   constraint is still the real backstop against a genuine clash).
+3. **No customer notification for either fix.** This is a front-desk data
+   correction for someone who is, in the ordinary case, standing at the
+   counter — not a change they asked for. Confirmed explicitly rather than
+   assumed: sending the usual reschedule SMS/email here would be redundant
+   at best, confusing at worst.
+4. **The frontend surfaces one "Move to today" button** in the shared
+   `AppointmentDetailDrawer`, offered only to elevated roles; a STAFF-only
+   viewer instead sees "ask the front desk." Tapping it tries the same
+   time-of-day today first (silent); if that slot isn't free, the existing
+   reschedule slot-picker opens in a "date-correction" mode that calls
+   `move-to-today` instead of `reschedule`. Either way, the action the
+   operator originally tapped (check-in/start-service/complete) retries
+   automatically once the date is fixed.
+
+## 45. A stylist's own appointments, on the Floor app (2026-08-28)
+
+1. **The gap.** `GET /appointments` already scoped results to the caller's
+   own `staffId` for `MANAGE_OWN_APPOINTMENT` (and already supported
+   `?date=`), but nothing in the Floor kiosk actually called it — the
+   kiosk was entirely attendance (Today/History/Requests) plus Earnings.
+   A stylist logging into their own account had no way to see who they
+   were seeing that day.
+2. **New "Schedule" tab, no backend change.** `apps/admin`'s existing
+   `AppointmentDetailDrawer` is reused as-is, so a stylist gets the exact
+   same in-service/complete actions (and the date-mismatch handling from
+   §44) the desk uses — not a second implementation of appointment status
+   changes.
+

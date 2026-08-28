@@ -32,7 +32,7 @@ import { Refund } from "../entities/refund.entity";
 import { Staff } from "../entities/staff.entity";
 import type { Tenant } from "../entities/tenant.entity";
 import { canBook } from "../availability/availability.engine";
-import { colomboNow } from "../availability/time.util";
+import { colomboNow, daysBetween, localMinutesToUtc } from "../availability/time.util";
 import { isExclusionViolation, isUniqueViolation } from "../common/postgres-errors.util";
 import { generateBookingReference } from "../appointment/booking-reference.util";
 import { normalizePhone } from "../customer/phone.util";
@@ -122,6 +122,20 @@ export interface RescheduleAppointmentInput {
   newStaffId?: string;
   actorUserId: string | null;
   isSelfService: boolean;
+  /**
+   * True only for the front-desk "move to today" fix on a stale-dated
+   * appointment (see DECISIONS.md): same reschedule engine, but this isn't a
+   * change the customer asked for — they're typically standing right there —
+   * so it's logged as a date correction, not a reschedule, and never fires
+   * RESCHEDULE_CONFIRMATION.
+   */
+  isDateCorrection?: boolean;
+}
+
+export interface MoveAppointmentToTodayInput {
+  /** Only meaningful for a CONFIRMED appointment — the slot the picker resolved to, if "same time today" wasn't free. */
+  newStart?: string;
+  actorUserId: string | null;
 }
 
 export interface MarkNoShowInput {
@@ -666,11 +680,12 @@ export class BookingService {
         .getRepository(Payment)
         .update({ appointmentId: appointment.id }, { appointmentId: newAppointment.id });
 
+      const auditAction = input.isDateCorrection ? "APPOINTMENT_DATE_CORRECTED" : "APPOINTMENT_RESCHEDULED";
       await this.audit.record(
         {
           tenantId: tenant.id,
           actorUserId: input.actorUserId,
-          action: "APPOINTMENT_RESCHEDULED",
+          action: auditAction,
           entityType: "Appointment",
           entityId: appointment.id,
           metadata: { newAppointmentId: newAppointment.id },
@@ -681,7 +696,7 @@ export class BookingService {
         {
           tenantId: tenant.id,
           actorUserId: input.actorUserId,
-          action: "APPOINTMENT_RESCHEDULED",
+          action: auditAction,
           entityType: "Appointment",
           entityId: newAppointment.id,
           metadata: { rescheduledFromId: appointment.id },
@@ -692,11 +707,106 @@ export class BookingService {
       return appointmentRepo.findOneOrFail({ where: { id: newAppointment.id } });
     });
 
-    await this.fireBestEffort(() =>
-      this.notifications.fire(tenant, NotificationEvent.RESCHEDULE_CONFIRMATION, result, appointment.customer),
-    );
+    // A date correction is a front-desk data-fix on a customer who's
+    // typically standing right there, not a change they asked for — firing
+    // the usual "your appointment has been rescheduled" message here would
+    // be redundant at best and confusing at worst (DECISIONS.md).
+    if (!input.isDateCorrection) {
+      await this.fireBestEffort(() =>
+        this.notifications.fire(tenant, NotificationEvent.RESCHEDULE_CONFIRMATION, result, appointment.customer),
+      );
+    }
 
     return result;
+  }
+
+  /**
+   * POST /appointments/:id/move-to-today — the fix offered when check-in/
+   * start-service/complete are blocked because the appointment's date isn't
+   * today (DECISIONS.md). Never reachable by a STAFF-only login: gated at
+   * the controller to MANAGE_APPOINTMENTS, matching cancel/reschedule.
+   *
+   * A CONFIRMED appointment hasn't been claimed onto today's calendar for
+   * real yet, so it goes through the same reschedule engine every other date
+   * change uses — just silently and logged as a correction, not a reschedule
+   * (see `isDateCorrection` above).
+   *
+   * A CHECKED_IN or IN_SERVICE appointment is already actively happening —
+   * routing it through "close this out, open a new appointment" would lose
+   * `checkedInAt`/`inServiceAt` and hand the visit a new booking reference
+   * mid-service. It only ever gets here because the calendar date rolled
+   * past midnight underneath an unfinished visit, so the fix is a plain
+   * in-place date correction: same row, same id, no new availability check
+   * (the staff member is already occupied with this exact client), the DB's
+   * exclusion constraint remains the real backstop against a genuine clash.
+   */
+  async moveAppointmentToToday(
+    tenant: Tenant,
+    appointment: Appointment,
+    input: MoveAppointmentToTodayInput,
+  ): Promise<Appointment> {
+    this.assertMutable(appointment, tenant, false, new Date());
+
+    const today = colomboNow(new Date()).date;
+    if (appointment.appointmentDate === today) {
+      throw new ApiError({
+        statusCode: 400,
+        code: "BAD_STATE",
+        message: "This appointment is already scheduled for today.",
+      });
+    }
+
+    if (appointment.status === AppointmentStatus.CHECKED_IN || appointment.status === AppointmentStatus.IN_SERVICE) {
+      return this.correctAppointmentDateInPlace(tenant, appointment, input.actorUserId, today);
+    }
+
+    const startTimeOfDayMin = colomboNow(appointment.startTime).minutes;
+    const newStart = input.newStart ?? localMinutesToUtc(today, startTimeOfDayMin).toISOString();
+
+    return this.rescheduleAppointment(tenant, appointment, {
+      newStart,
+      actorUserId: input.actorUserId,
+      isSelfService: false,
+      isDateCorrection: true,
+    });
+  }
+
+  /** Shared by `moveAppointmentToToday` for an appointment already mid-visit. */
+  private async correctAppointmentDateInPlace(
+    tenant: Tenant,
+    appointment: Appointment,
+    actorUserId: string | null,
+    today: string,
+  ): Promise<Appointment> {
+    const dayDiffMs = daysBetween(appointment.appointmentDate, today) * 86_400_000;
+    const newStart = new Date(appointment.startTime.getTime() + dayDiffMs);
+    const newEnd = new Date(appointment.endTime.getTime() + dayDiffMs);
+
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        await this.applyOptimisticUpdate(manager, appointment, {
+          appointmentDate: today,
+          startTime: newStart,
+          endTime: newEnd,
+        });
+
+        await this.audit.record(
+          {
+            tenantId: tenant.id,
+            actorUserId,
+            action: "APPOINTMENT_DATE_CORRECTED",
+            entityType: "Appointment",
+            entityId: appointment.id,
+            metadata: { fromDate: appointment.appointmentDate, toDate: today },
+          },
+          manager,
+        );
+
+        return manager.getRepository(Appointment).findOneOrFail({ where: { id: appointment.id } });
+      });
+    } catch (err) {
+      throw this.translateSlotUnavailable(err);
+    }
   }
 
   /**
@@ -999,6 +1109,9 @@ export class BookingService {
         | "totalCents"
         | "balanceCents"
         | "advancePaidCents"
+        | "appointmentDate"
+        | "startTime"
+        | "endTime"
       >
     >,
   ): Promise<void> {
