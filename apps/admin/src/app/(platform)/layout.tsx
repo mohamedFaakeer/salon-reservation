@@ -77,11 +77,27 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
                 key={item.href}
                 href={item.href}
                 data-testid={`platform-nav-${item.label.toLowerCase()}`}
-                className={`border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
-                  active ? "border-teal-400 text-white" : "border-transparent text-slate-400 hover:text-slate-200"
+                className={`group border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
+                  active ? "border-teal-400" : "border-transparent"
                 }`}
               >
-                {item.label}
+                {/*
+                 * Color lives on this span, not the <a> itself: globals.css's
+                 * `a { color: inherit }` is an unlayered rule, and an
+                 * unlayered rule always beats a Tailwind utility (emitted
+                 * inside `@layer utilities`) for the same property,
+                 * regardless of specificity — so a color class placed
+                 * directly on the <Link> silently loses to the inherited
+                 * body text color. Harmless everywhere else in this
+                 * light-themed app (near-black inherited text on a white
+                 * background still reads fine); invisible here, where the
+                 * inherited near-black text sits on this shell's dark
+                 * slate-900 background. `group-hover` keeps the whole tab,
+                 * not just the letters, as the hover target.
+                 */}
+                <span className={`transition-colors ${active ? "text-white" : "text-slate-400 group-hover:text-slate-200"}`}>
+                  {item.label}
+                </span>
               </Link>
             );
           })}
