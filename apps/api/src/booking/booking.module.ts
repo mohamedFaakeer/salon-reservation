@@ -13,6 +13,7 @@ import { PaymentModule } from "../payment/payment.module";
 import { NotificationModule } from "../notification/notification.module";
 import { GiftCardModule } from "../gift-card/gift-card.module";
 import { ServicePackageModule } from "../service-package/service-package.module";
+import { StaffNotificationModule } from "../staff-notification/staff-notification.module";
 import { BookingController } from "./booking.controller";
 import { BookingService } from "./booking.service";
 import { RatingModule } from "../rating/rating.module";
@@ -30,6 +31,7 @@ import { RatingModule } from "../rating/rating.module";
     RatingModule,
     GiftCardModule,
     ServicePackageModule,
+    StaffNotificationModule,
   ],
   controllers: [BookingController],
   providers: [BookingService],

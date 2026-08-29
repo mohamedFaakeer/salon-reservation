@@ -84,6 +84,12 @@ export interface TenantSettingsView {
   discountCapPercent?: number;
   /** Set via POST/DELETE /tenant/me/logo, not this PATCH — read-only here. */
   logoUrl?: string | null;
+  /**
+   * The notification bell's "show pop-up alerts" master switch — absent on
+   * tenant rows written before the field existed, same reasoning as
+   * `advanceValueCents`; treat missing as `true` (the default).
+   */
+  staffNotificationPopupsEnabled?: boolean;
 }
 
 export interface TenantSettingsPatch {
@@ -96,6 +102,7 @@ export interface TenantSettingsPatch {
   noShowGraceMinutes?: number;
   reminderOffsets?: number[];
   discountCapPercent?: number;
+  staffNotificationPopupsEnabled?: boolean;
 }
 
 export interface BranchRecord {
@@ -541,12 +548,26 @@ export function fetchTenantSettings(): Promise<TenantSettingsView> {
   return request<TenantSettingsView>("/tenant/me/settings");
 }
 
+/**
+ * Registered by NotificationBell so the "show pop-up alerts" toggle takes
+ * effect immediately rather than only on the bell's next page load — same
+ * mechanism `tenantProfileListener` already uses for the sidebar's name/logo.
+ */
+let staffNotificationSettingsListener: ((enabled: boolean) => void) | null = null;
+export function setStaffNotificationSettingsListener(handler: ((enabled: boolean) => void) | null): void {
+  staffNotificationSettingsListener = handler;
+}
+
 /** PATCH semantics — send only what changed. `cancellationPolicy` merges field-wise server-side. */
-export function updateTenantSettings(patch: TenantSettingsPatch): Promise<TenantSettingsView> {
-  return request<TenantSettingsView>("/tenant/me/settings", {
+export async function updateTenantSettings(patch: TenantSettingsPatch): Promise<TenantSettingsView> {
+  const settings = await request<TenantSettingsView>("/tenant/me/settings", {
     method: "PATCH",
     body: JSON.stringify(patch),
   });
+  if (patch.staffNotificationPopupsEnabled !== undefined) {
+    staffNotificationSettingsListener?.(settings.staffNotificationPopupsEnabled ?? true);
+  }
+  return settings;
 }
 
 /**
@@ -1307,6 +1328,46 @@ export function updateCustomerNotificationPreferences(customerId: string, input:
     method: "PATCH",
     body: JSON.stringify(input),
   });
+}
+
+/** The notification bell — a customer-originated booking event, per DECISIONS.md. */
+export interface StaffNotificationRecord {
+  id: string;
+  type: "APPOINTMENT_CREATED_ONLINE" | "APPOINTMENT_CANCELLED_SELF" | "APPOINTMENT_RESCHEDULED_SELF";
+  appointmentId: string | null;
+  title: string;
+  body: string;
+  createdAt: string;
+  read: boolean;
+}
+
+/** Polled every 20-30s by the bell — a cheap count, never the full list. */
+export interface StaffNotificationStatus {
+  count: number;
+  showPopup: boolean;
+  latest: StaffNotificationRecord | null;
+}
+
+export function fetchStaffNotificationStatus(): Promise<StaffNotificationStatus> {
+  return request<StaffNotificationStatus>("/notifications/staff/unread-count");
+}
+
+export function fetchStaffNotifications(params: {
+  limit: number;
+  offset: number;
+}): Promise<{ data: StaffNotificationRecord[]; meta: { total: number; limit: number; offset: number } }> {
+  const qs = new URLSearchParams({ limit: String(params.limit), offset: String(params.offset) });
+  return request<{ data: StaffNotificationRecord[]; meta: { total: number; limit: number; offset: number } }>(
+    `/notifications/staff?${qs.toString()}`,
+  );
+}
+
+export function markStaffNotificationRead(id: string): Promise<void> {
+  return request<void>(`/notifications/staff/${id}/read`, { method: "POST" });
+}
+
+export function markAllStaffNotificationsRead(): Promise<void> {
+  return request<void>("/notifications/staff/read-all", { method: "POST" });
 }
 
 export type PlanTier = "LITE" | "PRO";

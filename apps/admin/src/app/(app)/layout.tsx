@@ -12,6 +12,7 @@ import {
 } from "../../lib/api-client";
 import { AppSidebar } from "../../components/app-sidebar";
 import { AppTopbar } from "../../components/app-topbar";
+import { NotificationBell } from "../../components/notification-bell";
 import { isStaffOnly } from "../../lib/permissions";
 import { ModulesProvider } from "../../context/modules-context";
 
@@ -101,6 +102,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     // hamburger, rather than stacking the whole ~23-item nav above the page.
     <ModulesProvider value={{ modules, reportPanels }}>
       <div className="min-h-screen bg-slate-100 lg:flex">
+        <NotificationBell />
         <AppTopbar
           salonName={salonName}
           logoUrl={logoUrl}

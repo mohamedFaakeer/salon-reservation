@@ -30,6 +30,7 @@ import type { PaymentService } from "../payment/payment.service";
 import type { NotificationService } from "../notification/notification.service";
 import type { GiftCardService } from "../gift-card/gift-card.service";
 import type { ServicePackageService } from "../service-package/service-package.service";
+import type { StaffNotificationService } from "../staff-notification/staff-notification.service";
 
 function mockRepo<T extends ObjectLiteral>() {
   return {
@@ -101,6 +102,7 @@ describe("BookingService", () => {
   let notifications: NotificationService;
   let giftCards: GiftCardService;
   let servicePackages: ServicePackageService;
+  let staffNotifications: StaffNotificationService;
   let service: BookingService;
 
   beforeEach(() => {
@@ -175,6 +177,7 @@ describe("BookingService", () => {
         expiresAt: "2027-01-01",
       })),
     } as unknown as ServicePackageService;
+    staffNotifications = { notify: vi.fn(async () => undefined) } as unknown as StaffNotificationService;
 
     service = new BookingService(
       dataSource,
@@ -192,6 +195,7 @@ describe("BookingService", () => {
       notifications,
       giftCards,
       servicePackages,
+      staffNotifications,
     );
   });
 

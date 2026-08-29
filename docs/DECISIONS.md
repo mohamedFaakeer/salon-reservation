@@ -2458,3 +2458,60 @@ pages or entity fields needed for this pass; `cancelUrl`/`rescheduleUrl`/
    on-demand door into the same flow, placed on the home page's header
    alongside the existing "My booking" link. Logged in, the same button
    shows the customer's first name and logs them out; logged out, "Log in".
+
+## 56. Staff notification bell (2026-08-30)
+
+1. **Exactly three triggers, hooked at the three existing call sites that
+   already write the matching `AuditLog` row** — never a second source of
+   truth for "what happened." `confirmHold()` fires unconditionally on a
+   fresh insert (the only path that ever sets `source: ONLINE`);
+   `cancelAppointment()`/`rescheduleAppointment()` fire only when
+   `actorUserId === null`, the same signal `AuditLog` itself already uses to
+   tell a customer's own action apart from a staff member acting on their
+   behalf. A date correction (`isDateCorrection`) is excluded from the
+   reschedule hook for the same reason it's excluded from the customer-facing
+   message right above it — a front-desk data fix was never something the
+   customer asked for.
+2. **Two new tables, not one bolted onto `AuditLog`.** `StaffNotification`
+   stores pre-rendered plain-language copy (`explainStaffNotification`, the
+   same pure-function-copy convention `monitoring/explain-event.ts`
+   established) at write time — there's no "the rule changed" reason to
+   recompute it later, and a stored sentence survives a later purge/
+   anonymization of the underlying customer. `StaffNotificationRead` is a
+   companion table for per-user read state (composite PK, no third value —
+   absence means unread), the same split `SecurityEventReview` already uses
+   to keep `AuditLog` itself immutable. Neither table carries a FK to
+   `Appointment`, matching `ErrorLog`'s own documented reasoning: this
+   table must never be the reason a tenant's data can't be purged.
+3. **Polling, not a socket.** No real-time infrastructure exists anywhere in
+   this codebase, and Render's free-tier services sleep after 15 minutes
+   idle — a persistent connection fights that hosting model, while a 25s
+   poll of a cheap `COUNT`/indexed query costs nothing extra.
+4. **The popup's threshold is a live `COUNT`, never a stored counter** —
+   `unreadStatus` compares a tenant's live count of `Appointment` rows with
+   `source = 'ONLINE'` against a constant (10). A stored counter could drift
+   during an unrelated data operation (the salon-offboarding purge, for
+   one) and would need its own reconciliation; a live count is always
+   consistent with reality and self-heals nothing because there's nothing
+   to heal.
+5. **UI: a fixed-position bell, not a new top bar.** The admin desk shell
+   has no persistent desktop header today (`AppTopbar` is `lg:hidden`), and
+   restructuring `(app)/layout.tsx` to add one would shift every existing
+   page's layout for a feature meant to be purely additive. Below `lg`,
+   `AppTopbar` already occupies the top-right corner with its hamburger, so
+   the bell sits just to its left there instead of on top of it, and only
+   takes the corner outright at `lg` where no topbar exists. Mounted once in
+   `(app)/layout.tsx` (owner/manager/receptionist desk shell) — deliberately
+   not mounted in the floor kiosk (`(floor)/floor/layout.tsx`), which is
+   phone-first attendance chrome with no room for extra chrome and where "a
+   customer booked online" is a front-desk concern, not a floor one.
+6. **The settings tab controls only the popup, never the badge/drawer** —
+   per the locked decision, the auto-decay itself has no manual override.
+   The toggle is a new `TenantSettings.staffNotificationPopupsEnabled`
+   boolean (default `true`), following the exact merge-patch pattern every
+   other tenant setting already uses, on the existing `/notifications`
+   page rather than the generic `/settings` page, since that page already
+   owns every other notification-adjacent config. A dedicated listener
+   (`setStaffNotificationSettingsListener`, mirroring
+   `setTenantProfileListener`'s existing precedent) pushes a saved toggle to
+   the bell immediately rather than waiting for its next page load.

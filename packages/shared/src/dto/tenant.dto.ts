@@ -186,6 +186,11 @@ export class TenantSettingsUpdateDto {
   @IsString()
   @MaxLength(40)
   businessRegNo?: string | null;
+
+  /** Notification bell settings tab — the popup only, never the badge/drawer. */
+  @IsOptional()
+  @IsBoolean()
+  staffNotificationPopupsEnabled?: boolean;
 }
 
 /** PATCH /tenant/me — name only; slug/currency/timezone are not editable here. */

@@ -59,6 +59,14 @@ export interface TenantSettings {
    * treatment wherever it would otherwise appear.
    */
   logoUrl?: string | null;
+  /**
+   * Governs only the notification bell's non-blocking popup for a new
+   * online booking/cancellation/reschedule — never the badge/drawer itself,
+   * which always reflects reality and has no override. Defaults to `true`;
+   * a salon that finds the popup intrusive can turn it off without losing
+   * the underlying notification.
+   */
+  staffNotificationPopupsEnabled: boolean;
 }
 
 /** DECISIONS.md Q5/Q9 defaults; advanceRule defaults to NO_ADVANCE. */
@@ -82,4 +90,5 @@ export const DEFAULT_TENANT_SETTINGS: TenantSettings = {
   earlyDepartureGraceMinutes: 10,
   businessRegNo: null,
   logoUrl: null,
+  staffNotificationPopupsEnabled: true,
 };

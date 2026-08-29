@@ -61,6 +61,8 @@ import { NotificationService } from "../notification/notification.service";
 import { GiftCardService } from "../gift-card/gift-card.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { ServicePackageService } from "../service-package/service-package.service";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { StaffNotificationService } from "../staff-notification/staff-notification.service";
 
 /** Never a real booking against the day's capacity — cancelled, no-show, rescheduled away, or expired before payment. */
 const DOES_NOT_COUNT_TOWARD_DAILY_LIMIT: AppointmentStatus[] = [
@@ -198,6 +200,7 @@ export class BookingService {
     private readonly notifications: NotificationService,
     private readonly giftCards: GiftCardService,
     private readonly servicePackages: ServicePackageService,
+    private readonly staffNotifications: StaffNotificationService,
   ) {}
 
   /** POST /payments/:intentId/gift-card-preview — a pure read; the tenant is resolved from the hold, same as confirm/cancel. */
@@ -497,6 +500,15 @@ export class BookingService {
         if (result.appointment.advanceRequiredCents > 0) {
           await this.notifications.fire(tenant, NotificationEvent.PAYMENT_CONFIRMATION, result.appointment, customer);
         }
+        // Notification bell — every online booking is customer-originated by
+        // definition (this method is the only path that ever sets
+        // source: ONLINE), so this fires unconditionally on a fresh insert.
+        await this.staffNotifications.notify(tenant.id, result.appointment.id, {
+          type: "APPOINTMENT_CREATED_ONLINE",
+          customerName: `${customer.firstName} ${customer.lastName}`.trim(),
+          staffName: result.appointment.staff.name,
+          startTime: result.appointment.startTime,
+        });
       });
     }
 
@@ -592,6 +604,21 @@ export class BookingService {
     await this.fireBestEffort(() =>
       this.notifications.fire(tenant, NotificationEvent.CANCELLATION_CONFIRMATION, result, appointment.customer),
     );
+
+    // Notification bell — only a genuinely customer-initiated cancel
+    // (actorUserId null is the same signal AuditLog itself uses to tell
+    // this apart from a staff-initiated one), never a receptionist
+    // cancelling on someone's behalf.
+    if (input.actorUserId === null) {
+      await this.fireBestEffort(() =>
+        this.staffNotifications.notify(tenant.id, appointment.id, {
+          type: "APPOINTMENT_CANCELLED_SELF",
+          customerName: `${appointment.customer.firstName} ${appointment.customer.lastName}`.trim(),
+          staffName: appointment.staff.name,
+          startTime: appointment.startTime,
+        }),
+      );
+    }
 
     return result;
   }
@@ -715,6 +742,24 @@ export class BookingService {
     if (!input.isDateCorrection) {
       await this.fireBestEffort(() =>
         this.notifications.fire(tenant, NotificationEvent.RESCHEDULE_CONFIRMATION, result, appointment.customer),
+      );
+    }
+
+    // Notification bell — same actorUserId-null signal as cancel, and the
+    // same isDateCorrection exclusion as the customer-facing message just
+    // above: a front-desk date fix was never something the customer asked
+    // for, so it isn't "their" reschedule to be told about here either.
+    // `staffContext.staffName`/`start` (not `result`, which carries no
+    // loaded staff relation) are the resolved new stylist/time, already in
+    // scope from the availability check above.
+    if (input.actorUserId === null && !input.isDateCorrection) {
+      await this.fireBestEffort(() =>
+        this.staffNotifications.notify(tenant.id, result.id, {
+          type: "APPOINTMENT_RESCHEDULED_SELF",
+          customerName: `${appointment.customer.firstName} ${appointment.customer.lastName}`.trim(),
+          staffName: staffContext.staffName,
+          startTime: start,
+        }),
       );
     }
 
