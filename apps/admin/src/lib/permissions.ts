@@ -129,6 +129,20 @@ export function canManageInventory(roles: string[]): boolean {
 }
 
 /**
+ * Mirrors the server's actual read-route gate on GET /products and
+ * GET /product-variants: `@Permissions(MANAGE_INVENTORY, RECORD_PAYMENT)` —
+ * "reads open to whoever can also take a payment, writes MANAGE_INVENTORY
+ * only" (product.controller.ts). UAT PRD-16/20 found the Products and Stock
+ * pages gated their entire read view behind `canManageInventory` alone,
+ * showing a placeholder to RECEPTIONIST even though the server always let
+ * them browse. This is the read gate; mutating actions on those pages stay
+ * behind `canManageInventory` specifically.
+ */
+export function canViewInventory(roles: string[]): boolean {
+  return canManageInventory(roles) || canRecordPayment(roles);
+}
+
+/**
  * STAFF holding only that one role — a stylist with no elevated grant at this
  * salon. Used to route a login toward the floor kiosk instead of the desk
  * shell: someone who is STAFF *and* something else (rare, but the data model

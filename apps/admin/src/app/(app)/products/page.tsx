@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../../context/auth-context";
 import { ApiRequestError, fetchProducts, type ProductRecord } from "../../../lib/api-client";
-import { canManageInventory } from "../../../lib/permissions";
+import { canManageInventory, canViewInventory } from "../../../lib/permissions";
 import { ModuleGate } from "../../../components/module-gate";
 import { ProductDrawer } from "../../../components/product-drawer";
 import { ProductDetailDrawer } from "../../../components/product-detail-drawer";
@@ -22,28 +22,30 @@ export default function ProductsPageGated() {
 function ProductsPage() {
   const { user } = useAuth();
   const canManage = canManageInventory(user?.roles ?? []);
+  const canView = canViewInventory(user?.roles ?? []);
   const toast = useToast();
 
   const [products, setProducts] = useState<ProductRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [viewingId, setViewingId] = useState<string | null>(null);
 
-  const load = useCallback((query: string) => {
+  const load = useCallback((query: string, includeInactive: boolean) => {
     setLoading(true);
     setError(null);
-    fetchProducts({ q: query || undefined, limit: 100 })
+    fetchProducts({ q: query || undefined, includeInactive, limit: 100 })
       .then((res) => setProducts(res.data))
       .catch((err: unknown) => setError(err instanceof ApiRequestError ? err.message : "Could not load products."))
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => load(""), [load]);
+  useEffect(() => load("", showInactive), [load, showInactive]);
 
-  if (!canManage) {
+  if (!canView) {
     return (
       <div className="flex flex-col gap-4">
         <Header />
@@ -58,47 +60,61 @@ function ProductsPage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Header count={products.length} />
-        <div className="flex gap-2">
-          <button
-            type="button"
-            data-testid="product-import-open"
-            onClick={() => setShowImport(true)}
-            className="inline-flex min-h-11 items-center gap-1.5 rounded border border-slate-300 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path
-                d="M8 2v8m0 0 3-3m-3 3-3-3M3 12v1.5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V12"
-                stroke="currentColor"
-                strokeWidth="1.4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            Import products
-          </button>
-          <button
-            type="button"
-            data-testid="product-create-open"
-            onClick={() => setShowCreate(true)}
-            className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700"
-          >
-            + Create product
-          </button>
-        </div>
+        {canManage ? (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              data-testid="product-import-open"
+              onClick={() => setShowImport(true)}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded border border-slate-300 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path
+                  d="M8 2v8m0 0 3-3m-3 3-3-3M3 12v1.5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V12"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              Import products
+            </button>
+            <button
+              type="button"
+              data-testid="product-create-open"
+              onClick={() => setShowCreate(true)}
+              className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700"
+            >
+              + Create product
+            </button>
+          </div>
+        ) : null}
       </div>
 
-      <input
-        data-testid="product-search"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            load(q);
-          }
-        }}
-        placeholder="Search by name or brand…"
-        className="min-h-11 max-w-sm rounded border border-slate-300 px-3 text-sm"
-      />
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          data-testid="product-search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              load(q, showInactive);
+            }
+          }}
+          placeholder="Search by name or brand…"
+          className="min-h-11 max-w-sm flex-1 rounded border border-slate-300 px-3 text-sm"
+        />
+        <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            data-testid="product-show-discontinued"
+            checked={showInactive}
+            onChange={(e) => setShowInactive(e.target.checked)}
+            className="h-4 w-4 accent-teal-600"
+          />
+          Show discontinued
+        </label>
+      </div>
 
       {error ? (
         <p role="alert" className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
@@ -169,7 +185,7 @@ function ProductsPage() {
           onSaved={(productId) => {
             setShowCreate(false);
             toast.success("Product created");
-            load(q);
+            load(q, showInactive);
             setViewingId(productId);
           }}
         />
@@ -180,7 +196,7 @@ function ProductsPage() {
           productId={viewingId}
           onClose={() => {
             setViewingId(null);
-            load(q);
+            load(q, showInactive);
           }}
         />
       ) : null}
@@ -190,7 +206,7 @@ function ProductsPage() {
           onClose={() => setShowImport(false)}
           onImported={() => {
             toast.success("Products imported");
-            load(q);
+            load(q, showInactive);
           }}
         />
       ) : null}

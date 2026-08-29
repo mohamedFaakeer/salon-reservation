@@ -2051,3 +2051,58 @@ inventing a look for one screen would have made it read as a different product.
    "Hidden from customers" pill round-tripped correctly in both
    directions (screenshots taken at each step) — then reactivated to
    leave the dev database as found.
+
+## 49. Two UAT gaps fixed: product deactivation didn't stick, and Products/Stock over-restricted Receptionist (2026-08-29)
+
+1. **The bug (UAT PRD-16).** Deactivating a product's own toggle promises
+   "stop it appearing in Quick Sale," but `product.service.ts`'s
+   `lookupVariants()` — the query Quick Sale's search actually hits —
+   filtered `v.active = true` on the variant alone and never checked the
+   parent product's `active` flag, so a deactivated product's still-active
+   variants stayed fully sellable. Fixed with one more `.andWhere(
+   "product.active = true")`, since `product` was already joined for the
+   sort order; regression test added.
+2. **The second half of PRD-16**: once deactivated, a product vanished
+   from `/products` with no way back — not because reactivation was
+   broken (`PATCH /products/:id { active: true }` always worked, confirmed
+   by UAT restoring state that way), but because the *page* never asked
+   for inactive products. The API already had `includeInactive` on
+   `ProductQueryDto`, unused by the frontend. Added a "Show discontinued"
+   checkbox to the Products page wired to that existing param — no
+   backend change needed here, and no drawer change either, since the
+   existing edit drawer's "Active" checkbox already flips it back.
+3. **The bug (UAT PRD-20).** `product.controller.ts`'s own comment states
+   the intended policy plainly: *"reads open to whoever can also take a
+   payment, writes MANAGE_INVENTORY only"* — and the server enforces
+   exactly that (`@Permissions(MANAGE_INVENTORY, RECORD_PAYMENT)` on the
+   read routes). The admin frontend never implemented that split: the
+   Products and Stock pages gated their *entire* page behind
+   `canManageInventory`, showing a placeholder to RECEPTIONIST instead of
+   read access the server always granted.
+4. **Fix mirrors the server's OR exactly.** New `canViewInventory` in
+   `apps/admin/src/lib/permissions.ts` = `canManageInventory(roles) ||
+   canRecordPayment(roles)`. Both pages' top-level gate switched to it;
+   the actual write affordances (Create/Import product, Receive/Adjust
+   stock) stay behind `canManageInventory` specifically, matching
+   `inventory.controller.ts`'s write routes, which really are
+   `MANAGE_INVENTORY`-only with no OR.
+5. **`ProductDetailDrawer`'s in-drawer writes, found while fixing point 4,
+   fixed too on request.** Its "Edit" button and each variant's inline
+   edit form had no role gate at all — a RECEPTIONIST who can now open the
+   drawer (per point 4) would see an Edit button the server would still
+   correctly reject at 403 on save. Flagged first rather than silently
+   fixed; the user asked for it too. Product-level Edit button and
+   `AddVariantForm` now hidden behind `canManageInventory`, matching the
+   page-level pattern. For a variant row specifically: rather than
+   retrofit a disabled/read-only mode into every field type (plain
+   inputs, a checkbox, the image uploader, and `AttributesEditor`, which
+   has no such mode at all), a read-only viewer gets the same summary row
+   with no expand-to-edit affordance whatsoever — consistent with how the
+   product-level Edit button is hidden outright rather than shown
+   disabled, and far less new surface than building a parallel read-only
+   rendering path for a component nobody asked to view in more detail.
+6. **Verified**: typecheck, lint, and the full `product.service.spec.ts`
+   suite (22 tests, including the two new ones) all green; `apps/admin`
+   typechecks, lints and builds successfully after the drawer changes too.
+   `docs/uat_results.json`'s PRD-16 and PRD-20 entries updated to
+   `completed: Yes` with the fix described.

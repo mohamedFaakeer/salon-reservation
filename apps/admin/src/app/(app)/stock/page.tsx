@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../../context/auth-context";
 import { ApiRequestError, fetchVariants, type ProductVariantRecord } from "../../../lib/api-client";
-import { canManageInventory } from "../../../lib/permissions";
+import { canManageInventory, canViewInventory } from "../../../lib/permissions";
 import { formatPriceCents } from "../../../lib/format";
 import { ModuleGate } from "../../../components/module-gate";
 import { StockReceiveDrawer } from "../../../components/stock-receive-drawer";
@@ -22,6 +22,7 @@ export default function StockPageGated() {
 function StockPage() {
   const { user } = useAuth();
   const canManage = canManageInventory(user?.roles ?? []);
+  const canView = canViewInventory(user?.roles ?? []);
   const toast = useToast();
 
   const [variants, setVariants] = useState<ProductVariantRecord[]>([]);
@@ -43,7 +44,7 @@ function StockPage() {
 
   useEffect(() => load("", lowStockOnly), [load, lowStockOnly]);
 
-  if (!canManage) {
+  if (!canView) {
     return (
       <div className="flex flex-col gap-4">
         <Header />
@@ -69,24 +70,26 @@ function StockPage() {
             {reorderSoonCount > 0 ? ` · ${reorderSoonCount} reorder soon` : ""}
           </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            data-testid="stock-adjust-open"
-            onClick={() => setShowAdjust(true)}
-            className="min-h-11 rounded border border-slate-300 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Adjust stock
-          </button>
-          <button
-            type="button"
-            data-testid="stock-receive-open"
-            onClick={() => setShowReceive(true)}
-            className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700"
-          >
-            + Receive stock
-          </button>
-        </div>
+        {canManage ? (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              data-testid="stock-adjust-open"
+              onClick={() => setShowAdjust(true)}
+              className="min-h-11 rounded border border-slate-300 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Adjust stock
+            </button>
+            <button
+              type="button"
+              data-testid="stock-receive-open"
+              onClick={() => setShowReceive(true)}
+              className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700"
+            >
+              + Receive stock
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

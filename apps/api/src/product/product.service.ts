@@ -348,6 +348,10 @@ export class ProductService {
       .leftJoinAndSelect("v.product", "product")
       .where("v.tenantId = :tenantId", { tenantId })
       .andWhere("v.active = true")
+      // UAT PRD-16: a deactivated PRODUCT's still-active variants must stop
+      // being sellable too — the product-level toggle's own copy ("stop it
+      // appearing in Quick Sale") was a promise this query didn't keep.
+      .andWhere("product.active = true")
       .orderBy("product.name", "ASC")
       .addOrderBy("v.sku", "ASC")
       .take(query.limit)

@@ -231,6 +231,8 @@ describe("ProductService", () => {
   });
 
   describe("lookupVariants — reorder signal", () => {
+    let queryBuilder: { andWhere: ReturnType<typeof vi.fn> };
+
     function stubVariantQuery(rows: ProductVariant[]): void {
       const qb = {
         leftJoinAndSelect: vi.fn().mockReturnThis(),
@@ -242,6 +244,7 @@ describe("ProductService", () => {
         skip: vi.fn().mockReturnThis(),
         getManyAndCount: vi.fn(async () => [rows, rows.length] as [ProductVariant[], number]),
       };
+      queryBuilder = qb;
       service = new ProductService(
         dataSource,
         products,
@@ -253,6 +256,12 @@ describe("ProductService", () => {
         stockMutation,
       );
     }
+
+    it("filters out variants whose parent product is deactivated (UAT PRD-16)", async () => {
+      stubVariantQuery([]);
+      await service.lookupVariants("tenant-1", { limit: 50, offset: 0 });
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith("product.active = true");
+    });
 
     it("flags a variant under its reorder point even with no sales history", async () => {
       stubVariantQuery([{ id: "v1", quantityOnHand: 2, reorderPoint: 5 } as ProductVariant]);

@@ -13,6 +13,8 @@ import {
   type ProductRecord,
   type ProductVariantRecord,
 } from "../lib/api-client";
+import { useAuth } from "../context/auth-context";
+import { canManageInventory } from "../lib/permissions";
 import { formatPriceCents } from "../lib/format";
 import { DrawerShell } from "./drawer-shell";
 import { ImageUploadField } from "./image-upload-field";
@@ -47,6 +49,8 @@ function Swatch({ imageUrl, size = 40 }: { imageUrl: string | null; size?: numbe
  * rather than duplicating its form here.
  */
 export function ProductDetailDrawer({ productId, onClose }: { productId: string; onClose: () => void }) {
+  const { user } = useAuth();
+  const canManage = canManageInventory(user?.roles ?? []);
   const [product, setProduct] = useState<ProductRecord | null>(null);
   const [variants, setVariants] = useState<ProductVariantRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -108,21 +112,23 @@ export function ProductDetailDrawer({ productId, onClose }: { productId: string;
               >
                 {product.active ? "Active" : "Discontinued"}
               </span>
-              <button
-                type="button"
-                data-testid="product-edit-open"
-                onClick={() => setEditingProduct(true)}
-                className="min-h-8 rounded border border-slate-300 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Edit
-              </button>
+              {canManage ? (
+                <button
+                  type="button"
+                  data-testid="product-edit-open"
+                  onClick={() => setEditingProduct(true)}
+                  className="min-h-8 rounded border border-slate-300 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Edit
+                </button>
+              ) : null}
             </div>
           </div>
 
           <ImageUploadField
             label="Product photo"
             imageUrl={product.imageUrl}
-            disabled={false}
+            disabled={!canManage}
             helpText="PNG, JPEG or WebP · up to 2 MB. A variant can use this photo or one of its own."
             testId="product-image"
             upload={(file) => uploadProductImage(product.id, file)}
@@ -156,19 +162,27 @@ export function ProductDetailDrawer({ productId, onClose }: { productId: string;
             ) : (
               <div className="flex flex-col gap-2">
                 {variants.map((variant) => (
-                  <VariantRow key={variant.id} productId={product.id} variant={variant} onChanged={replaceVariant} />
+                  <VariantRow
+                    key={variant.id}
+                    productId={product.id}
+                    variant={variant}
+                    canManage={canManage}
+                    onChanged={replaceVariant}
+                  />
                 ))}
               </div>
             )}
           </div>
 
-          <AddVariantForm
-            product={product}
-            onAdded={(variant) => {
-              setVariants((prev) => [...prev, variant]);
-              toast.success("Variant added");
-            }}
-          />
+          {canManage ? (
+            <AddVariantForm
+              product={product}
+              onAdded={(variant) => {
+                setVariants((prev) => [...prev, variant]);
+                toast.success("Variant added");
+              }}
+            />
+          ) : null}
         </div>
       </DrawerShell>
 
@@ -190,10 +204,13 @@ export function ProductDetailDrawer({ productId, onClose }: { productId: string;
 function VariantRow({
   productId,
   variant,
+  canManage,
   onChanged,
 }: {
   productId: string;
   variant: ProductVariantRecord;
+  /** Read-only viewers (RECEPTIONIST, via canViewInventory) can still expand a row to see its detail, but the edit form itself only renders for someone who can actually save it. */
+  canManage: boolean;
   onChanged: (variant: ProductVariantRecord) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -233,6 +250,38 @@ function VariantRow({
     }
   }
 
+  const rowContent = (
+    <>
+      <Swatch imageUrl={variant.imageUrl ?? null} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-mono text-[12px] font-semibold text-slate-900">{variant.sku}</span>
+        <span className="block truncate text-[11px] text-slate-400">{variant.barcode ?? "No barcode"}</span>
+      </span>
+      <span className="shrink-0 text-right">
+        <span className="block tabular text-sm font-semibold text-slate-900">{formatPriceCents(variant.priceCents)}</span>
+        <span className="block tabular text-[11px] text-slate-400">{variant.quantityOnHand} on hand</span>
+      </span>
+      {!variant.active ? (
+        <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">Off</span>
+      ) : null}
+    </>
+  );
+
+  // A read-only viewer (RECEPTIONIST, via canViewInventory) can see this
+  // summary — it's the same information Quick Sale already exposes them to —
+  // but gets no expand-to-edit affordance at all, rather than an edit form
+  // whose Save button the server would still correctly reject.
+  if (!canManage) {
+    return (
+      <div
+        data-testid={`variant-row-${variant.sku}`}
+        className="flex w-full items-center gap-3 px-3 py-2.5"
+      >
+        {rowContent}
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-lg border border-slate-200">
       <button
@@ -241,18 +290,7 @@ function VariantRow({
         onClick={() => setExpanded((v) => !v)}
         className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50"
       >
-        <Swatch imageUrl={variant.imageUrl ?? null} />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate font-mono text-[12px] font-semibold text-slate-900">{variant.sku}</span>
-          <span className="block truncate text-[11px] text-slate-400">{variant.barcode ?? "No barcode"}</span>
-        </span>
-        <span className="shrink-0 text-right">
-          <span className="block tabular text-sm font-semibold text-slate-900">{formatPriceCents(variant.priceCents)}</span>
-          <span className="block tabular text-[11px] text-slate-400">{variant.quantityOnHand} on hand</span>
-        </span>
-        {!variant.active ? (
-          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">Off</span>
-        ) : null}
+        {rowContent}
         <svg
           viewBox="0 0 16 16"
           width="12"
