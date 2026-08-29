@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import type { EntityManager } from "typeorm";
 // Repository must stay a VALUE import: NestJS resolves constructor
@@ -6,8 +6,19 @@ import type { EntityManager } from "typeorm";
 // erase it and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { Between, In, LessThanOrEqual, MoreThanOrEqual, Repository } from "typeorm";
-import type { AuditQueryDto } from "@salon/shared";
+import { SECURITY_EVENT_ACTIONS, type AuditQueryDto, type SecurityEventAction } from "@salon/shared";
 import { AuditLog } from "../entities/audit-log.entity";
+import { Tenant } from "../entities/tenant.entity";
+import { User } from "../entities/user.entity";
+// PlatformAlertService must stay a VALUE import: NestJS resolves constructor
+// injection via design:paramtypes metadata at runtime; `import type` would
+// erase it and break DI.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { PlatformAlertService } from "../alerting/platform-alert.service";
+import { classifySecurityEventSeverity } from "../monitoring/classify-severity";
+import { explainSecurityEvent } from "../monitoring/explain-event";
+
+const ALERT_LOOKBACK_MS = 10 * 60_000; // matches monitoring.service.ts's RECENT_WINDOW_MS
 
 export interface RecordAuditInput {
   tenantId: string | null;
@@ -22,8 +33,13 @@ export interface RecordAuditInput {
 
 @Injectable()
 export class AuditService {
+  private readonly logger = new Logger(AuditService.name);
+
   constructor(
     @InjectRepository(AuditLog) private readonly logs: Repository<AuditLog>,
+    @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectRepository(Tenant) private readonly tenants: Repository<Tenant>,
+    private readonly alerts: PlatformAlertService,
   ) {}
 
   /**
@@ -31,10 +47,18 @@ export class AuditService {
    * silently swallowed. Pass `manager` to make the write atomic with a
    * caller's own transaction (same optional-manager pattern as
    * TenantService.createTenant).
+   *
+   * Security-relevant actions (the 4 in `SECURITY_EVENT_ACTIONS`) also get
+   * evaluated for an immediate email alert here — this is the one place
+   * every one of them passes through, so it's also the one place that
+   * decides whether a human needs to know right now. Per the user's
+   * explicit instruction: only HIGH/CRITICAL severity emails immediately;
+   * everything else (including every LOW/MEDIUM security event) stays
+   * dashboard-only, which is what the monitoring feature is for.
    */
   async record(input: RecordAuditInput, manager?: EntityManager): Promise<void> {
     const repo = manager ? manager.getRepository(AuditLog) : this.logs;
-    await repo.save(
+    const saved = await repo.save(
       repo.create({
         tenantId: input.tenantId,
         actorUserId: input.actorUserId,
@@ -45,6 +69,46 @@ export class AuditService {
         ipAddress: input.ipAddress ?? null,
         userAgent: input.userAgent ?? null,
       }),
+    );
+
+    if ((SECURITY_EVENT_ACTIONS as readonly string[]).includes(input.action)) {
+      // Never let alert evaluation — an extra query plus an email send —
+      // turn a successful audit write into a failed request for the caller.
+      this.maybeAlert(saved).catch((err: unknown) => {
+        this.logger.error("Security-event alert evaluation failed", err instanceof Error ? err.stack : undefined);
+      });
+    }
+  }
+
+  private async maybeAlert(row: AuditLog): Promise<void> {
+    const action = row.action as SecurityEventAction;
+    const since = new Date(Date.now() - ALERT_LOOKBACK_MS);
+    const recentCount = (await this.countRecentByEntity(action, [row.entityId], since)).get(row.entityId) ?? 1;
+    const severity = classifySecurityEventSeverity(action, recentCount);
+    if (severity !== "CRITICAL" && severity !== "HIGH") {
+      return;
+    }
+
+    const [actorUser, tenant] = await Promise.all([
+      row.actorUserId ? this.users.findOne({ where: { id: row.actorUserId }, select: { id: true, name: true } }) : null,
+      row.tenantId ? this.tenants.findOne({ where: { id: row.tenantId }, select: { id: true, name: true } }) : null,
+    ]);
+    const actorName =
+      actorUser?.name ??
+      (typeof row.metadata.attemptedEmail === "string" ? row.metadata.attemptedEmail : null) ??
+      (typeof row.metadata.attemptedPhone === "string" ? row.metadata.attemptedPhone : null);
+
+    const explanation = explainSecurityEvent({
+      action,
+      actorName,
+      tenantName: tenant?.name ?? null,
+      recentCount,
+      metadata: row.metadata,
+    });
+
+    await this.alerts.send(
+      `[${severity}] ${explanation.title}`,
+      `${explanation.plainLanguage}\n\n${explanation.recommendedAction}\n\nOpen the platform monitoring dashboard for full details.`,
     );
   }
 

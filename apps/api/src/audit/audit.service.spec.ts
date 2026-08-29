@@ -1,6 +1,9 @@
 import type { ObjectLiteral, Repository } from "typeorm";
 import { AuditService } from "./audit.service";
+import type { PlatformAlertService } from "../alerting/platform-alert.service";
 import type { AuditLog } from "../entities/audit-log.entity";
+import type { Tenant } from "../entities/tenant.entity";
+import type { User } from "../entities/user.entity";
 
 function mockRepo<T extends ObjectLiteral>() {
   const queryBuilder = {
@@ -13,21 +16,32 @@ function mockRepo<T extends ObjectLiteral>() {
   };
   const repo = {
     create: vi.fn((e: Partial<T>) => e as T),
-    save: vi.fn(async (e: T) => e),
+    save: vi.fn(async (e: T) => ({ id: "log-1", metadata: {}, ...e }) as T),
     findAndCount: vi.fn(async () => [[], 0]),
+    findOne: vi.fn(async () => null),
     createQueryBuilder: vi.fn(() => queryBuilder),
   } as unknown as Repository<T> & { __queryBuilder: typeof queryBuilder };
   (repo as unknown as { __queryBuilder: typeof queryBuilder }).__queryBuilder = queryBuilder;
   return repo;
 }
 
+function mockAlerts(): PlatformAlertService {
+  return { send: vi.fn(async () => undefined) } as unknown as PlatformAlertService;
+}
+
 describe("AuditService", () => {
-  let logs: Repository<AuditLog>;
+  let logs: Repository<AuditLog> & { __queryBuilder: { getRawMany: ReturnType<typeof vi.fn> } };
+  let users: Repository<User>;
+  let tenants: Repository<Tenant>;
+  let alerts: PlatformAlertService;
   let service: AuditService;
 
   beforeEach(() => {
     logs = mockRepo<AuditLog>();
-    service = new AuditService(logs);
+    users = mockRepo<User>();
+    tenants = mockRepo<Tenant>();
+    alerts = mockAlerts();
+    service = new AuditService(logs, users, tenants, alerts);
   });
 
   describe("record", () => {
@@ -177,6 +191,92 @@ describe("AuditService", () => {
 
       expect(result.get("user-1")).toBe(5);
       expect(result.get("user-2")).toBe(1);
+    });
+  });
+
+  describe("record — immediate alerting", () => {
+    /** Flushes the fire-and-forget maybeAlert() chain (see record()'s "not awaited" comment). */
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    it("never alerts on an ordinary business action", async () => {
+      await service.record({
+        tenantId: "tenant-1",
+        actorUserId: "user-1",
+        action: "SERVICE_PRICE_CHANGED",
+        entityType: "Service",
+        entityId: "svc-1",
+      });
+      await flush();
+
+      expect(alerts.send).not.toHaveBeenCalled();
+    });
+
+    it("does not alert on an isolated LOGIN_FAILED (LOW severity)", async () => {
+      logs.__queryBuilder.getRawMany.mockResolvedValue([{ entityId: "user-1", count: "1" }]);
+
+      await service.record({
+        tenantId: "tenant-1",
+        actorUserId: "user-1",
+        action: "LOGIN_FAILED",
+        entityType: "User",
+        entityId: "user-1",
+      });
+      await flush();
+
+      expect(alerts.send).not.toHaveBeenCalled();
+    });
+
+    it("alerts immediately on repeated LOGIN_FAILED (HIGH severity), naming the actor and tenant", async () => {
+      logs.__queryBuilder.getRawMany.mockResolvedValue([{ entityId: "user-1", count: "6" }]);
+      vi.mocked(users.findOne).mockResolvedValue({ id: "user-1", name: "Nadeesha" } as User);
+      vi.mocked(tenants.findOne).mockResolvedValue({ id: "tenant-1", name: "Elegance Salon" } as Tenant);
+
+      await service.record({
+        tenantId: "tenant-1",
+        actorUserId: "user-1",
+        action: "LOGIN_FAILED",
+        entityType: "User",
+        entityId: "user-1",
+      });
+      await flush();
+
+      expect(alerts.send).toHaveBeenCalledTimes(1);
+      const [subject, body] = vi.mocked(alerts.send).mock.calls[0];
+      expect(subject).toContain("HIGH");
+      expect(body).toContain("Nadeesha");
+      expect(body).toContain("Elegance Salon");
+    });
+
+    it("always alerts on REFRESH_TOKEN_REUSE_DETECTED (CRITICAL), even as an isolated event", async () => {
+      logs.__queryBuilder.getRawMany.mockResolvedValue([]);
+
+      await service.record({
+        tenantId: null,
+        actorUserId: "user-1",
+        action: "REFRESH_TOKEN_REUSE_DETECTED",
+        entityType: "RefreshSession",
+        entityId: "sess-1",
+      });
+      await flush();
+
+      expect(alerts.send).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(alerts.send).mock.calls[0][0]).toContain("CRITICAL");
+    });
+
+    it("a failed alert evaluation is logged, not thrown — record() itself already resolved", async () => {
+      vi.mocked(alerts.send).mockRejectedValue(new Error("smtp down"));
+      logs.__queryBuilder.getRawMany.mockResolvedValue([]);
+
+      await expect(
+        service.record({
+          tenantId: null,
+          actorUserId: "user-1",
+          action: "REFRESH_TOKEN_REUSE_DETECTED",
+          entityType: "RefreshSession",
+          entityId: "sess-1",
+        }),
+      ).resolves.toBeUndefined();
+      await flush();
     });
   });
 });

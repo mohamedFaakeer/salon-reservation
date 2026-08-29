@@ -13,6 +13,7 @@ import type { NotificationTemplate } from "../entities/notification-template.ent
 import type { CustomerNotificationPreferences } from "../entities/customer-notification-preferences.entity";
 import type { NotificationQuota } from "../entities/notification-quota.entity";
 import type { NotificationEventSetting } from "../entities/notification-event-setting.entity";
+import type { PlatformAlertService } from "../alerting/platform-alert.service";
 
 function mockRepo<T extends ObjectLiteral>() {
   return {
@@ -76,9 +77,11 @@ describe("NotificationService", () => {
   let quotaRepo: Repository<NotificationQuota>;
   let appointmentsRepo: Repository<Appointment>;
   let eventSettingRepo: Repository<NotificationEventSetting>;
+  let tenantsRepo: Repository<Tenant>;
   let providers: NotificationProviderResolver;
   let sendMock: ReturnType<typeof vi.fn>;
   let templateRenderer: TemplateRendererService;
+  let platformAlert: PlatformAlertService;
   let service: NotificationService;
 
   beforeEach(() => {
@@ -89,6 +92,7 @@ describe("NotificationService", () => {
     quotaRepo = mockRepo<NotificationQuota>();
     appointmentsRepo = mockRepo<Appointment>();
     eventSettingRepo = mockRepo<NotificationEventSetting>();
+    tenantsRepo = mockRepo<Tenant>();
 
     sendMock = vi.fn(async () => ({ providerMessageId: "msg-1" }));
     providers = {
@@ -96,6 +100,7 @@ describe("NotificationService", () => {
     } as unknown as NotificationProviderResolver;
 
     templateRenderer = new TemplateRendererService();
+    platformAlert = { send: vi.fn(async () => undefined) } as unknown as PlatformAlertService;
 
     vi.mocked(appointmentsRepo.findOne).mockResolvedValue(fakeAppointment());
 
@@ -107,8 +112,10 @@ describe("NotificationService", () => {
       quotaRepo,
       appointmentsRepo,
       eventSettingRepo,
+      tenantsRepo,
       providers,
       templateRenderer,
+      platformAlert,
     );
   });
 
@@ -347,9 +354,10 @@ describe("NotificationService", () => {
       expect(quotaRepo.increment).not.toHaveBeenCalled();
     });
 
-    it("sets alertedAt once usage crosses 80% of the limit, and only once", async () => {
+    it("sets alertedAt once usage crosses 80% of the limit, and only once, emailing the platform admin", async () => {
       const quota = fakeQuota({ smsSent: 399, smsLimit: 500, alertedAt: null }); // 400/500 = 80% after this send
       vi.mocked(quotaRepo.findOne).mockResolvedValue(quota);
+      vi.mocked(tenantsRepo.findOne).mockResolvedValue({ id: "tenant-1", name: "Elegance Salon" } as Tenant);
 
       // @ts-expect-error — accessing the private method directly for a focused unit test.
       await service.attemptDelivery({
@@ -363,6 +371,11 @@ describe("NotificationService", () => {
       } as Notification);
 
       expect(quotaRepo.update).toHaveBeenCalledWith({ id: quota.id }, { alertedAt: expect.any(Date) });
+      // The alert send is fire-and-forget (see recordQuotaUsage's own
+      // comment) — flush pending microtasks before asserting on it.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(platformAlert.send).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(platformAlert.send).mock.calls[0][0]).toContain("Elegance Salon");
     });
 
     it("does not re-alert once alertedAt is already set this month", async () => {
@@ -381,6 +394,8 @@ describe("NotificationService", () => {
       } as Notification);
 
       expect(quotaRepo.update).not.toHaveBeenCalled();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(platformAlert.send).not.toHaveBeenCalled();
     });
   });
 

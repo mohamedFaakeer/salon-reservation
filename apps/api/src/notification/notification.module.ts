@@ -10,6 +10,7 @@ import { NotificationEventSetting } from "../entities/notification-event-setting
 import { Appointment } from "../entities/appointment.entity";
 import { Tenant } from "../entities/tenant.entity";
 import { Customer } from "../entities/customer.entity";
+import { PlatformAlertModule } from "../alerting/platform-alert.module";
 import { NotificationController } from "./notification.controller";
 import { NotificationService } from "./notification.service";
 import { NotificationScheduler } from "./notification.scheduler";
@@ -37,6 +38,7 @@ import { NotificationProviderResolver } from "./providers/resolve-notification-p
       Tenant,
       Customer,
     ]),
+    PlatformAlertModule,
   ],
   controllers: [NotificationController],
   providers: [

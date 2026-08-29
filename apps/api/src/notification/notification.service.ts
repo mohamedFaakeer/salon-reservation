@@ -23,7 +23,7 @@ import { NotificationQuota } from "../entities/notification-quota.entity";
 import { NotificationEventSetting } from "../entities/notification-event-setting.entity";
 import { Appointment } from "../entities/appointment.entity";
 import type { Customer } from "../entities/customer.entity";
-import type { Tenant } from "../entities/tenant.entity";
+import { Tenant } from "../entities/tenant.entity";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { NotificationProviderResolver } from "./providers/resolve-notification-provider";
 // TemplateRendererService must stay a VALUE import: NestJS resolves
@@ -31,6 +31,11 @@ import { NotificationProviderResolver } from "./providers/resolve-notification-p
 // `import type` would erase it and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { TemplateRendererService } from "./services/template-renderer.service";
+// PlatformAlertService must stay a VALUE import: NestJS resolves
+// constructor injection via design:paramtypes metadata at runtime;
+// `import type` would erase it and break DI.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { PlatformAlertService } from "../alerting/platform-alert.service";
 
 /** Fixed backoff, minutes after each failed attempt; index = retryCount - 1. Exhausted → FAILED permanently (manual retry still available). */
 const RETRY_BACKOFF_MINUTES = [1, 5, 15, 60];
@@ -74,8 +79,10 @@ export class NotificationService {
     @InjectRepository(NotificationQuota) private readonly quotaRepo: Repository<NotificationQuota>,
     @InjectRepository(Appointment) private readonly appointments: Repository<Appointment>,
     @InjectRepository(NotificationEventSetting) private readonly eventSettingRepo: Repository<NotificationEventSetting>,
+    @InjectRepository(Tenant) private readonly tenants: Repository<Tenant>,
     private readonly providers: NotificationProviderResolver,
     private readonly templateRenderer: TemplateRendererService,
+    private readonly platformAlert: PlatformAlertService,
   ) {}
 
   /**
@@ -362,10 +369,33 @@ export class NotificationService {
     const usedAfter = quota[sentCol] + 1;
     const limit = quota[limitCol];
     if (limit > 0 && usedAfter / limit >= 0.8 && !quota.alertedAt) {
-      this.logger.warn(
-        `Tenant ${quota.tenantId} has used ${usedAfter}/${limit} (${Math.round((usedAfter / limit) * 100)}%) of its monthly ${sentCol} quota.`,
-      );
+      const percent = Math.round((usedAfter / limit) * 100);
+      this.logger.warn(`Tenant ${quota.tenantId} has used ${usedAfter}/${limit} (${percent}%) of its monthly ${sentCol} quota.`);
       await this.quotaRepo.update({ id: quota.id }, { alertedAt: new Date() });
+      // DECISIONS.md §41 anticipated this exact upgrade: "a dashboard banner
+      // or an actual email-to-owner alert is a natural next step." Not
+      // awaited — a failed alert send must never affect the send this
+      // quota check is gating.
+      void this.alertQuotaThreshold(quota, sentCol, usedAfter, limit, percent);
+    }
+  }
+
+  private async alertQuotaThreshold(
+    quota: NotificationQuota,
+    channel: QuotaSentColumn,
+    usedAfter: number,
+    limit: number,
+    percent: number,
+  ): Promise<void> {
+    try {
+      const tenant = await this.tenants.findOne({ where: { id: quota.tenantId }, select: { id: true, name: true } });
+      const channelName = channel.replace("Sent", "").toUpperCase();
+      await this.platformAlert.send(
+        `[HIGH] ${tenant?.name ?? "A salon"} is close to its monthly ${channelName.toLowerCase()} limit`,
+        `${tenant?.name ?? `Tenant ${quota.tenantId}`} has used ${usedAfter} of ${limit} (${percent}%) of its monthly ${channelName} messages. Once the limit is reached, further ${channelName.toLowerCase()} messages for this salon will fail to send until next month or the limit is raised.\n\nOpen the platform monitoring dashboard for full details.`,
+      );
+    } catch (err) {
+      this.logger.error("Quota-threshold alert failed", err instanceof Error ? err.stack : undefined);
     }
   }
 
