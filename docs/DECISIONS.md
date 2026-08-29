@@ -2166,3 +2166,87 @@ for that tenant (shouldn't happen given seeding, but keeps the "never
 silently fail" behavior this codebase already follows elsewhere). No new
 pages or entity fields needed for this pass; `cancelUrl`/`rescheduleUrl`/
 `salonEmail` stay absent until those features exist separately.
+
+## 51. Salon offboarding — deactivate, retain 90 days, then anonymize (2026-08-29)
+
+1. **The ask, and why the obvious answer was wrong.** The user asked to add
+   "delete a salon" from super-admin, explicitly on the assumption that
+   deletion means erasing everything from the database — then asked, before
+   any planning, whether that was actually the right way to do it. It
+   isn't: it directly conflicts with CLAUDE.md §1.8 ("No hard deletes on
+   business records... preserve appointment, payment, refund, and audit
+   rows"), and would cascade-destroy exactly that data — every tenant-owned
+   FK except `audit_log` (`SET NULL`) cascades on `tenant.id` today. §8 of
+   this document already flagged this moment as coming: "neither tenants
+   nor users are hard-deleted in this codebase today, so this is
+   future-proofing." This is that decision.
+2. **The shape, confirmed with the user:** deactivate immediately
+   (reversible) → retain 90 days → purge (anonymize personal data, never
+   touch payment/appointment/refund/audit rows). Standard SaaS offboarding
+   pattern; the retention length and "anonymize, don't delete" scope were
+   both explicit choices, not defaults assumed unasked.
+3. **Deactivation reuses `TenantStatus.SUSPENDED` — a status that already
+   existed and was already enforced, but had no code path that ever set
+   it.** `TenantGuard` has always 403'd non-`ACTIVE` tenants
+   (`TENANT_SUSPENDED`) on every request; no endpoint had ever written
+   `status` away from its `ACTIVE` default. `TenantOffboardingService
+   .deactivate()` sets `status = SUSPENDED` *and*
+   `customerBookingEnabled = false` (§48's flag) together, so one action
+   removes a salon from both staff login and customer discovery — no new
+   guard logic needed, just finally wiring up enforcement that was already
+   live.
+4. **A new, separate `deletionRequestedAt` column drives the retention
+   clock — deliberately not reusing `status` alone to mean it.** A
+   hypothetical future "suspend for non-payment" feature could reuse
+   `SUSPENDED` without starting an offboarding countdown. `purgedAt` marks
+   the terminal state (no further reactivation possible once set);
+   `deactivationReason` is free-text, audit-trail-only, never validated.
+5. **The tenant's slug is renamed at deactivation, not at purge** —
+   `${slug}--removed-<epoch>` — because `IDX_tenant_slug` is an
+   unconditional unique index with no soft-delete awareness, and waiting
+   the full 90 days to free a departed salon's name for reuse serves no
+   one. Reactivation tries to restore the original slug and silently keeps
+   the renamed one if another salon has since claimed it — a cosmetic
+   trade-off, not a blocking error.
+6. **Future appointments are deliberately left untouched on deactivation.**
+   No auto-cancel, no auto-refund. The salon/staff are expected to have
+   resolved them beforehand; deactivation only surfaces the count
+   (`futureAppointmentCount`) to the admin performing it, informationally.
+7. **The purge anonymizes; it never deletes a business record.**
+   `Customer`/`Staff`/`Inquiry` PII is scrubbed in place (unique
+   placeholders for `Customer.email`/`.phone`, which carry per-tenant
+   unique indexes — a fixed placeholder would collide across the second
+   customer anonymized in the same tenant). `Payment`, `Refund`, `Invoice`,
+   `Appointment`, `RetailSale`, and `AuditLog` are never touched — this
+   service holds no repository for any of them, so it is structurally
+   incapable of writing to them, not just disciplined about avoiding it.
+   The `Tenant` row itself survives too (renamed to "Deleted Salon", not
+   deleted), so `AuditLog.tenantId` keeps resolving to a real row forever.
+8. **A `User` (staff login) is only anonymized if this was its only
+   tenant.** `UserTenantRole` technically allows one user across multiple
+   tenants even though nothing creates that today; the purge always deletes
+   this tenant's membership row, and only scrubs the shared `User` row
+   (email/name, `status = DISABLED`) when no other tenant's membership
+   remains for that user. A platform-level `CustomerAccount` (customer-auth)
+   is treated the same way in spirit — only its `CustomerAccountSalonLink`
+   row for this tenant is removed, never the account itself, since it may
+   have bookings at other salons.
+9. **Manual immediate purge exists for a genuine erasure request, gated
+   behind having already deactivated first** — no endpoint can jump
+   straight from `ACTIVE` to purged. The "confirmation step" the user asked
+   for is deliberately client-side (planned: type-the-salon-name-to-confirm
+   in the admin UI), not server-side, since the API call itself is the
+   confirmed action once the client gate is passed.
+10. **Every deactivation, reactivation, and purge sends an unconditional
+    platform-admin email** via the existing `PlatformAlertService` — this
+    is a destructive/high-consequence action, not a graded security signal,
+    so it does not go through `classifySecurityEventSeverity()`'s
+    HIGH/CRITICAL-only gate the way security events do; a human should
+    know about every one of these, always.
+11. **Not built this pass, flagged rather than assumed:** exporting a
+    salon's data before purge (real scope of its own — format, tables,
+    delivery — not asked for), and verifying actual Sri Lankan tax/financial
+    record-retention minimums (the "anonymize, keep payment/refund records
+    forever" default is the safe, industry-standard posture and matches
+    CLAUDE.md already, but isn't a substitute for real legal confirmation
+    if this is ever tested by a dispute).

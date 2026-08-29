@@ -65,6 +65,18 @@ export class UpdateTenantVisibilityDto {
   customerBookingEnabled!: boolean;
 }
 
+/**
+ * POST /super-admin/tenants/:tenantId/deactivate — SUPER_ADMIN only.
+ * `reason` is optional free text kept only for the audit trail (why this
+ * salon was offboarded); it never gates the action itself.
+ */
+export class DeactivateTenantDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
+}
+
 /** Nested inside TenantSettingsUpdateDto; all fields optional (PATCH semantics). */
 export class CancellationPolicyUpdateDto {
   @IsOptional()

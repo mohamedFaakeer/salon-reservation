@@ -4,6 +4,7 @@ import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 // design:paramtypes metadata at runtime; `import type` would erase them.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import {
+  DeactivateTenantDto,
   PaginationQueryDto,
   ProvisionTenantDto,
   UpdateTenantEntitlementsDto,
@@ -19,6 +20,8 @@ import { Permission } from "../common/authorization/permission.enum";
 import { SuperAdminService } from "./super-admin.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { DemoSeedService } from "./demo-seed.service";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { TenantOffboardingService } from "./tenant-offboarding.service";
 
 /** API.md §4 — platform routes, SUPER_ADMIN only. */
 @ApiTags("super-admin")
@@ -28,6 +31,7 @@ export class SuperAdminController {
   constructor(
     private readonly superAdmin: SuperAdminService,
     private readonly demoSeedService: DemoSeedService,
+    private readonly offboarding: TenantOffboardingService,
   ) {}
 
   @Post()
@@ -78,5 +82,38 @@ export class SuperAdminController {
     @Body() dto: UpdateTenantVisibilityDto,
   ) {
     return this.superAdmin.setCustomerVisibility(tenantId, dto, req.user.sub);
+  }
+
+  /**
+   * Salon offboarding (DECISIONS.md): deactivate now (reversible, blocks
+   * staff login + customer booking), retain data 90 days, then purge.
+   */
+  @Post(":tenantId/deactivate")
+  @Permissions(Permission.PLATFORM_ADMIN)
+  deactivate(
+    @Req() req: AuthenticatedRequest,
+    @Param("tenantId", ParseUUIDPipe) tenantId: string,
+    @Body() dto: DeactivateTenantDto,
+  ) {
+    return this.offboarding.deactivate(tenantId, dto.reason, req.user.sub);
+  }
+
+  /** Reverses `deactivate` — only possible before the salon's data has actually been purged. */
+  @Post(":tenantId/reactivate")
+  @Permissions(Permission.PLATFORM_ADMIN)
+  reactivate(@Req() req: AuthenticatedRequest, @Param("tenantId", ParseUUIDPipe) tenantId: string) {
+    return this.offboarding.reactivate(tenantId, req.user.sub);
+  }
+
+  /**
+   * Skips the 90-day retention window for a legitimate immediate-erasure
+   * request. The confirmation step this needs lives client-side (the admin
+   * UI requires typing the salon's name); this call is itself the confirmed
+   * action, so it takes no body.
+   */
+  @Post(":tenantId/purge")
+  @Permissions(Permission.PLATFORM_ADMIN)
+  purgeNow(@Req() req: AuthenticatedRequest, @Param("tenantId", ParseUUIDPipe) tenantId: string) {
+    return this.offboarding.purgeNow(tenantId, req.user.sub);
   }
 }

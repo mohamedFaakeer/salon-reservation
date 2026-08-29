@@ -107,6 +107,30 @@ export class Tenant {
   })
   entitlements!: TenantEntitlements;
 
+  /**
+   * Offboarding lifecycle (DECISIONS.md — salon offboarding). Set together
+   * with `status = SUSPENDED` and `customerBookingEnabled = false` by
+   * `TenantOffboardingService.deactivate()`; null means "never deactivated,
+   * or reactivated since". Distinct from `status` alone because a future,
+   * unrelated "suspend for non-payment" feature could reuse `SUSPENDED`
+   * without implying an offboarding clock is running.
+   */
+  @Column({ type: "timestamptz", nullable: true })
+  deletionRequestedAt!: Date | null;
+
+  /**
+   * Set once the anonymization purge has actually run — manually or by the
+   * scheduled sweep, 90 days after `deletionRequestedAt`. Null forever if a
+   * deactivated tenant is reactivated before that point. Once set, the
+   * tenant can no longer be reactivated: its PII is already scrubbed.
+   */
+  @Column({ type: "timestamptz", nullable: true })
+  purgedAt!: Date | null;
+
+  /** Free-text, admin-entered context for why this salon was deactivated — audit trail only, never validated. */
+  @Column({ type: "text", nullable: true })
+  deactivationReason!: string | null;
+
   @CreateDateColumn({ type: "timestamptz" })
   createdAt!: Date;
 
