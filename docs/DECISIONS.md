@@ -2106,3 +2106,63 @@ inventing a look for one screen would have made it read as a different product.
    typechecks, lints and builds successfully after the drawer changes too.
    `docs/uat_results.json`'s PRD-16 and PRD-20 entries updated to
    `completed: Yes` with the fix described.
+
+## 50. KNOWN GAP, DEFERRED TO GO-LIVE — standard notification templates are never actually rendered (2026-08-29)
+
+**Found while wiring real email delivery (Brevo).** There are two entirely
+separate systems for notification content, and only one of them is
+connected to what customers actually receive:
+
+1. **`NotificationTemplate` rows** — 31 of them, auto-seeded per tenant by
+   `system-templates.service.ts`, one per (event type × channel). Fully
+   editable in the admin Notifications → Templates tab, with a real
+   Handlebars renderer (`template-renderer.service.ts`): variable registry,
+   `{{#if}}` conditionals, `formatCurrency`/`formatDate`/etc. helpers, a
+   live preview. This is what an Owner edits believing it controls what
+   gets sent.
+2. **`NotificationService.buildMessage()`** — the method actually called by
+   `attemptDelivery()` every time `booking.service.ts` fires one of the 8
+   standard lifecycle events (booking confirmation, payment confirmation,
+   24h/2h reminders, cancellation, reschedule, no-show, late arrival). It
+   is a hardcoded switch statement building a plain interpolated string and
+   **never reads a `NotificationTemplate` row or calls the renderer at
+   all**. This is confirmed by production behavior: editing the Booking
+   Confirmation template has zero effect on the email actually sent.
+
+The only consumer of the template system today is
+`NotificationEvaluatorService` (the custom Notification **Rules** an Owner
+can build, e.g. a bespoke win-back rule) via `NotificationService.sendForRule()`,
+which does pass pre-rendered text through. The 8 standard events do not go
+through rules at all — they call `fire()` directly.
+
+**Also found while scoping the fix — some template variables have no real
+data source yet:**
+- `cancelUrl` / `rescheduleUrl` — no self-service cancel/reschedule page
+  exists in `apps/web`. The seeded templates already wrap every reference
+  to these in `{{#if}}`, so once the renderer is wired in, they correctly
+  disappear rather than rendering broken links — no separate fix needed
+  for that half.
+- `salonEmail` — no such field exists anywhere (not on `Tenant`, not on
+  `Branch`). Also `{{#if}}`-guarded in the templates, so it will correctly
+  just not appear.
+- `salonPhone` / `salonAddress` — real data exists, on `Branch` (MVP's
+  single branch per tenant).
+- `totalAmount` / `paymentMethod` (Payment Confirmation template only) —
+  **not** `{{#if}}`-guarded in the seeded template, and `fire()`'s current
+  signature only receives `(tenant, event, appointment, customer)`, no
+  payment record. Wiring these correctly needs a small added lookup
+  against the actual `Payment` row for that appointment.
+
+**Decision: hold, fix before go-live.** The user chose not to fix this now
+and asked for it to be tracked and raised again when they announce they're
+going live with a real client — same trigger point as the credential
+rotation walkthrough (F-01, `SECURITY_AUDIT_REPORT.md`). **The fix, when
+picked up:** make `buildMessage()` look up the tenant's `NotificationTemplate`
+row for `(eventType, channel)`, build a `TemplateContext` from real
+appointment/customer/tenant/branch data (and the payment record, for
+`PAYMENT_CONFIRMATION`), and render it via `TemplateRendererService.render()`
+— falling back to today's hardcoded string only if no template row exists
+for that tenant (shouldn't happen given seeding, but keeps the "never
+silently fail" behavior this codebase already follows elsewhere). No new
+pages or entity fields needed for this pass; `cancelUrl`/`rescheduleUrl`/
+`salonEmail` stay absent until those features exist separately.
