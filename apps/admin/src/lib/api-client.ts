@@ -1289,6 +1289,11 @@ export interface PlatformTenant {
   bookingsToday: number;
   /** Past the plan's own daily limit, inside the grace buffer that still lets a booking through. */
   overBookingLimit: boolean;
+  /** Salon offboarding (DECISIONS.md §51). Set together with `status: "SUSPENDED"` — non-null means "deactivated, counting down to purge unless reactivated". */
+  deletionRequestedAt: string | null;
+  /** Once set, the salon's personal data has been anonymized and it can no longer be reactivated. */
+  purgedAt: string | null;
+  deactivationReason: string | null;
 }
 
 export interface ProvisionTenantResult {
@@ -1347,6 +1352,38 @@ export function updateTenantVisibility(
     `/super-admin/tenants/${tenantId}/customer-visibility`,
     { method: "PATCH", body: JSON.stringify({ customerBookingEnabled }) },
   );
+}
+
+/* -------------------------------------------------------- salon offboarding */
+
+export interface DeactivateTenantResult {
+  id: string;
+  status: string;
+  slug: string;
+  deletionRequestedAt: string;
+  purgeEligibleAt: string;
+  /** Informational only — deactivation never blocks on or touches these. */
+  futureAppointmentCount: number;
+}
+
+/** POST /super-admin/tenants/:id/deactivate — reversible: blocks staff login, hides from customer booking, starts the 90-day retention clock. */
+export function deactivateTenant(tenantId: string, reason?: string): Promise<DeactivateTenantResult> {
+  return request<DeactivateTenantResult>(`/super-admin/tenants/${tenantId}/deactivate`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+/** POST /super-admin/tenants/:id/reactivate — only possible before the salon's data has been purged. */
+export function reactivateTenant(
+  tenantId: string,
+): Promise<{ id: string; status: string; slug: string; customerBookingEnabled: boolean }> {
+  return request(`/super-admin/tenants/${tenantId}/reactivate`, { method: "POST", body: JSON.stringify({}) });
+}
+
+/** POST /super-admin/tenants/:id/purge — immediate, irreversible anonymization. The confirmation step lives client-side (type the salon's name). */
+export function purgeTenant(tenantId: string): Promise<{ id: string; purgedAt: string }> {
+  return request(`/super-admin/tenants/${tenantId}/purge`, { method: "POST", body: JSON.stringify({}) });
 }
 
 /* ------------------------------------------------------- tenant entitlements */

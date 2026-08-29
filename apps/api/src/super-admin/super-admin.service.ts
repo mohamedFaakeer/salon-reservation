@@ -154,7 +154,17 @@ export class SuperAdminService {
     data: Array<
       Pick<
         Tenant,
-        "id" | "slug" | "name" | "status" | "customerBookingEnabled" | "currency" | "timezone" | "createdAt"
+        | "id"
+        | "slug"
+        | "name"
+        | "status"
+        | "customerBookingEnabled"
+        | "currency"
+        | "timezone"
+        | "createdAt"
+        | "deletionRequestedAt"
+        | "purgedAt"
+        | "deactivationReason"
       > & {
         tier: TenantEntitlements["tier"];
         bookingsToday: number;
@@ -196,6 +206,9 @@ export class SuperAdminService {
           currency: t.currency,
           timezone: t.timezone,
           createdAt: t.createdAt,
+          deletionRequestedAt: t.deletionRequestedAt,
+          purgedAt: t.purgedAt,
+          deactivationReason: t.deactivationReason,
           tier: t.entitlements.tier,
           bookingsToday,
           overBookingLimit: limits.maxBookingsPerDay !== null && bookingsToday > limits.maxBookingsPerDay,
