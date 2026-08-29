@@ -2515,3 +2515,50 @@ pages or entity fields needed for this pass; `cancelUrl`/`rescheduleUrl`/
    (`setStaffNotificationSettingsListener`, mirroring
    `setTenantProfileListener`'s existing precedent) pushes a saved toggle to
    the bell immediately rather than waiting for its next page load.
+
+## 57. Drag-and-drop stylist reassignment (2026-08-30)
+
+1. **Zero new backend business logic — the drop calls the exact same
+   `rescheduleAppointment` engine a typed reschedule already uses.** That
+   service already accepts an optional `newStaffId` alongside `newStart`
+   and re-runs the full qualification/conflict check regardless of which
+   changed; a dropped card just sends the appointment's own unchanged
+   `startTime` back with a new `staffId`. A rejected drop (unqualified
+   stylist, a conflict the exclusion constraint catches, a version race)
+   surfaces the exact same error a typed reschedule would, reused via the
+   existing `errorCopy()` map (`STAFF_NOT_QUALIFIED`, `STAFF_UNAVAILABLE`,
+   `SLOT_UNAVAILABLE`, …) — nothing new to get wrong twice.
+2. **`@dnd-kit/core` + `@dnd-kit/utilities`, the new dependency the plan
+   called for** (CLAUDE.md: justify new libraries). Hand-rolled native HTML5
+   drag-and-drop has poor touch/tablet support, and this app's PRD targets
+   desktop *and* tablet for the admin side; `@dnd-kit` is accessible and
+   touch-capable out of the box. `PointerSensor` with a 6px activation
+   distance is the only sensor configured — small enough that a tap still
+   opens the detail drawer normally (dnd-kit only initiates a drag past that
+   threshold), large enough that an accidental drag doesn't fire on every
+   click.
+3. **Only `CONFIRMED` cards are draggable** — `useDraggable`'s own `disabled`
+   flag gates it client-side for immediate visual feedback (no grab cursor,
+   no drag), and the server's existing terminal-state guard
+   (`assertMutable`) is the real, authoritative enforcement either way.
+4. **The "who's free" hint reads already-loaded appointments, not a new
+   endpoint.** The original plan proposed exposing
+   `AvailabilityService.loadBusyIntervals` via a new route so a column could
+   show working-hours/leave-aware availability before a drop. Built instead:
+   while dragging, a column shades amber the moment the dragged card
+   overlaps another appointment already on that stylist's column for the
+   day being viewed — computed entirely from data the board already fetched,
+   no request in flight during the drag. This does not know about
+   qualification or whether a stylist is rostered on at all; those stay
+   exactly where CLAUDE.md says they belong, decided once, server-side, on
+   drop — the hint only saves a receptionist an obviously-doomed attempt at
+   an already-double-booked time, it never decides anything. Revisit with
+   the dedicated endpoint later if a fuller live-availability shading proves
+   worth the extra request per drag.
+5. **The dragged card renders via `DragOverlay`, not an in-place transform.**
+   The board's cards are absolutely positioned inside a per-column
+   `overflow`-bearing layout; a floating overlay clone follows the pointer
+   unclipped by any column's box, while the source dims to 30% opacity in
+   place. Both `today` and `schedule` pass `onReassign`/`canReassign` into
+   the same `DayCalendar`, so the one board component gained the capability
+   once for both the live and planning views.

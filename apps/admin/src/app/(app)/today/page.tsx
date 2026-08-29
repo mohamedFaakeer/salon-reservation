@@ -6,13 +6,16 @@ import {
   fetchAppointments,
   fetchDashboard,
   fetchStaff,
+  rescheduleAppointment,
   type AppointmentRecord,
   type DashboardSummary,
   type StaffMember,
 } from "../../../lib/api-client";
 import { formatDate, formatPriceCents, formatTime, todayLocalDate } from "../../../lib/format";
+import { errorCopy } from "../../../lib/error-copy";
 import { canManageAppointments } from "../../../lib/permissions";
 import { useAuth } from "../../../context/auth-context";
+import { useToast } from "../../../components/toast";
 import { EmptyState } from "../../../components/empty-state";
 import {
   CalendarSkeleton,
@@ -32,6 +35,7 @@ import {
 
 export default function TodayPage() {
   const { user } = useAuth();
+  const toast = useToast();
   const canBook = canManageAppointments(user?.roles ?? []);
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
@@ -43,6 +47,7 @@ export default function TodayPage() {
   const [showBookingDrawer, setShowBookingDrawer] = useState(false);
   const [walkInDefault, setWalkInDefault] = useState(false);
   const [openAppointmentId, setOpenAppointmentId] = useState<string | null>(null);
+  const [reassigningId, setReassigningId] = useState<string | null>(null);
 
   const singleDay = range.from === range.to;
 
@@ -86,6 +91,31 @@ export default function TodayPage() {
   function openWalkIn(): void {
     setWalkInDefault(true);
     setShowBookingDrawer(true);
+  }
+
+  /**
+   * A dropped card on the day board — same engine a typed reschedule uses
+   * (`rescheduleAppointment` already accepts `newStaffId`), so a drag can be
+   * rejected for exactly the reasons a typed one would be (unqualified
+   * stylist, a conflict the exclusion constraint catches, a version race).
+   * The time itself never changes here — only who it's assigned to.
+   */
+  async function handleReassign(appointmentId: string, newStaffId: string): Promise<void> {
+    const appt = appointments.find((a) => a.id === appointmentId);
+    if (!appt) {
+      return;
+    }
+    setReassigningId(appointmentId);
+    try {
+      await rescheduleAppointment(appointmentId, { newStart: appt.startTime, newStaffId });
+      toast.success("Appointment reassigned.");
+      load();
+    } catch (err: unknown) {
+      const copy = errorCopy(err);
+      toast.error(copy.title, copy.detail);
+    } finally {
+      setReassigningId(null);
+    }
   }
 
   const staffNameById = new Map(staff.map((s) => [s.id, s.name]));
@@ -176,6 +206,9 @@ export default function TodayPage() {
               appointments={appointments}
               staff={staff}
               onSelect={setOpenAppointmentId}
+              onReassign={(id, staffId) => void handleReassign(id, staffId)}
+              canReassign={canBook}
+              reassigningId={reassigningId}
             />
           </div>
           <div className="flex flex-col gap-4 lg:hidden">

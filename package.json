@@ -49,5 +49,8 @@
   },
   "overrides": {
     "js-yaml": "5.2.3"
+  },
+  "allowScripts": {
+    "@tailwindcss/oxide@4.1.11": true
   }
 }
