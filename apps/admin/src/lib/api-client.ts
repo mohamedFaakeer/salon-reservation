@@ -106,6 +106,9 @@ export interface BranchRecord {
   phone: string | null;
 }
 
+/** Display only, shown on the public salon page — never used to filter or gate a booking. */
+export type StaffGender = "MALE" | "FEMALE";
+
 export interface StaffMember {
   id: string;
   name: string;
@@ -117,6 +120,11 @@ export interface StaffMember {
   incentivePlanId: string | null;
   /** The login this stylist profile is linked to, if any — lets them see their own day. */
   userId: string | null;
+  /** Shown on the public salon page in place of a stock photo, once set. */
+  imageUrl: string | null;
+  /** e.g. "Senior Stylist", "Colour Specialist" — free text, shown publicly. */
+  jobTitle: string | null;
+  gender: StaffGender | null;
 }
 
 export interface ServiceItem {
@@ -622,6 +630,8 @@ export interface StaffInput {
   color?: string;
   /** Links this stylist to an existing login. `null` unlinks. */
   userId?: string | null;
+  jobTitle?: string;
+  gender?: StaffGender;
 }
 
 export function createStaff(input: StaffInput): Promise<StaffMember> {
@@ -630,9 +640,23 @@ export function createStaff(input: StaffInput): Promise<StaffMember> {
 
 export function updateStaff(
   id: string,
-  patch: Partial<StaffInput> & { active?: boolean; incentivePlanId?: string | null },
+  patch: Omit<Partial<StaffInput>, "gender"> & {
+    active?: boolean;
+    incentivePlanId?: string | null;
+    /** `null` clears it — unlike create, an edit can remove a previously-set gender. */
+    gender?: StaffGender | null;
+  },
 ): Promise<StaffMember> {
   return request<StaffMember>(`/staff/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+}
+
+/** Uploads immediately — same "no separate save step" convention as the tenant logo / a product photo. */
+export function uploadStaffPhoto(staffId: string, file: File): Promise<StaffMember> {
+  return uploadImageFile<StaffMember>(`/staff/${staffId}/photo`, file);
+}
+
+export function removeStaffPhoto(staffId: string): Promise<StaffMember> {
+  return request<StaffMember>(`/staff/${staffId}/photo`, { method: "DELETE" });
 }
 
 /* ----------------------------------------------------- availability (FE3) */

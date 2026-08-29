@@ -8,6 +8,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm";
+import type { StaffGender } from "@salon/shared";
 import { Branch } from "./branch.entity";
 import { IncentivePlan } from "./incentive-plan.entity";
 import { Tenant } from "./tenant.entity";
@@ -67,6 +68,23 @@ export class Staff {
   @ManyToOne(() => IncentivePlan, { onDelete: "SET NULL", nullable: true })
   @JoinColumn({ name: "incentivePlanId" })
   incentivePlan!: IncentivePlan | null;
+
+  /**
+   * Public headshot, shown on the customer-facing salon page in place of a
+   * stock photo (WEB-04 area gap). Direct nullable column, same pattern as
+   * `Product.imageUrl` — never Tenant's JSONB settings blob, since Staff is
+   * a normal relational entity, not a settings bag.
+   */
+  @Column({ type: "varchar", length: 500, nullable: true })
+  imageUrl!: string | null;
+
+  /** e.g. "Senior Stylist", "Colour Specialist" — free text, shown publicly. */
+  @Column({ type: "varchar", length: 80, nullable: true })
+  jobTitle!: string | null;
+
+  /** Display only, on the public salon page — never used to filter or gate a booking. */
+  @Column({ type: "varchar", length: 10, nullable: true })
+  gender!: StaffGender | null;
 
   @CreateDateColumn({ type: "timestamptz" })
   createdAt!: Date;

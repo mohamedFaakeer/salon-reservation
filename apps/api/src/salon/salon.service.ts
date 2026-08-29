@@ -5,7 +5,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 // erase it and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { MoreThanOrEqual, Repository } from "typeorm";
-import { AdvanceRule, type TenantSettings } from "@salon/shared";
+import { AdvanceRule, type StaffGender, type TenantSettings } from "@salon/shared";
 import { Tenant } from "../entities/tenant.entity";
 import { Branch } from "../entities/branch.entity";
 import { Service } from "../entities/service.entity";
@@ -72,7 +72,15 @@ export interface SalonProfile {
   city: string | null;
   phone: string | null;
   services: SalonServiceView[];
-  staff: Array<{ id: string; name: string }>;
+  staff: Array<{
+    id: string;
+    name: string;
+    imageUrl: string | null;
+    jobTitle: string | null;
+    /** Display only — never a booking filter. */
+    gender: StaffGender | null;
+    specialties: string | null;
+  }>;
   /** Derived from the union of active staff schedules — no tenant-level "hours" column exists. Null = closed that day. */
   hours: Array<SalonHoursEntry | null>;
   advanceRuleLabel: string;
@@ -166,7 +174,14 @@ export class SalonService {
       city: branch?.city ?? null,
       phone: branch?.phone ?? null,
       services: services.map((s) => toServiceView(s, this.serviceDiscounts)),
-      staff: staff.map((s) => ({ id: s.id, name: s.name })),
+      staff: staff.map((s) => ({
+        id: s.id,
+        name: s.name,
+        imageUrl: s.imageUrl,
+        jobTitle: s.jobTitle,
+        gender: s.gender,
+        specialties: s.specialties,
+      })),
       hours,
       advanceRuleLabel: formatAdvanceRule(tenant.settings),
       cancellationPolicySummary: formatCancellationPolicy(tenant.settings.cancellationPolicy),

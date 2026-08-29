@@ -1,5 +1,6 @@
 import {
   IsBoolean,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -7,6 +8,10 @@ import {
   MaxLength,
   MinLength,
 } from "class-validator";
+
+/** Display only (locked product decision) — never used to filter or gate a booking. */
+export const STAFF_GENDERS = ["MALE", "FEMALE"] as const;
+export type StaffGender = (typeof STAFF_GENDERS)[number];
 
 /** POST /staff (API.md §3) — OWNER, MANAGER only. */
 export class CreateStaffDto {
@@ -33,6 +38,16 @@ export class CreateStaffDto {
   @IsOptional()
   @IsUUID()
   userId?: string;
+
+  /** e.g. "Senior Stylist", "Colour Specialist" — free text, shown publicly. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  jobTitle?: string;
+
+  @IsOptional()
+  @IsIn(STAFF_GENDERS)
+  gender?: StaffGender;
 }
 
 /** PATCH /staff/:id — all fields optional (PATCH semantics). */
@@ -70,4 +85,15 @@ export class UpdateStaffDto {
   @IsOptional()
   @IsUUID()
   incentivePlanId?: string | null;
+
+  /** e.g. "Senior Stylist", "Colour Specialist" — free text, shown publicly. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  jobTitle?: string;
+
+  /** `null` clears it — display only, never used to filter or gate a booking. */
+  @IsOptional()
+  @IsIn([...STAFF_GENDERS, null])
+  gender?: StaffGender | null;
 }

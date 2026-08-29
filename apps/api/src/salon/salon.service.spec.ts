@@ -170,7 +170,7 @@ describe("SalonService", () => {
       vi.mocked(services.find).mockResolvedValue([
         { id: "s1", name: "Haircut", category: "Hair", durationMin: 30, priceCents: 150000 } as Service,
       ]);
-      vi.mocked(staff.find).mockResolvedValue([{ id: "st1", name: "Amara" } as Staff]);
+      vi.mocked(staff.find).mockResolvedValue([{ id: "st1", name: "Amara", imageUrl: null, jobTitle: null, gender: null, specialties: null } as Staff]);
       vi.mocked(closures.find).mockResolvedValue([
         { name: "Poya Day", startDate: "2027-01-01", endDate: "2027-01-01" } as Closure,
       ]);
@@ -193,17 +193,49 @@ describe("SalonService", () => {
           discount: null,
         },
       ]);
-      expect(profile.staff).toEqual([{ id: "st1", name: "Amara" }]);
+      expect(profile.staff).toEqual([
+        { id: "st1", name: "Amara", imageUrl: null, jobTitle: null, gender: null, specialties: null },
+      ]);
       expect(profile.closures).toEqual([{ name: "Poya Day", startDate: "2027-01-01", endDate: "2027-01-01" }]);
       expect(profile.advanceRuleLabel).toBe("No advance required");
       expect(profile.cancellationPolicySummary).toBe("Free cancellation up to 2h before your appointment");
+    });
+
+    it("carries a stylist's photo, job title, gender, and specialties through to the public profile", async () => {
+      vi.mocked(branches.findOne).mockResolvedValue(null);
+      vi.mocked(services.find).mockResolvedValue([]);
+      vi.mocked(staff.find).mockResolvedValue([
+        {
+          id: "st1",
+          name: "Amara",
+          imageUrl: "https://res.cloudinary.com/demo/staff.png",
+          jobTitle: "Senior Stylist",
+          gender: "FEMALE",
+          specialties: "Balayage, Keratin treatments",
+        } as Staff,
+      ]);
+      vi.mocked(closures.find).mockResolvedValue([]);
+      vi.mocked(schedules.find).mockResolvedValue([]);
+
+      const profile = await service.profile("elegance");
+
+      expect(profile.staff).toEqual([
+        {
+          id: "st1",
+          name: "Amara",
+          imageUrl: "https://res.cloudinary.com/demo/staff.png",
+          jobTitle: "Senior Stylist",
+          gender: "FEMALE",
+          specialties: "Balayage, Keratin treatments",
+        },
+      ]);
     });
 
     it("derives hours as the union (earliest start, latest end) across active staff schedules", async () => {
       vi.mocked(branches.findOne).mockResolvedValue(null);
       vi.mocked(services.find).mockResolvedValue([]);
       vi.mocked(staff.find).mockResolvedValue([
-        { id: "st1", name: "Amara" } as Staff,
+        { id: "st1", name: "Amara", imageUrl: null, jobTitle: null, gender: null, specialties: null } as Staff,
         { id: "st2", name: "Nadeesha" } as Staff,
       ]);
       vi.mocked(closures.find).mockResolvedValue([]);
@@ -224,7 +256,7 @@ describe("SalonService", () => {
     it("ignores schedule rows belonging to inactive (unlisted) staff", async () => {
       vi.mocked(branches.findOne).mockResolvedValue(null);
       vi.mocked(services.find).mockResolvedValue([]);
-      vi.mocked(staff.find).mockResolvedValue([{ id: "st1", name: "Amara" } as Staff]);
+      vi.mocked(staff.find).mockResolvedValue([{ id: "st1", name: "Amara", imageUrl: null, jobTitle: null, gender: null, specialties: null } as Staff]);
       vi.mocked(closures.find).mockResolvedValue([]);
       vi.mocked(schedules.find).mockResolvedValue([
         { staffId: "st1", dayOfWeek: 0, startMin: 540, endMin: 1020 } as WorkingSchedule,

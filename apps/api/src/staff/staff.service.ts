@@ -17,6 +17,22 @@ import { StaffServiceAssignment } from "../entities/staff-service.entity";
 import { Service } from "../entities/service.entity";
 import { User } from "../entities/user.entity";
 import { IncentivePlan } from "../entities/incentive-plan.entity";
+import { detectImage } from "../common/image.util";
+// CloudinaryService must stay a VALUE import: NestJS resolves constructor
+// injection via design:paramtypes metadata at runtime; `import type` would
+// erase it and break DI.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { CloudinaryService } from "../cloudinary/cloudinary.service";
+
+/**
+ * Deliberately tighter than a product photo's 3:1 (`PRODUCT_IMAGE_MAX_ASPECT_RATIO`)
+ * — a headshot that's 3x wider than tall isn't a face crop gone slightly odd,
+ * it's the wrong kind of photo entirely. Matches the tenant logo's own 2:1.
+ */
+const STAFF_PHOTO_MAX_BYTES = 2_000_000;
+const STAFF_PHOTO_MIN_DIMENSION = 200;
+const STAFF_PHOTO_MAX_DIMENSION = 4000;
+const STAFF_PHOTO_MAX_ASPECT_RATIO = 2;
 
 @Injectable()
 export class StaffService {
@@ -28,6 +44,7 @@ export class StaffService {
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(IncentivePlan) private readonly incentivePlans: Repository<IncentivePlan>,
     @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly cloudinary: CloudinaryService,
   ) {}
 
   /**
@@ -60,6 +77,8 @@ export class StaffService {
         specialties: dto.specialties?.trim() ?? null,
         color: dto.color ?? null,
         active: true,
+        jobTitle: dto.jobTitle?.trim() ?? null,
+        gender: dto.gender ?? null,
       }),
     );
   }
@@ -81,6 +100,8 @@ export class StaffService {
     if (dto.color !== undefined) staff.color = dto.color;
     if (dto.userId !== undefined) staff.userId = dto.userId;
     if (dto.active !== undefined) staff.active = dto.active;
+    if (dto.jobTitle !== undefined) staff.jobTitle = dto.jobTitle.trim();
+    if (dto.gender !== undefined) staff.gender = dto.gender;
 
     if (dto.incentivePlanId !== undefined) {
       if (dto.incentivePlanId !== null) {
@@ -171,6 +192,60 @@ export class StaffService {
     });
 
     return this.getServices(tenantId, staffId);
+  }
+
+  async uploadPhoto(tenantId: string, id: string, buffer: Buffer): Promise<Staff> {
+    this.assertPhotoValid(buffer);
+    const staff = await this.findOwned(tenantId, id);
+    const imageUrl = await this.cloudinary.uploadStaffPhoto(buffer, `staff-photos/${tenantId}`);
+    staff.imageUrl = imageUrl;
+    return this.staff.save(staff);
+  }
+
+  /** No Cloudinary-side delete — an orphaned free-tier asset is an accepted, documented gap, same as a tenant logo or product photo. */
+  async removePhoto(tenantId: string, id: string): Promise<Staff> {
+    const staff = await this.findOwned(tenantId, id);
+    staff.imageUrl = null;
+    return this.staff.save(staff);
+  }
+
+  private assertPhotoValid(buffer: Buffer): void {
+    if (buffer.byteLength > STAFF_PHOTO_MAX_BYTES) {
+      throw new ApiError({
+        statusCode: 400,
+        code: "STAFF_PHOTO_FILE_TOO_LARGE",
+        message: `That file is too large — the limit is ${STAFF_PHOTO_MAX_BYTES / 1_000_000} MB.`,
+      });
+    }
+    const detected = detectImage(buffer);
+    if (!detected) {
+      throw new ApiError({
+        statusCode: 400,
+        code: "STAFF_PHOTO_INVALID_FILE_TYPE",
+        message: "That isn't a PNG, JPEG or WebP image.",
+      });
+    }
+    const { width, height } = detected;
+    if (
+      width < STAFF_PHOTO_MIN_DIMENSION ||
+      height < STAFF_PHOTO_MIN_DIMENSION ||
+      width > STAFF_PHOTO_MAX_DIMENSION ||
+      height > STAFF_PHOTO_MAX_DIMENSION
+    ) {
+      throw new ApiError({
+        statusCode: 400,
+        code: "STAFF_PHOTO_DIMENSIONS_OUT_OF_RANGE",
+        message: `Image dimensions must be between ${STAFF_PHOTO_MIN_DIMENSION}×${STAFF_PHOTO_MIN_DIMENSION} and ${STAFF_PHOTO_MAX_DIMENSION}×${STAFF_PHOTO_MAX_DIMENSION}px.`,
+      });
+    }
+    const ratio = width / height;
+    if (ratio > STAFF_PHOTO_MAX_ASPECT_RATIO || ratio < 1 / STAFF_PHOTO_MAX_ASPECT_RATIO) {
+      throw new ApiError({
+        statusCode: 400,
+        code: "STAFF_PHOTO_ASPECT_RATIO_INVALID",
+        message: `That's an unusually elongated shape for a portrait photo — keep it within ${STAFF_PHOTO_MAX_ASPECT_RATIO}:1.`,
+      });
+    }
   }
 
   private async findOwned(tenantId: string, id: string): Promise<Staff> {

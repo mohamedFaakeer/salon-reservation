@@ -5,6 +5,19 @@ import type { StaffServiceAssignment } from "../entities/staff-service.entity";
 import type { Service } from "../entities/service.entity";
 import type { User } from "../entities/user.entity";
 import type { IncentivePlan } from "../entities/incentive-plan.entity";
+import type { CloudinaryService } from "../cloudinary/cloudinary.service";
+
+/** Minimal well-formed PNG header — width/height live at fixed offsets in the IHDR chunk, same helper product.service.spec.ts uses. */
+function pngBuffer(width: number, height: number): Buffer {
+  const buf = Buffer.alloc(24);
+  buf.writeUInt32BE(0x89504e47, 0);
+  buf.writeUInt32BE(0x0d0a1a0a, 4);
+  buf.writeUInt32BE(13, 8);
+  buf.write("IHDR", 12, "ascii");
+  buf.writeUInt32BE(width, 16);
+  buf.writeUInt32BE(height, 20);
+  return buf;
+}
 
 function mockRepo<T extends ObjectLiteral>() {
   const repo = {
@@ -39,6 +52,7 @@ describe("StaffService", () => {
   let users: Repository<User>;
   let incentivePlans: Repository<IncentivePlan>;
   let dataSource: DataSource;
+  let cloudinary: CloudinaryService;
   let service: StaffService;
 
   beforeEach(() => {
@@ -53,7 +67,10 @@ describe("StaffService", () => {
         return cb(manager);
       }),
     } as unknown as DataSource;
-    service = new StaffService(staff, assignments, services, users, incentivePlans, dataSource);
+    cloudinary = {
+      uploadStaffPhoto: vi.fn(async () => "https://res.cloudinary.com/demo/staff.png"),
+    } as unknown as CloudinaryService;
+    service = new StaffService(staff, assignments, services, users, incentivePlans, dataSource, cloudinary);
   });
 
   describe("create", () => {
@@ -98,6 +115,14 @@ describe("StaffService", () => {
         statusCode: 409,
         code: "STAFF_LIMIT_REACHED",
       });
+    });
+
+    it("persists jobTitle and gender when given, null when omitted", async () => {
+      await service.create("tenant-1", { name: "Kasun", jobTitle: "Senior Stylist", gender: "MALE" }, null);
+
+      const created = vi.mocked(staff.create).mock.calls[0][0] as Staff;
+      expect(created.jobTitle).toBe("Senior Stylist");
+      expect(created.gender).toBe("MALE");
     });
   });
 
@@ -223,6 +248,58 @@ describe("StaffService", () => {
 
       expect(result).toEqual([]);
       expect(services.find).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("uploadPhoto", () => {
+    it("refuses a file over the size limit", async () => {
+      vi.mocked(staff.findOne).mockResolvedValue(baseStaff());
+      const oversized = Buffer.alloc(2_000_001);
+      await expect(service.uploadPhoto("tenant-1", "staff-1", oversized)).rejects.toMatchObject({
+        statusCode: 400,
+        code: "STAFF_PHOTO_FILE_TOO_LARGE",
+      });
+      expect(cloudinary.uploadStaffPhoto).not.toHaveBeenCalled();
+    });
+
+    it("refuses a buffer that isn't a recognised PNG/JPEG/WebP", async () => {
+      vi.mocked(staff.findOne).mockResolvedValue(baseStaff());
+      await expect(service.uploadPhoto("tenant-1", "staff-1", Buffer.from("not an image"))).rejects.toMatchObject({
+        code: "STAFF_PHOTO_INVALID_FILE_TYPE",
+      });
+    });
+
+    it("refuses dimensions below the floor", async () => {
+      vi.mocked(staff.findOne).mockResolvedValue(baseStaff());
+      await expect(service.uploadPhoto("tenant-1", "staff-1", pngBuffer(50, 50))).rejects.toMatchObject({
+        code: "STAFF_PHOTO_DIMENSIONS_OUT_OF_RANGE",
+      });
+    });
+
+    it("refuses a shape more elongated than 2:1 — tighter than a product photo's 3:1", async () => {
+      vi.mocked(staff.findOne).mockResolvedValue(baseStaff());
+      await expect(service.uploadPhoto("tenant-1", "staff-1", pngBuffer(1000, 400))).rejects.toMatchObject({
+        code: "STAFF_PHOTO_ASPECT_RATIO_INVALID",
+      });
+    });
+
+    it("uploads a valid photo and stamps the tenant-scoped Cloudinary folder", async () => {
+      vi.mocked(staff.findOne).mockResolvedValue(baseStaff());
+
+      const result = await service.uploadPhoto("tenant-1", "staff-1", pngBuffer(800, 800));
+
+      expect(cloudinary.uploadStaffPhoto).toHaveBeenCalledWith(expect.any(Buffer), "staff-photos/tenant-1");
+      expect(result.imageUrl).toBe("https://res.cloudinary.com/demo/staff.png");
+    });
+  });
+
+  describe("removePhoto", () => {
+    it("clears imageUrl without touching Cloudinary", async () => {
+      vi.mocked(staff.findOne).mockResolvedValue({ ...baseStaff(), imageUrl: "https://x" });
+
+      const result = await service.removePhoto("tenant-1", "staff-1");
+
+      expect(result.imageUrl).toBeNull();
     });
   });
 });

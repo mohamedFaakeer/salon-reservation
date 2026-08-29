@@ -7,10 +7,12 @@ import {
   fetchTeam,
   updateStaff,
   type IncentivePlanView,
+  type StaffGender,
   type StaffMember,
   type TeamMember,
 } from "../lib/api-client";
 import { DrawerShell } from "./drawer-shell";
+import { StaffPhotoField } from "./staff-photo-field";
 import { BusyLabel } from "./spinner";
 import { useToast } from "./toast";
 import { errorCopy } from "../lib/error-copy";
@@ -58,6 +60,12 @@ export function StaffDrawer({
   const [incentivePlanId, setIncentivePlanId] = useState(member?.incentivePlanId ?? "");
   const [plans, setPlans] = useState<IncentivePlanView[]>([]);
   const [userId, setUserId] = useState(member?.userId ?? "");
+  const [jobTitle, setJobTitle] = useState(member?.jobTitle ?? "");
+  const [gender, setGender] = useState<StaffGender | "">(member?.gender ?? "");
+  // Local, since a photo upload/removal happens against the real record
+  // immediately (StaffPhotoField), independent of this drawer's own Save —
+  // `member` itself won't reflect it until the parent list reloads.
+  const [photoUrl, setPhotoUrl] = useState(member?.imageUrl ?? null);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,18 +107,21 @@ export function StaffDrawer({
     setSubmitting(true);
     setError(null);
     try {
-      const payload = {
+      const common = {
         name: name.trim(),
         phone: phone.trim() || undefined,
         specialties: specialties.trim() || undefined,
         color,
-        ...(editing
-          ? { incentivePlanId: incentivePlanId || null, userId: userId || null }
-          : { userId: userId || undefined }),
+        jobTitle: jobTitle.trim() || undefined,
       };
       const saved = member
-        ? await updateStaff(member.id, payload)
-        : await createStaff(payload);
+        ? await updateStaff(member.id, {
+            ...common,
+            incentivePlanId: incentivePlanId || null,
+            userId: userId || null,
+            gender: gender || null,
+          })
+        : await createStaff({ ...common, userId: userId || undefined, gender: gender || undefined });
       onSaved(saved.id, !member);
     } catch (err) {
       const copy = errorCopy(err);
@@ -124,6 +135,14 @@ export function StaffDrawer({
   return (
     <DrawerShell title={editing ? "Edit stylist" : "Add stylist"} onClose={onClose}>
       <div className="flex flex-col gap-4">
+        {member ? (
+          <StaffPhotoField staffId={member.id} imageUrl={photoUrl} onChanged={setPhotoUrl} />
+        ) : (
+          <p className="rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
+            You can add a photo once this stylist is saved.
+          </p>
+        )}
+
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium text-slate-700">Name</span>
           <input
@@ -161,6 +180,39 @@ export function StaffDrawer({
             className="rounded border border-slate-300 px-3 py-2 text-sm"
           />
         </label>
+
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-slate-700">
+              Job title <span className="font-normal text-slate-500">(optional)</span>
+            </span>
+            <input
+              data-testid="staff-job-title"
+              value={jobTitle}
+              onChange={(e) => setJobTitle(e.target.value)}
+              placeholder="Senior Stylist"
+              className="min-h-11 rounded border border-slate-300 px-3 text-sm"
+            />
+            <span className="text-xs text-slate-500">Shown publicly, under their name.</span>
+          </label>
+
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-slate-700">
+              Gender <span className="font-normal text-slate-500">(optional)</span>
+            </span>
+            <select
+              data-testid="staff-gender"
+              value={gender}
+              onChange={(e) => setGender(e.target.value as StaffGender | "")}
+              className="min-h-11 rounded border border-slate-300 px-3 text-sm"
+            >
+              <option value="">Not shown</option>
+              <option value="FEMALE">Female</option>
+              <option value="MALE">Male</option>
+            </select>
+            <span className="text-xs text-slate-500">Display only — never affects booking.</span>
+          </label>
+        </div>
 
         <fieldset className="flex flex-col gap-1.5">
           <legend className="text-sm font-medium text-slate-700">Calendar colour</legend>

@@ -53,12 +53,37 @@ export class CloudinaryService {
     );
   }
 
+  /**
+   * Uploads a pre-validated stylist headshot. Deliberately a different
+   * transformation from the pad-based one every other upload here uses:
+   * `pad` letterboxes whatever shape the source is onto a square canvas,
+   * which is right for a logo or a product flat-lay but wrong for a face —
+   * it would waste most of the frame on empty margin. `fill` + face-aware
+   * gravity instead crops to a tight square centered on the detected face,
+   * so the stored photo reads as an actual portrait regardless of how the
+   * original was framed.
+   */
+  async uploadStaffPhoto(buffer: Buffer, folder: string): Promise<string> {
+    return this.upload(
+      buffer,
+      folder,
+      "STAFF_PHOTO_UPLOAD_NOT_CONFIGURED",
+      "STAFF_PHOTO_UPLOAD_FAILED",
+      "Couldn't upload the photo right now. Please try again.",
+      [{ width: 512, height: 512, crop: "fill", gravity: "face" }, { fetch_format: "auto", quality: "auto" }],
+    );
+  }
+
   private async upload(
     buffer: Buffer,
     folder: string,
     notConfiguredCode: string,
     failedCode: string,
     failedMessage: string,
+    transformation: Array<Record<string, unknown>> = [
+      { width: 1024, height: 1024, crop: "pad", background: "auto" },
+      { fetch_format: "auto", quality: "auto" },
+    ],
   ): Promise<string> {
     if (!this.configured) {
       throw new ApiError({
@@ -72,7 +97,7 @@ export class CloudinaryService {
       const stream = cloudinary.uploader.upload_stream(
         {
           folder,
-          transformation: [{ width: 1024, height: 1024, crop: "pad", background: "auto" }, { fetch_format: "auto", quality: "auto" }],
+          transformation,
           overwrite: true,
         },
         (error, uploadResult) => {

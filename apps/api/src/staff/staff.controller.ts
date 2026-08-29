@@ -1,9 +1,22 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Req } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Req,
+  UploadedFile,
+  UseInterceptors,
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 // DTOs must stay VALUE imports: ValidationPipe resolves them via
 // design:paramtypes metadata at runtime; `import type` would erase them.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import { CreateStaffDto, SetStaffServicesDto, UpdateStaffDto } from "@salon/shared";
+import { ApiError, CreateStaffDto, SetStaffServicesDto, UpdateStaffDto } from "@salon/shared";
 import type { Request } from "express";
 import { getTenantContext } from "../tenant/tenant-context";
 import { Permissions } from "../common/authorization/permissions.decorator";
@@ -66,5 +79,28 @@ export class StaffController {
   ) {
     const ctx = getTenantContext(req);
     return this.staff.setServices(ctx.tenantId, id, dto);
+  }
+
+  /**
+   * A hard multer ceiling well above the real 2MB limit — just a backstop
+   * against an enormous upload occupying memory before it's even read.
+   * `StaffService.uploadPhoto` runs the real, precisely-coded constraints.
+   */
+  @Post(":id/photo")
+  @Permissions(Permission.MANAGE_STAFF)
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 5_000_000 } }))
+  uploadPhoto(@Req() req: Request, @Param("id") id: string, @UploadedFile() file: Express.Multer.File | undefined) {
+    const ctx = getTenantContext(req);
+    if (!file) {
+      throw new ApiError({ statusCode: 400, code: "VALIDATION_ERROR", message: "No file was uploaded." });
+    }
+    return this.staff.uploadPhoto(ctx.tenantId, id, file.buffer);
+  }
+
+  @Delete(":id/photo")
+  @Permissions(Permission.MANAGE_STAFF)
+  removePhoto(@Req() req: Request, @Param("id") id: string) {
+    const ctx = getTenantContext(req);
+    return this.staff.removePhoto(ctx.tenantId, id);
   }
 }

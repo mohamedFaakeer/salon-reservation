@@ -47,9 +47,17 @@ export interface SalonService {
   discount?: ServiceOffer | null;
 }
 
+/** Display only — never used to filter or gate a booking. */
+export type StaffGender = "MALE" | "FEMALE";
+
 export interface SalonStaff {
   id: string;
   name: string;
+  /** Present on the salon profile's team grid; absent on a booking's own staff reference (a different, older response shape). */
+  imageUrl?: string | null;
+  jobTitle?: string | null;
+  gender?: StaffGender | null;
+  specialties?: string | null;
 }
 
 export interface SalonHoursEntry {

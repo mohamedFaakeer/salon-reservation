@@ -2363,3 +2363,58 @@ pages or entity fields needed for this pass; `cancelUrl`/`rescheduleUrl`/
    and could take the same `lockoutExpiry()` call with no new backend
    work — flagged as a natural follow-up if wanted, not built here since it
    wasn't what was scoped and approved.
+
+## 54. Real stylist photos, job title, gender, and a public profile popup (2026-08-30)
+
+1. **The gap:** the customer site rendered a stable-per-id stock photo for
+   every stylist regardless of who they actually were, name only, and
+   clicking a card did nothing — confirmed by research before building
+   anything, not assumed. `Staff` gains three columns: `imageUrl`,
+   `jobTitle` (free text, same convention as `specialties`), and `gender`
+   (display only, per the locked decision — no booking-wizard filter).
+2. **`imageUrl` follows `Product.imageUrl`'s pattern, not the tenant logo's**
+   — a direct nullable column with its own migration, because `Staff` is a
+   normal relational entity, not a settings bag. The upload pipeline
+   (`StaffService.uploadPhoto`/`assertPhotoValid`) is a close copy of
+   `ProductService`'s own (same `detectImage` magic-byte sniffing, same
+   size/dimension checks), with one deliberate difference: aspect ratio is
+   capped at 2:1 (matching the tenant logo), tighter than a product photo's
+   3:1 — a headshot three times wider than tall isn't a face crop gone
+   slightly odd, it's the wrong kind of photo.
+3. **A new Cloudinary transformation, not the existing pad-based one.**
+   Every other upload here (`uploadLogo`/`uploadProductImage`) letterboxes
+   onto a square canvas via `crop: "pad"` — correct for a logo or a product
+   flat-lay, wrong for a face, since it would waste most of the frame on
+   empty margin. `uploadStaffPhoto` uses `crop: "fill", gravity: "face"`
+   instead — a tight, face-centered square regardless of how the original
+   was framed. `CloudinaryService.upload()` was generalized to accept a
+   transformation array (default unchanged) rather than duplicating the
+   whole method.
+4. **The public salon endpoint (`SalonService.profile`) now returns each
+   stylist's `imageUrl`/`jobTitle`/`gender`/`specialties`**, not just
+   `{id, name}` — `specialties` already existed on `Staff` but was never
+   exposed publicly before. `apps/web`'s `SalonStaff` type declares these
+   as optional, since the same type is also used for a booking's own staff
+   reference (a different, older response shape that doesn't carry them).
+5. **Real photos get the same treatment as the bundled stock ones, not an
+   exception.** `apps/web`'s own visual world deliberately desaturates and
+   dyes every photograph into its palette (`imagery.ts`'s own comment: "a
+   swapped photo cannot break the world by arriving in the wrong
+   colours") — a real stylist photo keeps the identical `grayscale
+   contrast-110` treatment rather than appearing as a jarring full-colour
+   drop-in. `imageUrl` simply replaces which source feeds the same frame;
+   nothing about the frame itself changes when a stylist has no photo yet
+   (falls back to `portraitFor()`, exactly as before).
+6. **The profile popup reuses `AccountOverlay`'s exact chrome** (dimmed
+   backdrop, bottom sheet on mobile / centered card on larger screens, the
+   dyed ground, the same close-button treatment) rather than inventing a
+   second modal idiom for this app to carry. Gender is shown as a plain
+   label ("Female"/"Male") when set, never as a filter or booking
+   constraint, matching the locked decision exactly.
+7. **Admin UI**: `StaffPhotoField` mirrors `LogoUploadField` component-for-
+   component (uploads immediately, no separate save step — a file isn't a
+   diffable draft value); it only renders once a stylist has an id, so
+   during *create* the drawer shows "You can add a photo once this stylist
+   is saved" instead. Job title and gender sit in the same drawer as
+   existing fields, following the same optional-field conventions already
+   established there.
