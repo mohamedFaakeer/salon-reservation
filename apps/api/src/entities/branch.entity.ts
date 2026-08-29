@@ -40,6 +40,13 @@ export class Branch {
   @Column({ type: "varchar", length: 32, nullable: true })
   phone!: string | null;
 
+  /** Powers the customer site's "Get Directions" link. Set together with `longitude`; both null until an owner sets a location. */
+  @Column({ type: "double precision", nullable: true })
+  latitude!: number | null;
+
+  @Column({ type: "double precision", nullable: true })
+  longitude!: number | null;
+
   @Column({ type: "boolean", default: true })
   active!: boolean;
 

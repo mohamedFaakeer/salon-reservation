@@ -71,6 +71,9 @@ export interface SalonProfile {
   address: string | null;
   city: string | null;
   phone: string | null;
+  /** Powers the customer site's "Get Directions" link. Both null until an owner sets a location. */
+  latitude: number | null;
+  longitude: number | null;
   services: SalonServiceView[];
   staff: Array<{
     id: string;
@@ -173,6 +176,8 @@ export class SalonService {
       address: branch?.address ?? null,
       city: branch?.city ?? null,
       phone: branch?.phone ?? null,
+      latitude: branch?.latitude ?? null,
+      longitude: branch?.longitude ?? null,
       services: services.map((s) => toServiceView(s, this.serviceDiscounts)),
       staff: staff.map((s) => ({
         id: s.id,

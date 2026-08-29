@@ -73,3 +73,12 @@ export function colomboToday(): string {
   const COLOMBO_OFFSET_MINUTES = 330;
   return new Date(Date.now() + COLOMBO_OFFSET_MINUTES * 60_000).toISOString().slice(0, 10);
 }
+
+/**
+ * A plain Google Maps directions link — no API key needed, unlike an
+ * embedded map or a Places lookup. Callers hide the button entirely when
+ * either coordinate is null; this never returns a placeholder URL.
+ */
+export function getDirectionsUrl(latitude: number, longitude: number): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+}

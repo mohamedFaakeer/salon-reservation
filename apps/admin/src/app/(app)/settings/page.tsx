@@ -16,6 +16,7 @@ import {
   type TenantSettingsView,
 } from "../../../lib/api-client";
 import { canManageSettings } from "../../../lib/permissions";
+import { parseGoogleMapsLink } from "../../../lib/format";
 import { useAuth } from "../../../context/auth-context";
 import { AdvanceRuleField } from "../../../components/advance-rule-field";
 import { ReminderOffsetsField } from "../../../components/reminder-offsets-field";
@@ -53,6 +54,8 @@ interface FormState {
   branchAddress: string;
   branchCity: string;
   branchPhone: string;
+  /** A pasted Google Maps link, or a plain "lat, lng" pair — parsed on save, never stored as typed. */
+  mapsLink: string;
   advanceRule: AdvanceRuleValue;
   advanceRupees: string;
   advancePercent: string;
@@ -92,6 +95,7 @@ function toForm(
     branchAddress: branch.address ?? "",
     branchCity: branch.city ?? "",
     branchPhone: branch.phone ?? "",
+    mapsLink: branch.latitude !== null && branch.longitude !== null ? `${branch.latitude}, ${branch.longitude}` : "",
     advanceRule: settings.advanceRule,
     // Cents in, rupees on screen — the same translation the service drawer makes.
     advanceRupees: optionalNumberToInput(settings.advanceValueCents, (c) => c / 100),
@@ -133,6 +137,9 @@ function isValid(form: FormState): boolean {
     return false;
   }
   if (form.advanceRule === "PERCENTAGE" && !isWholeNumberWithin(form.advancePercent, 0, 100)) {
+    return false;
+  }
+  if (form.mapsLink.trim() && !parseGoogleMapsLink(form.mapsLink)) {
     return false;
   }
   return true;
@@ -226,8 +233,12 @@ export default function SettingsPage() {
       form.branchName.trim() !== baseline.branchName ||
       form.branchAddress.trim() !== baseline.branchAddress ||
       form.branchCity.trim() !== baseline.branchCity ||
-      form.branchPhone.trim() !== baseline.branchPhone
+      form.branchPhone.trim() !== baseline.branchPhone ||
+      form.mapsLink.trim() !== baseline.mapsLink.trim()
     ) {
+      // Validated already (isValid gates the Save button), so a non-empty
+      // value here is guaranteed to parse — an empty field means "clear it".
+      const coords = form.mapsLink.trim() ? parseGoogleMapsLink(form.mapsLink) : null;
       steps.push({
         label: "the branch details",
         run: () =>
@@ -236,6 +247,8 @@ export default function SettingsPage() {
             address: form.branchAddress.trim(),
             city: form.branchCity.trim(),
             phone: form.branchPhone.trim(),
+            latitude: coords?.latitude ?? null,
+            longitude: coords?.longitude ?? null,
           }),
       });
     }
@@ -415,6 +428,21 @@ export default function SettingsPage() {
           disabled={!canManage}
           optional
           placeholder="+94 11 234 5678"
+        />
+        <TextField
+          id="branch-maps-link"
+          label="Location"
+          value={form.mapsLink}
+          onChange={(v) => set("mapsLink", v)}
+          disabled={!canManage}
+          optional
+          invalid={Boolean(form.mapsLink.trim()) && !parseGoogleMapsLink(form.mapsLink)}
+          placeholder="Paste a Google Maps link, or 6.9271, 79.8612"
+          hint={
+            Boolean(form.mapsLink.trim()) && !parseGoogleMapsLink(form.mapsLink)
+              ? "Couldn't read a location from that — paste the full Google Maps link, or a plain lat, lng pair."
+              : "Adds a “Get Directions” button to your booking page. Right-click your spot on Google Maps and copy the link, then paste it here."
+          }
         />
 
         <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-3 sm:grid-cols-3">

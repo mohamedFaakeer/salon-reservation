@@ -104,6 +104,9 @@ export interface BranchRecord {
   address: string | null;
   city: string | null;
   phone: string | null;
+  /** Powers the customer site's "Get Directions" link. Both null until set. */
+  latitude: number | null;
+  longitude: number | null;
 }
 
 /** Display only, shown on the public salon page — never used to filter or gate a booking. */
@@ -612,6 +615,9 @@ export function updateBranch(patch: {
   address?: string;
   city?: string;
   phone?: string;
+  /** Set together; `null` clears both. */
+  latitude?: number | null;
+  longitude?: number | null;
 }): Promise<BranchRecord> {
   return request<BranchRecord>("/tenant/me/branch", {
     method: "PATCH",

@@ -181,6 +181,8 @@ describe("SalonService", () => {
       expect(profile.slug).toBe("elegance");
       expect(profile.address).toBe("123 Galle Rd");
       expect(profile.phone).toBe("0771234567");
+      expect(profile.latitude).toBeNull();
+      expect(profile.longitude).toBeNull();
       expect(profile.services).toEqual([
         // `discount: null` is explicit rather than absent: the customer site
         // has to distinguish "no offer" from "we did not ask".
@@ -199,6 +201,19 @@ describe("SalonService", () => {
       expect(profile.closures).toEqual([{ name: "Poya Day", startDate: "2027-01-01", endDate: "2027-01-01" }]);
       expect(profile.advanceRuleLabel).toBe("No advance required");
       expect(profile.cancellationPolicySummary).toBe("Free cancellation up to 2h before your appointment");
+    });
+
+    it("carries the branch's coordinates through, for the customer site's Get Directions link", async () => {
+      vi.mocked(branches.findOne).mockResolvedValue({ latitude: 6.9271, longitude: 79.8612 } as Branch);
+      vi.mocked(services.find).mockResolvedValue([]);
+      vi.mocked(staff.find).mockResolvedValue([]);
+      vi.mocked(closures.find).mockResolvedValue([]);
+      vi.mocked(schedules.find).mockResolvedValue([]);
+
+      const profile = await service.profile("elegance");
+
+      expect(profile.latitude).toBe(6.9271);
+      expect(profile.longitude).toBe(79.8612);
     });
 
     it("carries a stylist's photo, job title, gender, and specialties through to the public profile", async () => {

@@ -232,3 +232,30 @@ export function formatRelativeTime(iso: string): string {
   if (days < 7) return `${days} days ago`;
   return formatDate(iso);
 }
+
+/**
+ * Accepts either a pasted Google Maps link (a `?q=lat,lng` share link, or
+ * the `@lat,lng,...z` that appears in a place/directions URL) or a plain
+ * "lat, lng" pair typed directly — a pure input-format convenience, not a
+ * business rule (the server independently range-checks whatever numbers
+ * this resolves to). Returns `null` when nothing recognisable is found,
+ * which the caller treats as a validation failure, not "no location".
+ */
+export function parseGoogleMapsLink(input: string): { latitude: number; longitude: number } | null {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const patterns = [/[?&]q=(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/, /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/, /^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/];
+  for (const pattern of patterns) {
+    const match = pattern.exec(trimmed);
+    if (match) {
+      const latitude = Number(match[1]);
+      const longitude = Number(match[2]);
+      if (Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180) {
+        return { latitude, longitude };
+      }
+    }
+  }
+  return null;
+}

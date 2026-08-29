@@ -7,6 +7,7 @@ import {
   IsEnum,
   IsIn,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   Matches,
@@ -218,4 +219,23 @@ export class BranchUpdateDto {
   @IsString()
   @MaxLength(32)
   phone?: string;
+
+  /**
+   * Powers the "Get Directions" link on the customer site — set together,
+   * `null` clears both. Range-checked here (real business rule: a
+   * coordinate outside these bounds cannot exist); how a pasted Google
+   * Maps link becomes these two numbers is a pure input-format convenience
+   * handled client-side, not a business rule this server needs to know.
+   */
+  @IsOptional()
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  latitude?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  longitude?: number | null;
 }

@@ -1,4 +1,5 @@
 import { fetchSalons } from "../lib/api-client";
+import { AccountHeaderButton } from "../components/account-header-button";
 import { SalonList } from "../components/salon-list";
 import { SalonSearch } from "../components/salon-search";
 
@@ -26,12 +27,15 @@ export default async function HomePage({
           <span className="display display-wide text-[15px] tracking-[0.02em] text-[#022B27]">
             Salon
           </span>
-          <a
-            href="/booking"
-            className="min-h-11 rounded-full border-[1.4px] border-[rgba(2,43,39,0.35)] px-4 py-2 text-[11px] font-semibold text-[#022B27] transition-colors duration-[var(--t-tap)] hover:bg-[rgba(2,43,39,0.1)]"
-          >
-            My booking
-          </a>
+          <div className="flex items-center gap-2">
+            <AccountHeaderButton />
+            <a
+              href="/booking"
+              className="min-h-11 rounded-full border-[1.4px] border-[rgba(2,43,39,0.35)] px-4 py-2 text-[11px] font-semibold text-[#022B27] transition-colors duration-[var(--t-tap)] hover:bg-[rgba(2,43,39,0.1)]"
+            >
+              My booking
+            </a>
+          </div>
         </div>
 
         <h1 className="display display-wide relative z-10 mt-9 text-[clamp(44px,13vw,56px)] text-[#022B27]">

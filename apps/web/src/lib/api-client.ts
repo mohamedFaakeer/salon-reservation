@@ -78,6 +78,9 @@ export interface SalonProfile {
   address: string | null;
   city: string | null;
   phone: string | null;
+  /** Powers the "Get Directions" button. Both null until the salon sets a location. */
+  latitude: number | null;
+  longitude: number | null;
   services: SalonService[];
   staff: SalonStaff[];
   hours: Array<SalonHoursEntry | null>;

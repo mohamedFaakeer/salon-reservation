@@ -109,7 +109,7 @@ export function BookingWizard({ salon }: { salon: SalonProfile }) {
         {wizard.step === "slots" ? <SlotGrid wizard={wizard} /> : null}
         {wizard.step === "details" ? <CustomerDetailsForm wizard={wizard} /> : null}
         {wizard.step === "payment" ? <PaymentStep wizard={wizard} /> : null}
-        {wizard.step === "success" ? <SuccessScreen wizard={wizard} /> : null}
+        {wizard.step === "success" ? <SuccessScreen wizard={wizard} salon={salon} /> : null}
       </div>
 
       {STICKY_BAR_STEPS.has(wizard.step) ? (

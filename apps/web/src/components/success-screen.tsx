@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { BookingWizard } from "../hooks/use-booking-wizard";
-import { formatDurationMin, formatPriceCents, formatTime } from "../lib/format";
+import type { SalonProfile } from "../lib/api-client";
+import { formatDurationMin, formatPriceCents, formatTime, getDirectionsUrl } from "../lib/format";
 import { DyeButton, Marker } from "./cloth";
 
 /**
@@ -14,7 +15,7 @@ import { DyeButton, Marker } from "./cloth";
  * The seal blooms once and stops. Nothing on a confirmation screen should keep
  * moving after it has been read.
  */
-export function SuccessScreen({ wizard }: { wizard: BookingWizard }) {
+export function SuccessScreen({ wizard, salon }: { wizard: BookingWizard; salon: SalonProfile }) {
   if (!wizard.confirmed) {
     return null;
   }
@@ -76,6 +77,16 @@ export function SuccessScreen({ wizard }: { wizard: BookingWizard }) {
         <Link href={`/booking/${bookingReference}`} className="mt-6 block">
           <DyeButton className="w-full">Manage this booking</DyeButton>
         </Link>
+        {salon.latitude !== null && salon.longitude !== null ? (
+          <a
+            href={getDirectionsUrl(salon.latitude, salon.longitude)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2.5 inline-block min-h-11 py-2 text-[13px] font-semibold text-[var(--bloom)] underline decoration-[var(--dye)] decoration-2 underline-offset-4"
+          >
+            Get Directions to {salon.name}
+          </a>
+        ) : null}
         <p className="mt-3 text-[11px] text-[var(--resist-dim)]">
           We&apos;ll send a confirmation to your phone shortly.
         </p>

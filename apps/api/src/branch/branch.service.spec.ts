@@ -48,5 +48,25 @@ describe("BranchService", () => {
       expect(result.address).toBe("123 Main St");
       expect(result.phone).toBe("0771234567");
     });
+
+    it("sets latitude and longitude together", async () => {
+      const branch = { id: "b1", tenantId: "tenant-1", latitude: null, longitude: null } as Branch;
+      vi.mocked(branches.findOne).mockResolvedValue(branch);
+
+      const result = await service.updateDefaultBranch("tenant-1", { latitude: 6.9271, longitude: 79.8612 });
+
+      expect(result.latitude).toBe(6.9271);
+      expect(result.longitude).toBe(79.8612);
+    });
+
+    it("clears both coordinates when explicitly set to null", async () => {
+      const branch = { id: "b1", tenantId: "tenant-1", latitude: 6.9271, longitude: 79.8612 } as Branch;
+      vi.mocked(branches.findOne).mockResolvedValue(branch);
+
+      const result = await service.updateDefaultBranch("tenant-1", { latitude: null, longitude: null });
+
+      expect(result.latitude).toBeNull();
+      expect(result.longitude).toBeNull();
+    });
   });
 });

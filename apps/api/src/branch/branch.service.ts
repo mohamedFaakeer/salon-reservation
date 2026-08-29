@@ -36,6 +36,8 @@ export class BranchService {
     if (patch.address !== undefined) branch.address = patch.address;
     if (patch.city !== undefined) branch.city = patch.city;
     if (patch.phone !== undefined) branch.phone = patch.phone;
+    if (patch.latitude !== undefined) branch.latitude = patch.latitude;
+    if (patch.longitude !== undefined) branch.longitude = patch.longitude;
     return this.branches.save(branch);
   }
 }

@@ -2418,3 +2418,43 @@ pages or entity fields needed for this pass; `cancelUrl`/`rescheduleUrl`/
    is saved" instead. Job title and gender sit in the same drawer as
    existing fields, following the same optional-field conventions already
    established there.
+
+## 55. "Get Directions" (simple coordinates, no map picker) and a web login entry point (2026-08-30)
+
+1. **Geolocation, per the locked decision: a pasted link, not an interactive
+   map.** An embedded/click-to-pin map needs a Google Maps JavaScript API
+   key and a billing-enabled Google Cloud project — a new paid dependency
+   this project has avoided everywhere else (free-tier-only stack). A plain
+   directions link (`google.com/maps/dir/?api=1&destination=lat,lng`) needs
+   no key at all. `Branch` gains `latitude`/`longitude` (both nullable, set
+   together) — on `Branch`, not `Tenant.settings`, since address already
+   lives there and coordinates are the same kind of fact.
+2. **Parsing a pasted link is input formatting, not a business rule — so it
+   happens client-side, deliberately.** `BranchUpdateDto` only accepts and
+   range-checks two plain numbers (a real business rule: a coordinate
+   outside ±90/±180 cannot exist); `parseGoogleMapsLink()` (admin-only,
+   `apps/admin/src/lib/format.ts`) turns a pasted share link or a typed
+   "lat, lng" pair into those two numbers before the request is sent. Same
+   precedent this codebase already follows elsewhere (e.g. converting a
+   typed rupee amount to cents client-side) — the server never trusts a
+   client-derived *value* it can't independently verify, but reformatting
+   what someone typed into the shape an already-validated field expects is
+   not that.
+3. **The settings field doubles as both input and display**, showing "lat,
+   lng" once a location is set (there is nothing to reconstruct the
+   original pasted URL from, since only the two numbers are stored) — an
+   owner can either paste a fresh link over it or hand-edit the numbers
+   directly; both are accepted by the same parser.
+4. **Hidden entirely wherever coordinates aren't set** — the salon page,
+   the booking-confirmation screen, and the admin settings hint all treat
+   "no location yet" as the default, ordinary state, matching how a blank
+   address/phone already renders nothing rather than an empty label.
+5. **The web login entry point needed no new backend, form, or OTP code —
+   the flow was already complete** (`CustomerAuthProvider`/`AccountOverlay`,
+   DECISIONS.md §46); it only ever appeared passively, after a 40-second
+   dwell timer or at booking-confirm. `AccountHeaderButton` jumps straight
+   to the existing `"login"` screen (which already has its own "New here? /
+   Sign up" escape hatch, confirmed before relying on it) — a deliberate,
+   on-demand door into the same flow, placed on the home page's header
+   alongside the existing "My booking" link. Logged in, the same button
+   shows the customer's first name and logs them out; logged out, "Log in".

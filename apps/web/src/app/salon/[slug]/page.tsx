@@ -4,7 +4,7 @@ import { BookingWizard } from "../../../components/booking-wizard";
 import { SalonHours } from "../../../components/salon-hours";
 import { StaffGrid } from "../../../components/staff-grid";
 import { DyedPhoto, Marker, Undyed } from "../../../components/cloth";
-import { formatDateLong } from "../../../lib/format";
+import { formatDateLong, getDirectionsUrl } from "../../../lib/format";
 import { sceneFor } from "../../../lib/imagery";
 
 /**
@@ -71,14 +71,26 @@ export default async function SalonProfilePage({ params }: { params: Promise<{ s
           {place ? (
             <p className="mt-2 text-[13px] text-[var(--bloom)]">{place}</p>
           ) : null}
-          {salon.phone ? (
-            <a
-              href={`tel:${salon.phone}`}
-              className="mt-1 inline-block min-h-11 py-2 text-[13px] font-semibold text-[var(--resist)] underline decoration-[var(--dye)] decoration-2 underline-offset-4"
-            >
-              {salon.phone}
-            </a>
-          ) : null}
+          <div className="mt-1 flex flex-wrap items-center gap-x-4">
+            {salon.phone ? (
+              <a
+                href={`tel:${salon.phone}`}
+                className="inline-block min-h-11 py-2 text-[13px] font-semibold text-[var(--resist)] underline decoration-[var(--dye)] decoration-2 underline-offset-4"
+              >
+                {salon.phone}
+              </a>
+            ) : null}
+            {salon.latitude !== null && salon.longitude !== null ? (
+              <a
+                href={getDirectionsUrl(salon.latitude, salon.longitude)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block min-h-11 py-2 text-[13px] font-semibold text-[var(--resist)] underline decoration-[var(--dye)] decoration-2 underline-offset-4"
+              >
+                Get Directions
+              </a>
+            ) : null}
+          </div>
         </div>
       </header>
 
