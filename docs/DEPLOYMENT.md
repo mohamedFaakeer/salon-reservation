@@ -94,7 +94,9 @@ Browser (any device)
    | `ARGON2_MEMORY_KB` | see `password.service.ts` | Password-hash cost — lower only if Render's 512 MB tier struggles |
    | `ARGON2_TIME_COST` | see `password.service.ts` | Password-hash iterations |
    | `PAYMENTS_PAYHERE_ENABLED` | `false` | Keep `false` for MVP; `ManualProvider` is the default |
-   | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | unset | Email notifications; blank is fine for a demo — the console provider always works |
+   | `BREVO_API_KEY` | unset | Email via Brevo's transactional HTTP API — the recommended path on Render, since it isn't subject to Brevo SMTP relay's per-account IP allow-list (Render's free tier has no fixed outbound IP, so that allow-list can't be kept current). Takes priority over `SMTP_HOST` when both are set |
+   | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | unset | SMTP fallback — fine for local dev, not recommended in production against a provider with IP-restricted SMTP (see `BREVO_API_KEY` above). Blank is fine for a demo either way — the console provider always works |
+   | `EMAIL_FROM` | falls back to `SMTP_USER`, then `no-reply@salon.local` | Visible "From" name/address, e.g. `"Elegance Salon <bookings@example.com>"`. Set explicitly whenever `SMTP_USER` is a provider login you don't want customers to see (e.g. Brevo's SMTP login). Also used as the `sender` for the Brevo API path |
    | `SUPER_ADMIN_EMAIL` | `super.admin@salon.local` | Address for the seeded platform administrator |
    | `DEMO_OWNER_PASSWORD` | unset | Set it to also seed the `elegance` demo salon and its four staff logins. Left unset in production, those accounts are **not created** — they are known addresses on a public URL |
    | `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | unset | Salon logo uploads. Unset means `POST /tenant/me/logo` returns `503 LOGO_UPLOAD_NOT_CONFIGURED` — an honest failure, not a silent no-op — everything else in the app works fine without them |
