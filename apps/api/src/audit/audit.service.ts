@@ -5,7 +5,7 @@ import type { EntityManager } from "typeorm";
 // injection via design:paramtypes metadata at runtime; `import type` would
 // erase it and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import { Between, LessThanOrEqual, MoreThanOrEqual, Repository } from "typeorm";
+import { Between, In, LessThanOrEqual, MoreThanOrEqual, Repository } from "typeorm";
 import type { AuditQueryDto } from "@salon/shared";
 import { AuditLog } from "../entities/audit-log.entity";
 
@@ -96,5 +96,88 @@ export class AuditService {
     });
 
     return { data, meta: { total, limit: filters.limit, offset: filters.offset } };
+  }
+
+  /**
+   * The cross-tenant counterpart to `query()` — for the super-admin
+   * monitoring feature, which needs to see security events across every
+   * salon, not just one. `query()` itself stays untouched and mandatorily
+   * tenant-scoped for the existing OWNER/MANAGER-facing endpoint; this is a
+   * separate method rather than an optional-tenantId overload so it's
+   * impossible to accidentally call the tenant-scoped path without a
+   * tenantId and get every tenant's data back.
+   */
+  async queryAcrossTenants(filters: {
+    tenantId?: string;
+    actions?: string[];
+    from?: string;
+    to?: string;
+    limit: number;
+    offset: number;
+  }): Promise<{ data: AuditLog[]; meta: { total: number; limit: number; offset: number } }> {
+    const where: Record<string, unknown> = {};
+    if (filters.tenantId) {
+      where.tenantId = filters.tenantId;
+    }
+    if (filters.actions && filters.actions.length > 0) {
+      where.action = filters.actions.length === 1 ? filters.actions[0] : In(filters.actions);
+    }
+    if (filters.from && filters.to) {
+      where.createdAt = Between(new Date(filters.from), new Date(filters.to));
+    } else if (filters.from) {
+      where.createdAt = MoreThanOrEqual(new Date(filters.from));
+    } else if (filters.to) {
+      where.createdAt = LessThanOrEqual(new Date(filters.to));
+    }
+
+    const [data, total] = await this.logs.findAndCount({
+      where,
+      relations: { actorUser: true, tenant: true },
+      select: {
+        id: true,
+        tenantId: true,
+        actorUserId: true,
+        action: true,
+        entityType: true,
+        entityId: true,
+        metadata: true,
+        ipAddress: true,
+        userAgent: true,
+        createdAt: true,
+        actorUser: { id: true, name: true, email: true },
+        tenant: { id: true, name: true },
+      },
+      order: { createdAt: "DESC" },
+      take: filters.limit,
+      skip: filters.offset,
+    });
+
+    return { data, meta: { total, limit: filters.limit, offset: filters.offset } };
+  }
+
+  /**
+   * How many times `action` has fired for the same `entityId` since `since`
+   * — the "is this an isolated event or a pattern" count that drives
+   * severity classification (see `classify-severity.ts`), computed with one
+   * grouped query per distinct entityId rather than once per row.
+   */
+  async countRecentByEntity(
+    action: string,
+    entityIds: string[],
+    since: Date,
+  ): Promise<Map<string, number>> {
+    if (entityIds.length === 0) {
+      return new Map();
+    }
+    const rows = await this.logs
+      .createQueryBuilder("a")
+      .select('a."entityId"', "entityId")
+      .addSelect("COUNT(*)", "count")
+      .where("a.action = :action", { action })
+      .andWhere('a."entityId" IN (:...entityIds)', { entityIds })
+      .andWhere('a."createdAt" >= :since', { since })
+      .groupBy('a."entityId"')
+      .getRawMany<{ entityId: string; count: string }>();
+    return new Map(rows.map((r) => [r.entityId, Number(r.count)]));
   }
 }

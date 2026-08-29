@@ -3,11 +3,21 @@ import { AuditService } from "./audit.service";
 import type { AuditLog } from "../entities/audit-log.entity";
 
 function mockRepo<T extends ObjectLiteral>() {
+  const queryBuilder = {
+    select: vi.fn().mockReturnThis(),
+    addSelect: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    andWhere: vi.fn().mockReturnThis(),
+    groupBy: vi.fn().mockReturnThis(),
+    getRawMany: vi.fn(async () => []),
+  };
   const repo = {
     create: vi.fn((e: Partial<T>) => e as T),
     save: vi.fn(async (e: T) => e),
     findAndCount: vi.fn(async () => [[], 0]),
-  } as unknown as Repository<T>;
+    createQueryBuilder: vi.fn(() => queryBuilder),
+  } as unknown as Repository<T> & { __queryBuilder: typeof queryBuilder };
+  (repo as unknown as { __queryBuilder: typeof queryBuilder }).__queryBuilder = queryBuilder;
   return repo;
 }
 
@@ -122,6 +132,51 @@ describe("AuditService", () => {
 
       expect(result.data).toHaveLength(1);
       expect(result.meta).toEqual({ total: 1, limit: 50, offset: 0 });
+    });
+  });
+
+  describe("queryAcrossTenants", () => {
+    it("omits tenantId from the where clause when none is given — every tenant's events", async () => {
+      await service.queryAcrossTenants({ actions: ["LOGIN_FAILED"], limit: 50, offset: 0 });
+
+      const call = vi.mocked(logs.findAndCount).mock.calls[0][0] as { where: Record<string, unknown> };
+      expect(call.where.tenantId).toBeUndefined();
+      expect(call.where.action).toBe("LOGIN_FAILED");
+    });
+
+    it("scopes to one tenant when tenantId is given", async () => {
+      await service.queryAcrossTenants({ tenantId: "tenant-1", actions: ["LOGIN_FAILED"], limit: 50, offset: 0 });
+
+      const call = vi.mocked(logs.findAndCount).mock.calls[0][0] as { where: Record<string, unknown> };
+      expect(call.where.tenantId).toBe("tenant-1");
+    });
+
+    it("joins the tenant relation, not just the actor", async () => {
+      await service.queryAcrossTenants({ actions: ["LOGIN_FAILED"], limit: 50, offset: 0 });
+
+      const call = vi.mocked(logs.findAndCount).mock.calls[0][0] as { relations: Record<string, boolean> };
+      expect(call.relations.tenant).toBe(true);
+    });
+  });
+
+  describe("countRecentByEntity", () => {
+    it("returns an empty map without querying when there are no entityIds", async () => {
+      const result = await service.countRecentByEntity("LOGIN_FAILED", [], new Date());
+      expect(result.size).toBe(0);
+      expect(logs.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it("builds a map keyed by entityId from the grouped count", async () => {
+      const qb = (logs as unknown as { __queryBuilder: { getRawMany: ReturnType<typeof vi.fn> } }).__queryBuilder;
+      qb.getRawMany.mockResolvedValue([
+        { entityId: "user-1", count: "5" },
+        { entityId: "user-2", count: "1" },
+      ]);
+
+      const result = await service.countRecentByEntity("LOGIN_FAILED", ["user-1", "user-2"], new Date());
+
+      expect(result.get("user-1")).toBe(5);
+      expect(result.get("user-2")).toBe(1);
     });
   });
 });
