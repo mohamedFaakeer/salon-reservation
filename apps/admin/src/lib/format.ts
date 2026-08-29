@@ -213,3 +213,22 @@ export function formatMinutesDuration(totalMin: number): string {
   }
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
+
+/**
+ * `2 minutes ago` / `3 hours ago` / a plain date once it's more than a week
+ * old — for a monitoring feed where "how fresh is this" matters more than
+ * the exact timestamp. Falls back to `formatDate` rather than growing months
+ * and years, which nothing in this feed's 7-day windows ever needs.
+ */
+export function formatRelativeTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days} days ago`;
+  return formatDate(iso);
+}

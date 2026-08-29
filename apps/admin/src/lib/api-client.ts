@@ -2763,3 +2763,121 @@ export function processRetailReturn(saleId: string, input: CreateRetailReturnInp
 export function fetchRetailReturns(saleId: string): Promise<RetailReturnView[]> {
   return request<RetailReturnView[]>(`/retail-sales/${saleId}/returns`);
 }
+
+/* ----------------------------------------------------- super-admin monitoring */
+
+export type MonitoringSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+export type MonitoringItemStatus = "NEW" | "ACKNOWLEDGED" | "RESOLVED";
+
+export interface MonitoringOverview {
+  activeTenants: number;
+  bookingsThisMonth: number;
+  revenueThisMonthCents: number;
+  tenantsNearQuota: number;
+  securityEventCounts: { last24h: number; last7d: number };
+  openErrorCount: number;
+}
+
+export function fetchMonitoringOverview(): Promise<MonitoringOverview> {
+  return request<MonitoringOverview>("/super-admin/monitoring/overview");
+}
+
+export interface MonitoringTenantUsage {
+  tenantId: string;
+  name: string;
+  slug: string;
+  bookingsThisMonth: number;
+  revenueThisMonthCents: number;
+  emailUsage: { sent: number; limit: number };
+  smsUsage: { sent: number; limit: number };
+  lastStaffLoginAt: string | null;
+}
+
+export function fetchMonitoringTenantUsage(params: { limit?: number; offset?: number } = {}): Promise<{
+  data: MonitoringTenantUsage[];
+  meta: ListMeta;
+}> {
+  const qs = new URLSearchParams({
+    limit: String(params.limit ?? 25),
+    offset: String(params.offset ?? 0),
+  });
+  return request<{ data: MonitoringTenantUsage[]; meta: ListMeta }>(`/super-admin/monitoring/tenants?${qs}`);
+}
+
+/** Every field the read-time `explainSecurityEvent()`/`classifySecurityEventSeverity()` pair adds server-side (see monitoring.service.ts). */
+export interface MonitoringSecurityEvent {
+  id: string;
+  action: string;
+  tenantId: string | null;
+  tenantName: string | null;
+  createdAt: string;
+  ipAddress: string | null;
+  severity: MonitoringSeverity;
+  status: MonitoringItemStatus;
+  title: string;
+  plainLanguage: string;
+  recommendedAction: string;
+  metadata: Record<string, unknown>;
+}
+
+export function fetchMonitoringSecurityEvents(params: { limit?: number; offset?: number } = {}): Promise<{
+  data: MonitoringSecurityEvent[];
+  meta: ListMeta;
+}> {
+  const qs = new URLSearchParams({
+    limit: String(params.limit ?? 25),
+    offset: String(params.offset ?? 0),
+  });
+  return request<{ data: MonitoringSecurityEvent[]; meta: ListMeta }>(`/super-admin/monitoring/security-events?${qs}`);
+}
+
+export function updateMonitoringSecurityEventStatus(
+  id: string,
+  status: Exclude<MonitoringItemStatus, "NEW">,
+): Promise<{ auditLogId: string; status: string }> {
+  return request<{ auditLogId: string; status: string }>(`/super-admin/monitoring/security-events/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+}
+
+/** `ErrorLog` row plus the read-time `explainErrorLog()`/`classifyErrorLogSeverity()` fields (see monitoring.service.ts). */
+export interface MonitoringErrorLog {
+  id: string;
+  tenantId: string | null;
+  tenantName: string | null;
+  requestId: string | null;
+  method: string;
+  path: string;
+  statusCode: number;
+  code: string;
+  message: string;
+  stack: string | null;
+  status: MonitoringItemStatus;
+  createdAt: string;
+  severity: MonitoringSeverity;
+  title: string;
+  plainLanguage: string;
+  recommendedAction: string;
+}
+
+export function fetchMonitoringErrors(params: { limit?: number; offset?: number } = {}): Promise<{
+  data: MonitoringErrorLog[];
+  meta: ListMeta;
+}> {
+  const qs = new URLSearchParams({
+    limit: String(params.limit ?? 25),
+    offset: String(params.offset ?? 0),
+  });
+  return request<{ data: MonitoringErrorLog[]; meta: ListMeta }>(`/super-admin/monitoring/errors?${qs}`);
+}
+
+export function updateMonitoringErrorStatus(
+  id: string,
+  status: Exclude<MonitoringItemStatus, "NEW">,
+): Promise<MonitoringErrorLog> {
+  return request<MonitoringErrorLog>(`/super-admin/monitoring/errors/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+}

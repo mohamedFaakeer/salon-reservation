@@ -1,9 +1,15 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "../../context/auth-context";
 import { isSuperAdmin } from "../../lib/permissions";
+
+const NAV_ITEMS = [
+  { href: "/platform", label: "Salons" },
+  { href: "/platform/monitoring", label: "Monitoring" },
+] as const;
 
 /**
  * The platform shell.
@@ -20,6 +26,7 @@ import { isSuperAdmin } from "../../lib/permissions";
  */
 export default function PlatformLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, loading, logout } = useAuth();
 
   useEffect(() => {
@@ -62,6 +69,23 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
             </button>
           </div>
         </div>
+        <nav className="mx-auto flex max-w-5xl gap-1 px-6">
+          {NAV_ITEMS.map((item) => {
+            const active = item.href === "/platform" ? pathname === "/platform" : pathname.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                data-testid={`platform-nav-${item.label.toLowerCase()}`}
+                className={`border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
+                  active ? "border-teal-400 text-white" : "border-transparent text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
       </header>
       <main className="mx-auto max-w-5xl p-6">{children}</main>
     </div>
