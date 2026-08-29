@@ -14,7 +14,17 @@ import { Branch } from "./branch.entity";
 import { ServiceDiscount } from "./service-discount.entity";
 import { Tenant } from "./tenant.entity";
 
-/** No soft-delete column — removal is PATCH {active:false} (API.md §3). */
+/**
+ * No soft-delete column — removal is PATCH {active:false} (API.md §3).
+ *
+ * `name` is unique per tenant among active services only (case-insensitive)
+ * via the partial index `IDX_service_tenantId_name_active` (migration
+ * `1750001300000-ServiceNameUnique`, SVC-02) — retiring a service frees its
+ * name for reuse. TypeORM has no first-class partial/expression-index
+ * decorator, so the index lives in the migration only; `ServiceService`
+ * enforces the same rule at the application layer for a friendly error
+ * ahead of the constraint.
+ */
 @Entity("service")
 @Check("CHK_service_durationMin", `"durationMin" > 0`)
 @Check("CHK_service_priceCents", `"priceCents" >= 0`)

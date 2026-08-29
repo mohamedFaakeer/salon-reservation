@@ -87,20 +87,82 @@ describe("PaymentService", () => {
   }
 
   describe("recordPayment", () => {
-    it("rejects an amount exceeding the outstanding balance", async () => {
+    it("rejects a non-cash amount exceeding the outstanding balance", async () => {
+      // Only CASH gets the tendered/change treatment (APT-10) — a card,
+      // bank transfer, gift card, or package amount is exactly what moves,
+      // so overshooting the balance is still a plain input error for those.
       const appointment = fakeAppointment({ balanceCents: 5000 });
       const manager = { getRepository: () => paymentsRepo } as unknown as EntityManager;
 
       await expect(
         service.recordPayment(manager, fakeTenant(), appointment, {
           amountCents: 6000,
-          method: PaymentMethod.CASH,
+          method: PaymentMethod.BANK_TRANSFER,
           type: PaymentType.FULL,
           provider: PaymentProviderName.MANUAL,
           recordedById: "user-1",
           idempotencyKey: "11111111-1111-4111-8111-111111111111",
         }),
-      ).rejects.toMatchObject({ statusCode: 400, code: "PAYMENT_EXCEEDS_BALANCE" });
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        code: "PAYMENT_EXCEEDS_BALANCE",
+        message: expect.stringContaining("LKR"),
+      });
+    });
+
+    it("APT-10: a cash payment over the balance applies exactly the balance and records the change", async () => {
+      const appointment = fakeAppointment({ balanceCents: 60000 }); // Rs.600 due
+      const manager = {
+        getRepository: (entity: unknown) => {
+          if (entity === Payment) return paymentsRepo;
+          if (entity === Appointment) return appointmentsRepo;
+          throw new Error("unexpected entity");
+        },
+      } as unknown as EntityManager;
+
+      const payment = await service.recordPayment(manager, fakeTenant(), appointment, {
+        amountCents: 100000, // Rs.1,000 tendered
+        method: PaymentMethod.CASH,
+        type: PaymentType.BALANCE,
+        provider: PaymentProviderName.MANUAL,
+        recordedById: "user-1",
+        idempotencyKey: "11111111-1111-4111-8111-111111111120",
+      });
+
+      expect(payment.amountCents).toBe(60000);
+      expect(payment.tenderedCents).toBe(100000);
+      expect(payment.changeCents).toBe(40000);
+      expect(appointment.advancePaidCents).toBe(60000);
+      expect(appointment.balanceCents).toBe(0);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({ tenderedCents: 100000, changeCents: 40000 }),
+        }),
+        manager,
+      );
+    });
+
+    it("APT-10: a cash payment exactly matching the balance leaves tenderedCents/changeCents null", async () => {
+      const appointment = fakeAppointment({ balanceCents: 60000 });
+      const manager = {
+        getRepository: (entity: unknown) => {
+          if (entity === Payment) return paymentsRepo;
+          if (entity === Appointment) return appointmentsRepo;
+          throw new Error("unexpected entity");
+        },
+      } as unknown as EntityManager;
+
+      const payment = await service.recordPayment(manager, fakeTenant(), appointment, {
+        amountCents: 60000,
+        method: PaymentMethod.CASH,
+        type: PaymentType.BALANCE,
+        provider: PaymentProviderName.MANUAL,
+        recordedById: "user-1",
+        idempotencyKey: "11111111-1111-4111-8111-111111111121",
+      });
+
+      expect(payment.tenderedCents).toBeNull();
+      expect(payment.changeCents).toBeNull();
     });
 
     it("creates a SUCCESS payment and updates the appointment's paid/balance in place", async () => {
@@ -367,13 +429,19 @@ describe("PaymentService", () => {
       ).rejects.toMatchObject({ statusCode: 404, code: "NOT_FOUND" });
     });
 
-    it("rejects a refund amount exceeding what's refundable", async () => {
+    it("rejects a refund amount exceeding what's refundable, with a formatted amount in the message", async () => {
       vi.mocked(paymentsRepo.findOne).mockResolvedValue(fakePayment({ amountCents: 5000 }));
       vi.mocked(refundsRepo.find).mockResolvedValue([{ amountCents: 4000 } as Refund]);
 
       await expect(
         service.refund(fakeTenant(), "payment-1", { amountCents: 2000, reason: "too much" }, "user-1"),
-      ).rejects.toMatchObject({ statusCode: 400, code: "REFUND_EXCEEDS_PAYMENT" });
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        code: "REFUND_EXCEEDS_PAYMENT",
+        // Rs.10.00 refundable (1000 cents), not a raw "1000 cents" — the
+        // same currency-formatting fix applied to PAYMENT_EXCEEDS_BALANCE.
+        message: expect.stringContaining("LKR"),
+      });
     });
 
     it("a full refund marks the payment REFUNDED and restores the appointment balance", async () => {

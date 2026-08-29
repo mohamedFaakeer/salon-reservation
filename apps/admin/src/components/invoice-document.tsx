@@ -172,6 +172,12 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceRecord }) {
               <li key={i} className="text-sm text-slate-700 tabular">
                 {formatLongDate(p.recordedAt)} · {methodLabel(p.method)} ·{" "}
                 {formatPriceCents(p.amountCents)}
+                {p.changeCents ? (
+                  <span className="text-slate-500">
+                    {" "}
+                    (tendered {formatPriceCents(p.tenderedCents ?? 0)}, change {formatPriceCents(p.changeCents)})
+                  </span>
+                ) : null}
               </li>
             ))}
           </ul>

@@ -50,7 +50,11 @@ export function renderInvoiceEmail(invoice: Invoice): RenderedInvoice {
     `Paid: ${money(invoice.paidCents)}`,
     `Balance: ${money(invoice.balanceCents)}`,
     "",
-    ...payments.map((p) => `  ${formatDate(p.recordedAt)} — ${methodLabel(p.method)} ${money(p.amountCents)}`),
+    ...payments.map(
+      (p) =>
+        `  ${formatDate(p.recordedAt)} — ${methodLabel(p.method)} ${money(p.amountCents)}` +
+        (p.changeCents ? ` (tendered ${money(p.tenderedCents ?? 0)}, change ${money(p.changeCents)})` : ""),
+    ),
     "",
     "Thank you.",
   ].filter((l): l is string => l !== null);
@@ -172,7 +176,11 @@ function renderHtml(invoice: Invoice): string {
            ${payments
              .map(
                (p) =>
-                 `<div style="font-size:12.5px;color:#334155;font-variant-numeric:tabular-nums;padding-top:4px;">${escape(formatDate(p.recordedAt))} &middot; ${escape(methodLabel(p.method))} &middot; ${escape(money(p.amountCents))}</div>`,
+                 `<div style="font-size:12.5px;color:#334155;font-variant-numeric:tabular-nums;padding-top:4px;">${escape(formatDate(p.recordedAt))} &middot; ${escape(methodLabel(p.method))} &middot; ${escape(money(p.amountCents))}${
+                   p.changeCents
+                     ? ` <span style="color:#64748b;">(tendered ${escape(money(p.tenderedCents ?? 0))}, change ${escape(money(p.changeCents))})</span>`
+                     : ""
+                 }</div>`,
              )
              .join("")}
          </td></tr>`

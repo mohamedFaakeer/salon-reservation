@@ -222,7 +222,7 @@ export function AppointmentDetailDrawer({
     setRecordSubmitting(true);
     setRecordError(null);
     try {
-      await recordPayment(
+      const recorded = await recordPayment(
         appointment.id,
         {
           amountCents,
@@ -238,7 +238,12 @@ export function AppointmentDetailDrawer({
       setRecordPackageCode("");
       load();
       onChanged();
-      toast.success("Payment recorded", formatPriceCents(amountCents));
+      toast.success(
+        "Payment recorded",
+        recorded.changeCents
+          ? `${formatPriceCents(recorded.amountCents)} · change due ${formatPriceCents(recorded.changeCents)}`
+          : formatPriceCents(recorded.amountCents),
+      );
     } catch (err) {
       const copy = errorCopy(err);
       setRecordError(copy.title);
@@ -416,6 +421,18 @@ export function AppointmentDetailDrawer({
   const isLate =
     Boolean(appointment?.checkedInAt) && (appointment?.lateMinutes ?? 0) > graceMinutes;
   const cancellable = appointment ? !NOT_CANCELLABLE_STATUSES.has(appointment.status) : false;
+  // APT-10: cash tendered over the balance is settled to exactly the
+  // balance server-side, with the rest handed back as change — this mirrors
+  // that math client-side purely to show the receptionist what to expect
+  // before they submit; the server is still the only source of truth.
+  const recordEnteredCents = Math.round(Number(recordAmount) * 100);
+  const recordChangeDueCents =
+    recordMethod === "CASH" &&
+    appointment &&
+    Number.isFinite(recordEnteredCents) &&
+    recordEnteredCents > appointment.balanceCents
+      ? recordEnteredCents - appointment.balanceCents
+      : null;
   // A no-show never checked in at all — distinct from isLate, which is about
   // someone who checked in later than expected.
   const noShowEligible =
@@ -668,6 +685,13 @@ export function AppointmentDetailDrawer({
                   <li key={p.id} className="flex items-center justify-between gap-2">
                     <span>
                       {formatPriceCents(p.amountCents)} · {p.method} · {p.type} · {p.state}
+                      {p.changeCents ? (
+                        <span className="text-slate-500">
+                          {" "}
+                          (tendered {formatPriceCents(p.tenderedCents ?? 0)}, change{" "}
+                          {formatPriceCents(p.changeCents)})
+                        </span>
+                      ) : null}
                     </span>
                     {canIssueRefund(roles) &&
                     (p.state === "SUCCESS" || p.state === "PARTIALLY_REFUNDED") ? (
@@ -749,7 +773,7 @@ export function AppointmentDetailDrawer({
               showRecordForm ? (
                 <div className="mt-2 flex flex-col gap-2 rounded border border-slate-200 p-2">
                   <label className="text-xs text-slate-500">
-                    Amount (Rs.)
+                    {recordMethod === "CASH" ? "Cash received (Rs.)" : "Amount (Rs.)"}
                     <input
                       type="number"
                       data-testid="record-payment-amount"
@@ -758,6 +782,11 @@ export function AppointmentDetailDrawer({
                       className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm"
                     />
                   </label>
+                  {recordMethod === "CASH" && recordChangeDueCents !== null ? (
+                    <p data-testid="record-payment-change-due" className="text-xs font-medium text-teal-700">
+                      Change due: {formatPriceCents(recordChangeDueCents)}
+                    </p>
+                  ) : null}
                   <label className="text-xs text-slate-500">
                     Method
                     <select

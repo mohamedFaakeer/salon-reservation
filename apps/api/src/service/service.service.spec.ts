@@ -6,6 +6,14 @@ import type { ServiceDiscount, ServiceDiscountWindow } from "../entities/service
 import type { AuditService } from "../audit/audit.service";
 
 function mockRepo<T extends ObjectLiteral>() {
+  const queryBuilder = {
+    where: vi.fn().mockReturnThis(),
+    andWhere: vi.fn().mockReturnThis(),
+    // No name clash by default — SVC-02's uniqueness check is exercised via
+    // this mock in every create/update test whether or not that test cares
+    // about it, so "nothing taken" has to be the harmless default.
+    getOne: vi.fn(async () => null as T | null),
+  };
   const repo = {
     create: vi.fn((e: Partial<T>) => e as T),
     save: vi.fn(async (e: T) => e),
@@ -14,11 +22,13 @@ function mockRepo<T extends ObjectLiteral>() {
     findOneOrFail: vi.fn(async () => ({}) as T),
     delete: vi.fn(async () => ({ affected: 1 })),
     count: vi.fn(async () => 0),
-  } as unknown as Repository<T>;
+    createQueryBuilder: vi.fn(() => queryBuilder),
+  } as unknown as Repository<T> & { __queryBuilder: typeof queryBuilder };
+  (repo as unknown as { __queryBuilder: typeof queryBuilder }).__queryBuilder = queryBuilder;
   return repo;
 }
 
-function baseService(): Service {
+function baseService(overrides: Partial<Service> = {}): Service {
   return {
     id: "svc-1",
     tenantId: "tenant-1",
@@ -29,11 +39,12 @@ function baseService(): Service {
     durationMin: 30,
     priceCents: 500000,
     active: true,
+    ...overrides,
   } as Service;
 }
 
 describe("ServiceService", () => {
-  let services: Repository<Service>;
+  let services: Repository<Service> & { __queryBuilder: { getOne: ReturnType<typeof vi.fn> } };
   let discounts: Repository<ServiceDiscount>;
   let audit: AuditService;
   let service: ServiceService;
@@ -232,6 +243,25 @@ describe("ServiceService", () => {
 
       expect(services.save).toHaveBeenCalled();
     });
+
+    it("SVC-02: refuses a name that collides with an active service, case-insensitively", async () => {
+      services.__queryBuilder.getOne.mockResolvedValueOnce(baseService());
+
+      await expect(
+        service.create("tenant-1", { name: "  HAIRCUT  ", durationMin: 30, priceCents: 500000 }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "SERVICE_NAME_TAKEN" });
+      expect(services.save).not.toHaveBeenCalled();
+    });
+
+    it("SVC-02: allows a name that only collides with a retired service", async () => {
+      // The query itself is scoped to active=true; a mocked "nothing found"
+      // response here stands in for that scoping doing its job.
+      services.__queryBuilder.getOne.mockResolvedValueOnce(null);
+
+      await service.create("tenant-1", { name: "Haircut", durationMin: 30, priceCents: 500000 });
+
+      expect(services.save).toHaveBeenCalled();
+    });
   });
 
   describe("update", () => {
@@ -320,6 +350,46 @@ describe("ServiceService", () => {
       expect(services.findOne).toHaveBeenCalledWith({
         where: { id: "svc-1", tenantId: "tenant-B" },
       });
+    });
+
+    it("SVC-02: refuses a rename that collides with another active service", async () => {
+      vi.mocked(services.findOne).mockResolvedValue(baseService());
+      services.__queryBuilder.getOne.mockResolvedValueOnce({ id: "svc-2", name: "Gel Manicure" } as Service);
+
+      await expect(
+        service.update("tenant-1", "svc-1", { name: "Gel Manicure" }, actor),
+      ).rejects.toMatchObject({ statusCode: 409, code: "SERVICE_NAME_TAKEN" });
+      expect(services.save).not.toHaveBeenCalled();
+    });
+
+    it("SVC-02: excludes the service's own row from the collision check", async () => {
+      // Renaming with the same name (or not renaming at all) must never
+      // trip over the row's own existing name.
+      vi.mocked(services.findOne).mockResolvedValue(baseService());
+
+      await service.update("tenant-1", "svc-1", { category: "Nails" }, actor);
+
+      const qb = vi.mocked(services.createQueryBuilder).mock.results[0]?.value as {
+        andWhere: ReturnType<typeof vi.fn>;
+      };
+      expect(qb.andWhere).toHaveBeenCalledWith("s.id != :excludeId", { excludeId: "svc-1" });
+    });
+
+    it("SVC-02: skips the uniqueness check for a purely-deactivating update", async () => {
+      vi.mocked(services.findOne).mockResolvedValue(baseService());
+
+      await service.update("tenant-1", "svc-1", { active: false }, actor);
+
+      expect(services.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it("SVC-02: re-checks uniqueness when reactivating a retired service", async () => {
+      vi.mocked(services.findOne).mockResolvedValue(baseService({ active: false }));
+      services.__queryBuilder.getOne.mockResolvedValueOnce({ id: "svc-2" } as Service);
+
+      await expect(
+        service.update("tenant-1", "svc-1", { active: true }, actor),
+      ).rejects.toMatchObject({ code: "SERVICE_NAME_TAKEN" });
     });
   });
 });

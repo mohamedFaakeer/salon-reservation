@@ -20,6 +20,7 @@ import { GiftCard } from "../entities/gift-card.entity";
 import { Payment } from "../entities/payment.entity";
 import type { Tenant } from "../entities/tenant.entity";
 import { colomboNow } from "../availability/time.util";
+import { formatCents } from "../common/money.util";
 import { generateGiftCardCode, normalizeGiftCardCode } from "./gift-card-code.util";
 import type { GiftCardView } from "./gift-card.types";
 // CustomerService/AuditService must stay VALUE imports: NestJS resolves
@@ -343,8 +344,4 @@ export class GiftCardService {
       voidReason: card.voidReason,
     };
   }
-}
-
-function formatCents(cents: number): string {
-  return `LKR ${(cents / 100).toLocaleString("en-LK", { minimumFractionDigits: 2 })}`;
 }

@@ -34,6 +34,7 @@ import type { Tenant } from "../entities/tenant.entity";
 import { canBook } from "../availability/availability.engine";
 import { colomboNow, daysBetween, localMinutesToUtc } from "../availability/time.util";
 import { isExclusionViolation, isUniqueViolation } from "../common/postgres-errors.util";
+import { formatCents } from "../common/money.util";
 import { generateBookingReference } from "../appointment/booking-reference.util";
 import { normalizePhone } from "../customer/phone.util";
 // AvailabilityService/CustomerService/AuditService must stay VALUE imports:
@@ -1562,9 +1563,4 @@ export class BookingService {
       };
     });
   }
-}
-
-/** For the one error message that has to quote an amount back. */
-function formatCents(cents: number): string {
-  return `LKR ${(cents / 100).toLocaleString("en-LK", { minimumFractionDigits: 2 })}`;
 }

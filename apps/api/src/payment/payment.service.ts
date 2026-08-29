@@ -24,6 +24,7 @@ import { Appointment } from "../entities/appointment.entity";
 import { AppointmentServiceLine } from "../entities/appointment-service.entity";
 import type { Tenant } from "../entities/tenant.entity";
 import { isUniqueViolation } from "../common/postgres-errors.util";
+import { formatCents } from "../common/money.util";
 // AuditService/PaymentProviderResolver/NotificationService must stay VALUE
 // imports: NestJS resolves constructor injection via design:paramtypes
 // metadata at runtime; `import type` would erase them and break DI.
@@ -155,11 +156,16 @@ export class PaymentService {
       return { payment: existingByKey, isNew: false };
     }
 
-    if (input.amountCents > appointment.balanceCents) {
+    // CASH is the one method where "more than the balance" is a completely
+    // normal real-world event (a customer pays with round notes) rather than
+    // an input mistake — APT-10. Every other method still hard-rejects it:
+    // a card/bank-transfer/gift-card/package amount is exactly what moves,
+    // there is no physical note to hand "change" back from.
+    if (input.amountCents > appointment.balanceCents && input.method !== PaymentMethod.CASH) {
       throw new ApiError({
         statusCode: 400,
         code: "PAYMENT_EXCEEDS_BALANCE",
-        message: `Amount exceeds the outstanding balance of ${appointment.balanceCents} cents.`,
+        message: `Amount exceeds the outstanding balance of ${formatCents(appointment.balanceCents)}.`,
       });
     }
 
@@ -188,12 +194,26 @@ export class PaymentService {
     // `finalAmountCents` may end up lower than `input.amountCents` — a
     // package's `redeemOne` applies `min(unitPriceCentsSnapshot, maxCents)`,
     // never a fungible balance, so what gets recorded on the row can be less
-    // than what was requested (never more). The staff-recorded path resolves
-    // that here; the booking flow (`BookingService.confirmHold`) already
-    // resolved it itself and passes the applied figure as `input.amountCents`
-    // directly, with `packageRedemptionId` pre-set.
+    // than what was requested (never more, except the cash-change case just
+    // below). The staff-recorded path resolves that here; the booking flow
+    // (`BookingService.confirmHold`) already resolved it itself and passes
+    // the applied figure as `input.amountCents` directly, with
+    // `packageRedemptionId` pre-set.
     let packageRedemptionId = input.packageRedemptionId ?? null;
     let finalAmountCents = input.amountCents;
+
+    // APT-10: cash tendered over the balance — apply exactly what's owed,
+    // hand the rest back as change. `tenderedCents`/`changeCents` stay null
+    // for every ordinary payment (the overwhelming majority); only an
+    // over-tendered cash payment ever populates them, so old rows and every
+    // non-cash payment read exactly as before.
+    let tenderedCents: number | null = null;
+    let changeCents: number | null = null;
+    if (input.method === PaymentMethod.CASH && input.amountCents > appointment.balanceCents) {
+      tenderedCents = input.amountCents;
+      finalAmountCents = appointment.balanceCents;
+      changeCents = tenderedCents - finalAmountCents;
+    }
     if (input.method === PaymentMethod.PACKAGE_CREDIT && !packageRedemptionId) {
       if (!input.packageCode) {
         throw new ApiError({
@@ -244,6 +264,8 @@ export class PaymentService {
           recordedAt: new Date(),
           giftCardId,
           packageRedemptionId,
+          tenderedCents,
+          changeCents,
         }),
       );
     } catch (err) {
@@ -272,6 +294,7 @@ export class PaymentService {
           amountCents: finalAmountCents,
           method: input.method,
           type: input.type,
+          ...(changeCents !== null ? { tenderedCents, changeCents } : {}),
         },
       },
       manager,
@@ -316,7 +339,7 @@ export class PaymentService {
       throw new ApiError({
         statusCode: 400,
         code: "REFUND_EXCEEDS_PAYMENT",
-        message: `Amount exceeds the refundable balance of ${refundable} cents.`,
+        message: `Amount exceeds the refundable balance of ${formatCents(refundable)}.`,
       });
     }
 

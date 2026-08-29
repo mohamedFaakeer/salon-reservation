@@ -9,6 +9,7 @@ import {
   fetchAllLeave,
   fetchSchedules,
   fetchStaff,
+  fetchStaffServiceAssignments,
   type ClosureRecord,
   type StaffLeaveRecord,
   type StaffMember,
@@ -58,6 +59,7 @@ export default function AvailabilityPage() {
   const [tab, setTab] = useState<Tab>("rota");
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [schedules, setSchedules] = useState<WorkingSchedule[]>([]);
+  const [assignments, setAssignments] = useState<Record<string, string[]>>({});
   const [leave, setLeave] = useState<Record<string, StaffLeaveRecord[]>>({});
   const [closures, setClosures] = useState<ClosureRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,19 +79,22 @@ export default function AvailabilityPage() {
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    Promise.all([fetchStaff(), fetchSchedules(), fetchClosures(), fetchAllLeave()])
-      .then(([staffRows, scheduleRows, closureRows, leaveRows]) => {
+    Promise.all([fetchStaff(), fetchSchedules(), fetchClosures(), fetchAllLeave(), fetchStaffServiceAssignments()])
+      .then(([staffRows, scheduleRows, closureRows, leaveRows, assignmentRows]) => {
         const active = staffRows.filter((s) => s.active);
         setStaff(active);
         setSchedules(scheduleRows);
         setClosures(closureRows);
-        // Four requests, whatever the size of the team — this used to ask for
-        // leave once per stylist.
+        // Five requests, whatever the size of the team — this used to ask for
+        // leave once per stylist. Assignments are only needed to tell "nobody's
+        // set this stylist up yet" apart from "qualified and being wasted"
+        // (STF-08) in the no-hours banner below.
         const byStaff: Record<string, StaffLeaveRecord[]> = {};
         for (const row of leaveRows) {
           (byStaff[row.staffId] ??= []).push(row);
         }
         setLeave(byStaff);
+        setAssignments(Object.fromEntries(assignmentRows.map((a) => [a.staffId, a.serviceIds])));
       })
       .catch((err: unknown) => {
         setError(err instanceof ApiRequestError ? err.message : "Could not load availability.");
@@ -208,6 +213,7 @@ export default function AvailabilityPage() {
             schedules={schedules}
             leave={leave}
             weekDates={weekDates}
+            assignments={assignments}
             onEditDay={(member, dayOfWeek, existing) =>
               canManage ? setEditingDay({ member, dayOfWeek, existing }) : undefined
             }

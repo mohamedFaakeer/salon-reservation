@@ -220,6 +220,13 @@ export interface PaymentRecord {
   /** Loaded by the list endpoint so a row can name who paid, and for what. */
   customer?: { id: string; firstName: string; lastName: string; phone: string } | null;
   appointment?: { id: string; bookingReference: string; startTime: string } | null;
+  /**
+   * Cash-only (APT-10): set together, only when the cash handed over
+   * exceeded the balance due. `amountCents` above is always the amount
+   * actually applied to the invoice either way.
+   */
+  tenderedCents?: number | null;
+  changeCents?: number | null;
 }
 
 export interface DashboardToday {
@@ -1789,7 +1796,13 @@ export interface InvoiceSnapshot {
   appointment: { bookingReference: string; startTime: string; staffName: string };
   lines: InvoiceSnapshotLine[];
   billDiscount: { type: string; value: number; cents: number; reason: string | null } | null;
-  payments: Array<{ method: string; amountCents: number; recordedAt: string | null }>;
+  payments: Array<{
+    method: string;
+    amountCents: number;
+    recordedAt: string | null;
+    tenderedCents: number | null;
+    changeCents: number | null;
+  }>;
 }
 
 export interface InvoiceRecord {

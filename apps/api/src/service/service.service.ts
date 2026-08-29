@@ -47,11 +47,13 @@ export class ServiceService {
         });
       }
     }
+    const name = dto.name.trim();
+    await this.assertNameAvailable(tenantId, name);
     return this.services.save(
       this.services.create({
         tenantId,
         branchId: null,
-        name: dto.name.trim(),
+        name,
         description: dto.description?.trim() ?? null,
         category: dto.category?.trim() ?? null,
         durationMin: dto.durationMin,
@@ -59,6 +61,35 @@ export class ServiceService {
         active: true,
       }),
     );
+  }
+
+  /**
+   * SVC-02: a service name must be unique among a tenant's *active*
+   * services, case-insensitively — mirrors the partial DB index
+   * (`IDX_service_tenantId_name_active`) so a collision is caught here with
+   * a friendly error rather than only surfacing as a raw constraint
+   * violation. Checked whenever the row being saved will end up active
+   * (a brand-new service, a rename, or a retired service being reactivated)
+   * — a retired service's own name is never in contention, matching the
+   * confirmed scope: retiring frees the name for reuse.
+   */
+  private async assertNameAvailable(tenantId: string, name: string, excludeId?: string): Promise<void> {
+    const qb = this.services
+      .createQueryBuilder("s")
+      .where("s.tenantId = :tenantId", { tenantId })
+      .andWhere("s.active = true")
+      .andWhere("LOWER(s.name) = LOWER(:name)", { name });
+    if (excludeId) {
+      qb.andWhere("s.id != :excludeId", { excludeId });
+    }
+    const clash = await qb.getOne();
+    if (clash) {
+      throw new ApiError({
+        statusCode: 409,
+        code: "SERVICE_NAME_TAKEN",
+        message: `An active service named "${name}" already exists.`,
+      });
+    }
   }
 
   async list(tenantId: string): Promise<Service[]> {
@@ -256,6 +287,12 @@ export class ServiceService {
 
     const priceCentsBefore = service.priceCents;
     const durationMinBefore = service.durationMin;
+
+    const nextName = dto.name !== undefined ? dto.name.trim() : service.name;
+    const nextActive = dto.active !== undefined ? dto.active : service.active;
+    if (nextActive) {
+      await this.assertNameAvailable(tenantId, nextName, id);
+    }
 
     if (dto.name !== undefined) service.name = dto.name.trim();
     if (dto.description !== undefined) service.description = dto.description.trim();

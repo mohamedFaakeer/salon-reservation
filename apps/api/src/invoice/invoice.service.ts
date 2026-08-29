@@ -326,6 +326,8 @@ export class InvoiceService {
         method: p.method,
         amountCents: p.amountCents,
         recordedAt: (p.recordedAt ?? p.createdAt)?.toISOString() ?? null,
+        tenderedCents: p.tenderedCents,
+        changeCents: p.changeCents,
       })),
     };
   }

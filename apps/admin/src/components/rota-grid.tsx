@@ -19,6 +19,7 @@ export function RotaGrid({
   leave,
   weekDates,
   onEditDay,
+  assignments,
 }: {
   staff: StaffMember[];
   schedules: WorkingSchedule[];
@@ -27,6 +28,16 @@ export function RotaGrid({
   /** The seven dates of the displayed week, Monday first, as YYYY-MM-DD. */
   weekDates: string[];
   onEditDay: (member: StaffMember, dayOfWeek: number, existing?: WorkingSchedule) => void;
+  /**
+   * staffId -> assigned serviceIds (same shape `SkillsMatrix` takes) —
+   * optional so a caller with no reason to load it can skip the request.
+   * Lets the no-hours banner tell "nobody's set this person up yet" apart
+   * from "this person is qualified and being wasted" (STF-08): a stylist
+   * with services assigned but no working hours is bookable-in-theory and
+   * invisible-in-practice, which is a worse, more silent gap than a
+   * brand-new stylist nobody has touched yet.
+   */
+  assignments?: Record<string, string[]>;
 }) {
   const byStaffDay = new Map<string, WorkingSchedule>();
   for (const s of schedules) {
@@ -35,6 +46,17 @@ export function RotaGrid({
 
   function leaveOn(staffId: string, date: string): StaffLeaveRecord | undefined {
     return (leave[staffId] ?? []).find((l) => date >= l.startDate && date <= l.endDate);
+  }
+
+  function skillCount(staffId: string): number {
+    return assignments?.[staffId]?.length ?? 0;
+  }
+
+  function noHoursMessage(member: StaffMember): string {
+    const n = skillCount(member.id);
+    return n > 0
+      ? `${member.name} is qualified for ${n} service${n === 1 ? "" : "s"} but has no working hours set — they can't actually be booked for any of them.`
+      : `No hours set — ${member.name} can't be booked on any day`;
   }
 
   return (
@@ -61,7 +83,7 @@ export function RotaGrid({
                 <span className="flex-1 font-medium text-slate-900">{member.name}</span>
                 {!worksAnyDay ? (
                   <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
-                    no hours
+                    {skillCount(member.id) > 0 ? "qualified, no hours" : "no hours"}
                   </span>
                 ) : null}
               </summary>
@@ -72,7 +94,7 @@ export function RotaGrid({
                       data-testid={`mobile-rota-nohours-${member.id}`}
                       className="text-xs font-medium text-amber-800"
                     >
-                      No hours set — {member.name} can&apos;t be booked on any day
+                      {noHoursMessage(member)}
                     </span>
                     <button
                       type="button"
@@ -174,7 +196,7 @@ export function RotaGrid({
                       data-testid={`rota-nohours-${member.id}`}
                       className="text-xs font-medium text-amber-800"
                     >
-                      No hours set — {member.name} can&apos;t be booked on any day
+                      {noHoursMessage(member)}
                     </span>
                     <button
                       type="button"

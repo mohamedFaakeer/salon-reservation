@@ -2250,3 +2250,59 @@ pages or entity fields needed for this pass; `cancelUrl`/`rescheduleUrl`/
     forever" default is the safe, industry-standard posture and matches
     CLAUDE.md already, but isn't a substitute for real legal confirmation
     if this is ever tested by a dispute).
+
+## 52. Three UAT fixes: STF-08's silent gap, SVC-02's reversed uniqueness rule, APT-10's cash change (2026-08-29)
+
+1. **STF-08 — a stylist with services assigned but no working hours was a
+   silent, undiscoverable gap.** `skills-matrix.tsx` already banners the
+   inverse failure ("no stylist qualified for X"); nothing surfaced the
+   reciprocal one. Fixed by teaching `rota-grid.tsx`'s existing no-hours
+   banner the difference — it now takes an optional `assignments` map (same
+   shape `SkillsMatrix` already uses) and says "{name} is qualified for N
+   service(s) but has no working hours set" instead of the generic message,
+   whenever that stylist has ≥1 assigned service. `apps/admin/.../availability
+   /page.tsx` now also fetches `fetchStaffServiceAssignments()` (the same
+   bulk call `/staff`'s matrix tab already relies on) to feed it. No new
+   endpoint, no new banner component — a smarter copy branch on an existing
+   one.
+2. **SVC-02 — reversed, on purpose, not a bug fix.** The UAT test's own
+   note called the lack of a uniqueness constraint "as designed"; the user
+   asked for that design reversed. Scope, confirmed with the user: unique
+   among a tenant's *active* services only, case-insensitive — retiring a
+   service frees its name. Enforced twice: a partial DB index
+   (`IDX_service_tenantId_name_active`, `WHERE active = true`) as the real
+   constraint, and a `ServiceService.assertNameAvailable()` pre-check for a
+   friendly `SERVICE_NAME_TAKEN` error ahead of it — checked on create, on
+   any rename, and on reactivating a retired service (which could
+   reintroduce a collision the row's own history doesn't know about).
+   **Migration safety, not assumed away:** SVC-02's own UAT run deliberately
+   created a real duplicate-named pair in production to prove the old
+   behavior — a naive unique constraint would fail against that today. The
+   migration renames every duplicate but the newest per colliding group
+   (`"Name (duplicate 2)"`, `"(duplicate 3)"`, ...) *before* adding the
+   index, automatically, no manual cleanup required.
+3. **APT-10 — cash tendered over the balance is now accepted, not
+   rejected; every other payment method still hard-rejects it.** A card,
+   bank transfer, gift card, or package amount is exactly what moves — there
+   is no physical note to hand change back from, so those keep today's
+   `PAYMENT_EXCEEDS_BALANCE` behavior unchanged. Cash alone gets the
+   real-world treatment: tendering Rs.1,000 against a Rs.600 balance applies
+   exactly Rs.600 to the invoice and records Rs.400 as change.
+   `Payment.amountCents` keeps meaning exactly what it always meant (the
+   amount actually applied) — every existing report, aggregate, and the
+   offboarding purge's "never touch Payment" guarantee all stay correct
+   with zero changes. Two new nullable columns, `tenderedCents`/
+   `changeCents`, populated only for an over-tendered cash payment; null on
+   every payment recorded before this shipped and on every ordinary payment
+   after it. Surfaced on the receipt/invoice (in-app, email, and the admin
+   payment drawer) as "(tendered Rs.X, change Rs.Y)" alongside the applied
+   amount, never replacing it.
+4. **Incidentally consolidated:** `formatCents()` existed as three separate,
+   character-for-character-identical private copies (`booking.service.ts`,
+   `gift-card.service.ts`, and now needed again in `payment.service.ts`)
+   for the exact same "quote an amount back in an error message" need.
+   Extracted to `common/money.util.ts` rather than adding a fourth copy;
+   also fixed `payment.service.ts`'s two error messages
+   (`PAYMENT_EXCEEDS_BALANCE`, `REFUND_EXCEEDS_PAYMENT`) that were
+   showing raw cents ("60000 cents") instead of currency, the same
+   formatting gap this consolidation exists to prevent from recurring.

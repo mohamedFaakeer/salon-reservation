@@ -172,5 +172,8 @@ export interface InvoiceSnapshot {
     method: string;
     amountCents: number;
     recordedAt: string | null;
+    /** Cash-only (APT-10) — set together, only when tendered exceeded the balance. */
+    tenderedCents: number | null;
+    changeCents: number | null;
   }>;
 }

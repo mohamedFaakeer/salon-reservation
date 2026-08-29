@@ -865,31 +865,45 @@ describe("BookingService", () => {
 
     describe("CONFIRMED — delegates to the real reschedule engine, silently", () => {
       it("resolves to the same time-of-day today when that slot is free, without notifying", async () => {
-        const appointment = fakeAppointment({
-          status: AppointmentStatus.CONFIRMED,
-          startTime: new Date("2020-01-01T04:00:00.000Z"), // ~09:30 Colombo local
-          endTime: new Date("2020-01-01T04:30:00.000Z"),
-        });
-        vi.mocked(lineRepo.find).mockResolvedValue([
-          {
-            serviceId: "svc-1",
-            nameSnapshot: "Cut",
-            durationMinSnapshot: 30,
-            priceCentsSnapshot: 5000,
-            status: "ACTIVE",
-          } as AppointmentServiceLine,
-        ]);
+        // This test resolves "today at ~09:30 Colombo" and asks the real
+        // lead-time check to accept it — which only holds if the real clock
+        // happens to be before ~07:30 Colombo when the suite runs (09:30
+        // minus the tenant's 120-minute lead time). Pinning "now" here makes
+        // the result independent of what hour of the day this actually runs
+        // at, rather than depending on it (previously flaky for exactly that
+        // reason — confirmed via git stash to fail identically on a clean
+        // tree, any time after ~07:30 Colombo).
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date("2026-01-01T20:30:00.000Z")); // 2026-01-02, 02:00 Colombo — hours before the 09:30 target
+        try {
+          const appointment = fakeAppointment({
+            status: AppointmentStatus.CONFIRMED,
+            startTime: new Date("2020-01-01T04:00:00.000Z"), // ~09:30 Colombo local
+            endTime: new Date("2020-01-01T04:30:00.000Z"),
+          });
+          vi.mocked(lineRepo.find).mockResolvedValue([
+            {
+              serviceId: "svc-1",
+              nameSnapshot: "Cut",
+              durationMinSnapshot: 30,
+              priceCentsSnapshot: 5000,
+              status: "ACTIVE",
+            } as AppointmentServiceLine,
+          ]);
 
-        const result = await service.moveAppointmentToToday(fakeTenant(), appointment, { actorUserId: "user-1" });
+          const result = await service.moveAppointmentToToday(fakeTenant(), appointment, { actorUserId: "user-1" });
 
-        expect(result).toBeDefined();
-        // The real reschedule engine ran (a new appointment row via createAppointmentAtomic's insert).
-        expect(appointmentsRepo.save).toHaveBeenCalled();
-        expect(audit.record).toHaveBeenCalledWith(
-          expect.objectContaining({ action: "APPOINTMENT_DATE_CORRECTED" }),
-          expect.anything(),
-        );
-        expect(notifications.fire).not.toHaveBeenCalled();
+          expect(result).toBeDefined();
+          // The real reschedule engine ran (a new appointment row via createAppointmentAtomic's insert).
+          expect(appointmentsRepo.save).toHaveBeenCalled();
+          expect(audit.record).toHaveBeenCalledWith(
+            expect.objectContaining({ action: "APPOINTMENT_DATE_CORRECTED" }),
+            expect.anything(),
+          );
+          expect(notifications.fire).not.toHaveBeenCalled();
+        } finally {
+          vi.useRealTimers();
+        }
       });
 
       it("honours an explicit newStart from the slot picker instead of guessing the same time", async () => {

@@ -98,6 +98,20 @@ export class Payment {
   @Column({ type: "uuid", nullable: true })
   retailSaleId!: string | null;
 
+  /**
+   * Cash-only, APT-10: what was physically handed over, when it exceeded
+   * the balance. Null for every ordinary payment — `amountCents` above
+   * already holds the exact amount actually applied to the invoice either
+   * way, so every existing report/aggregate reading `amountCents` needs no
+   * change. Only ever set together with `changeCents`.
+   */
+  @Column({ type: "int", nullable: true })
+  tenderedCents!: number | null;
+
+  /** `tenderedCents - amountCents` — the change actually handed back. Null unless `tenderedCents` is set. */
+  @Column({ type: "int", nullable: true })
+  changeCents!: number | null;
+
   @CreateDateColumn({ type: "timestamptz" })
   createdAt!: Date;
 
