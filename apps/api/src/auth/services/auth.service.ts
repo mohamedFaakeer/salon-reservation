@@ -13,6 +13,17 @@ import { TokenService } from "./token.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { AuditService } from "../../audit/audit.service";
 
+/**
+ * Account-level lockout thresholds (DECISIONS.md's login-security entry).
+ * Deliberately below `RateLimitGuard`'s per-minute limits (10/IP, 5/email
+ * per minute) — this exists specifically to catch the slow, patient
+ * attacker that per-minute rate limiting never trips: one guess every ten
+ * seconds is comfortably under 5/minute, but is still 5 wrong passwords in
+ * under a minute against this longer, per-account window.
+ */
+const LOGIN_LOCKOUT_THRESHOLD = 5;
+const LOGIN_LOCKOUT_WINDOW_MS = 15 * 60_000;
+
 export interface AuthResult {
   accessToken: string;
   refreshToken: string;
@@ -43,6 +54,28 @@ export class AuthService {
   ): Promise<AuthResult> {
     const email = dto.email.toLowerCase();
     const user = await this.users.findOne({ where: { email } });
+
+    // Checked before verifying the password, on the same entityId
+    // convention LOGIN_FAILED already audits under (`user?.id ?? email`) —
+    // an unknown email degrades gracefully to a pure sliding window, since
+    // no LOGIN_SUCCEEDED can ever exist for a plain email string.
+    const lockoutEntityId = user?.id ?? email;
+    const lockedUntil = await this.audit.lockoutExpiry(
+      lockoutEntityId,
+      "LOGIN_FAILED",
+      "LOGIN_SUCCEEDED",
+      LOGIN_LOCKOUT_THRESHOLD,
+      LOGIN_LOCKOUT_WINDOW_MS,
+    );
+    if (lockedUntil) {
+      const minutesLeft = Math.max(1, Math.ceil((lockedUntil.getTime() - Date.now()) / 60_000));
+      throw new ApiError({
+        statusCode: 429,
+        code: "ACCOUNT_TEMPORARILY_LOCKED",
+        message: `Too many incorrect attempts. Try again in ${minutesLeft} minute${minutesLeft === 1 ? "" : "s"}.`,
+      });
+    }
+
     if (
       !user ||
       !(await this.password.verify(user.passwordHash, dto.password))

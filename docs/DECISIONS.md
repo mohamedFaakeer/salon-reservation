@@ -2306,3 +2306,60 @@ pages or entity fields needed for this pass; `cancelUrl`/`rescheduleUrl`/
    (`PAYMENT_EXCEEDS_BALANCE`, `REFUND_EXCEEDS_PAYMENT`) that were
    showing raw cents ("60000 cents") instead of currency, the same
    formatting gap this consolidation exists to prevent from recurring.
+
+## 53. Admin login brute-force protection — account-level lockout (2026-08-29)
+
+1. **The ask was research-first, not build-first.** The user asked how to
+   stop someone deliberately hammering the admin login with wrong
+   passwords, explicitly wanting the industry-standard approaches weighed
+   before anything was built. Researched what already existed (this
+   session's own earlier work) before proposing anything new.
+2. **What already existed and was already enough for a fast attacker:**
+   `RateLimitGuard` enforces 10 attempts/minute per IP and 5/minute per
+   email on `/auth/login`, and every failure is already audited
+   (`LOGIN_FAILED`) and already escalates to a HIGH-severity platform-admin
+   email after 5 failures in 10 minutes (the monitoring feature). **The gap
+   only a slow attacker exploits:** one guess every 10 seconds is
+   comfortably under 5/minute forever, with the identical generic "Email or
+   password is incorrect." on every attempt, no matter how many.
+3. **CAPTCHA and exponential backoff were both considered and declined.**
+   CAPTCHA is real friction for a small, known user base (salon staff, not
+   the general public) plus a new third-party dependency, disproportionate
+   to the actual threat here. Exponential backoff (each failure doubling
+   the delay before the next is even evaluated) is effective but adds real
+   latency to the hot login path and its own footgun risk (an attacker who
+   just needs someone's email can lock out a real user's normal login
+   speed). **Chosen: account-level temporary lockout** — 5 wrong passwords
+   for the same account within 15 minutes locks that account for the
+   remainder of the window, independent of source IP. This is the standard
+   pattern most SaaS admin panels use for exactly this gap.
+4. **Built almost entirely from data that already existed.**
+   `AuditService.lockoutExpiry()` is the only new method — it reuses the
+   `LOGIN_FAILED`/`LOGIN_SUCCEEDED` audit trail every login already writes,
+   rather than inventing new tracking state or a stored "locked" flag.
+   `AuthService.login()` checks it before ever calling into
+   `PasswordService.verify()`, on the exact same entityId convention
+   `LOGIN_FAILED` already audits under (`user?.id ?? email`) — an unknown
+   email degrades gracefully to a pure sliding window, since no
+   `LOGIN_SUCCEEDED` can ever exist for a plain email string.
+5. **A genuine login resets the count — an improvement over the plan's own
+   literal first draft, not a silent scope change.** The plan as approved
+   said "no separate unlock state needs to be stored," which is true, but
+   a pure sliding window would keep counting failures from *before* a
+   correct password, which is needless friction for a real user who typed
+   their own password wrong a few times before getting it right. Instead,
+   `lockoutExpiry()` only counts failures *after* the account's own most
+   recent success — the standard OWASP-recommended behavior — computed from
+   the same two audit actions with one extra indexed lookup, no new
+   storage.
+6. **The locked-out response is honest, not vague.** `429
+   ACCOUNT_TEMPORARILY_LOCKED`, "Too many incorrect attempts. Try again in
+   N minutes." — a real improvement over today's identical, unchanging 401
+   on every attempt. `apps/admin`'s login page needed zero changes: it
+   already surfaces whatever message the API returns verbatim.
+7. **Scoped to admin/staff login only** (`AuthService`), matching the
+   user's own framing and the approved plan. `customer-auth.service.ts`
+   has the identical `LOGIN_FAILED`/`LOGIN_SUCCEEDED` audit shape already
+   and could take the same `lockoutExpiry()` call with no new backend
+   work — flagged as a natural follow-up if wanted, not built here since it
+   wasn't what was scoped and approved.

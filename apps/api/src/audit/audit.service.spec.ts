@@ -12,7 +12,10 @@ function mockRepo<T extends ObjectLiteral>() {
     where: vi.fn().mockReturnThis(),
     andWhere: vi.fn().mockReturnThis(),
     groupBy: vi.fn().mockReturnThis(),
+    orderBy: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
     getRawMany: vi.fn(async () => []),
+    getMany: vi.fn(async () => []),
   };
   const repo = {
     create: vi.fn((e: Partial<T>) => e as T),
@@ -30,7 +33,13 @@ function mockAlerts(): PlatformAlertService {
 }
 
 describe("AuditService", () => {
-  let logs: Repository<AuditLog> & { __queryBuilder: { getRawMany: ReturnType<typeof vi.fn> } };
+  let logs: Repository<AuditLog> & {
+    __queryBuilder: {
+      getRawMany: ReturnType<typeof vi.fn>;
+      getMany: ReturnType<typeof vi.fn>;
+      andWhere: ReturnType<typeof vi.fn>;
+    };
+  };
   let users: Repository<User>;
   let tenants: Repository<Tenant>;
   let alerts: PlatformAlertService;
@@ -191,6 +200,61 @@ describe("AuditService", () => {
 
       expect(result.get("user-1")).toBe(5);
       expect(result.get("user-2")).toBe(1);
+    });
+  });
+
+  describe("lockoutExpiry", () => {
+    const THRESHOLD = 5;
+    const WINDOW_MS = 15 * 60_000;
+
+    it("returns null when there are fewer failures than the threshold", async () => {
+      vi.mocked(logs.findOne).mockResolvedValue(null); // no prior success
+      logs.__queryBuilder.getMany.mockResolvedValue([{ createdAt: new Date() } as AuditLog]);
+
+      const result = await service.lockoutExpiry("user-1", "LOGIN_FAILED", "LOGIN_SUCCEEDED", THRESHOLD, WINDOW_MS);
+
+      expect(result).toBeNull();
+    });
+
+    it("returns the expiry moment (oldest of the threshold batch, plus the window) once the threshold is met", async () => {
+      vi.mocked(logs.findOne).mockResolvedValue(null);
+      const now = Date.now();
+      const failures = [4, 3, 2, 1, 0].map((minAgo) => ({ createdAt: new Date(now - minAgo * 60_000) }) as AuditLog);
+      logs.__queryBuilder.getMany.mockResolvedValue(failures);
+
+      const result = await service.lockoutExpiry("user-1", "LOGIN_FAILED", "LOGIN_SUCCEEDED", THRESHOLD, WINDOW_MS);
+
+      // The oldest of the 5 (4 minutes ago) plus the 15-minute window.
+      expect(result?.getTime()).toBe(failures[4].createdAt.getTime() + WINDOW_MS);
+    });
+
+    it("returns null once the oldest of the threshold batch has already aged past the window", async () => {
+      vi.mocked(logs.findOne).mockResolvedValue(null);
+      const now = Date.now();
+      // All 5 failures happened, but the oldest was 20 minutes ago — outside a 15-minute window.
+      const failures = [20, 19, 18, 17, 16].map((minAgo) => ({ createdAt: new Date(now - minAgo * 60_000) }) as AuditLog);
+      logs.__queryBuilder.getMany.mockResolvedValue(failures);
+
+      const result = await service.lockoutExpiry("user-1", "LOGIN_FAILED", "LOGIN_SUCCEEDED", THRESHOLD, WINDOW_MS);
+
+      expect(result).toBeNull();
+    });
+
+    it("only counts failures since the account's own most recent success — a success resets the count", async () => {
+      const now = Date.now();
+      // Succeeded 2 minutes ago; the query builder is expected to be scoped
+      // to failures after that point (asserted via the andWhere call, since
+      // this mock can't filter the canned failures list itself).
+      vi.mocked(logs.findOne).mockResolvedValue({ createdAt: new Date(now - 2 * 60_000) } as AuditLog);
+      logs.__queryBuilder.getMany.mockResolvedValue([]); // nothing since the success
+
+      const result = await service.lockoutExpiry("user-1", "LOGIN_FAILED", "LOGIN_SUCCEEDED", THRESHOLD, WINDOW_MS);
+
+      expect(result).toBeNull();
+      expect(logs.__queryBuilder.andWhere).toHaveBeenCalledWith(
+        'a."createdAt" > :lastSuccess',
+        expect.objectContaining({ lastSuccess: expect.any(Date) }),
+      );
     });
   });
 

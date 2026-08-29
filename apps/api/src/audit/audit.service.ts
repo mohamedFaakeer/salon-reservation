@@ -244,4 +244,48 @@ export class AuditService {
       .getRawMany<{ entityId: string; count: string }>();
     return new Map(rows.map((r) => [r.entityId, Number(r.count)]));
   }
+
+  /**
+   * Account-level brute-force lockout (DECISIONS.md's login-security
+   * entry) — complements `RateLimitGuard`'s IP/per-minute limits, which a
+   * slow, patient attacker (one guess every ten seconds) never trips.
+   * Returns the moment this entity's lockout lifts, or `null` if it isn't
+   * currently locked. A successful login resets the count — the failures
+   * counted are only those *after* the entity's own most recent
+   * `successAction`, the standard OWASP-recommended behavior — rather than
+   * a pure sliding window that would keep punishing someone for mistakes
+   * they've since corrected.
+   */
+  async lockoutExpiry(
+    entityId: string,
+    failureAction: string,
+    successAction: string,
+    threshold: number,
+    windowMs: number,
+  ): Promise<Date | null> {
+    const lastSuccess = await this.logs.findOne({
+      where: { entityId, action: successAction },
+      order: { createdAt: "DESC" },
+    });
+
+    const qb = this.logs
+      .createQueryBuilder("a")
+      .where("a.action = :action", { action: failureAction })
+      .andWhere('a."entityId" = :entityId', { entityId })
+      .orderBy('a."createdAt"', "DESC")
+      .limit(threshold);
+    if (lastSuccess) {
+      qb.andWhere('a."createdAt" > :lastSuccess', { lastSuccess: lastSuccess.createdAt });
+    }
+    const recentFailures = await qb.getMany();
+    if (recentFailures.length < threshold) {
+      return null;
+    }
+
+    // The oldest of the most recent `threshold` failures is the one whose
+    // age determines when the count next drops below the threshold.
+    const oldestOfBatch = recentFailures[recentFailures.length - 1];
+    const expiresAt = new Date(oldestOfBatch.createdAt.getTime() + windowMs);
+    return expiresAt > new Date() ? expiresAt : null;
+  }
 }
