@@ -1,9 +1,14 @@
 import type { ObjectLiteral, Repository } from "typeorm";
 import { ApiError } from "@salon/shared";
 import { SessionService } from "./session.service";
+import type { AuditService } from "../../audit/audit.service";
 import type { RefreshSession } from "../../entities/refresh-session.entity";
 import type { User } from "../../entities/user.entity";
 import type { UserTenantRole } from "../../entities/user-tenant-role.entity";
+
+function mockAudit(): AuditService {
+  return { record: vi.fn(async () => undefined) } as unknown as AuditService;
+}
 
 function mockRepo<T extends ObjectLiteral>() {
   const repo = {
@@ -22,12 +27,14 @@ describe("SessionService", () => {
   let refreshRepo: Repository<RefreshSession>;
   let userRepo: Repository<User>;
   let roleRepo: Repository<UserTenantRole>;
+  let audit: AuditService;
 
   beforeEach(() => {
     refreshRepo = mockRepo<RefreshSession>();
     userRepo = mockRepo<User>();
     roleRepo = mockRepo<UserTenantRole>();
-    session = new SessionService(refreshRepo, userRepo, roleRepo);
+    audit = mockAudit();
+    session = new SessionService(refreshRepo, userRepo, roleRepo, audit);
   });
 
   describe("createSession", () => {
@@ -93,7 +100,7 @@ describe("SessionService", () => {
     });
 
     it("revokes the whole family when an already-rotated token is reused", async () => {
-      const real = new SessionService(refreshRepo, userRepo, roleRepo);
+      const real = new SessionService(refreshRepo, userRepo, roleRepo, audit);
       const created = await real.createSession({ userId: "u1", ttlMs: 60_000 });
 
       const oldRow = {
@@ -118,6 +125,12 @@ describe("SessionService", () => {
           revokedAt: expect.objectContaining({ _type: "isNull" }),
         }),
         { revokedAt: expect.any(Date) },
+      );
+      // Reuse of a rotated token is a real security signal — this is what
+      // makes it show up in the super-admin monitoring feature instead of
+      // being an untraceable silent revoke.
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "REFRESH_TOKEN_REUSE_DETECTED", actorUserId: "u1" }),
       );
     });
 

@@ -15,6 +15,11 @@ import { CustomerSessionService } from "./customer-session.service";
 import { CustomerTokenService } from "./customer-token.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { CustomerOtpService } from "./customer-otp.service";
+// AuditService must stay a VALUE import: NestJS resolves constructor
+// injection via design:paramtypes metadata at runtime; `import type` would
+// erase it and break DI.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { AuditService } from "../../audit/audit.service";
 
 export interface CustomerAuthResult {
   accessToken: string;
@@ -45,6 +50,7 @@ export class CustomerAuthService {
     private readonly sessions: CustomerSessionService,
     private readonly tokens: CustomerTokenService,
     private readonly otp: CustomerOtpService,
+    private readonly audit: AuditService,
   ) {}
 
   private normalizedPhone(raw: string): string {
@@ -96,12 +102,31 @@ export class CustomerAuthService {
     const phone = this.normalizedPhone(dto.phone);
     const account = await this.accounts.findOne({ where: { phone } });
     if (!account || !(await this.password.verify(account.passwordHash, dto.password))) {
+      await this.audit.record({
+        tenantId: null,
+        actorUserId: null,
+        action: "LOGIN_FAILED",
+        entityType: "CustomerAccount",
+        entityId: account?.id ?? phone,
+        metadata: account ? {} : { attemptedPhone: phone },
+        ipAddress: ip ?? null,
+        userAgent: userAgent ?? null,
+      });
       throw new ApiError({
         statusCode: 401,
         code: "INVALID_CREDENTIALS",
         message: "Phone number or password is incorrect.",
       });
     }
+    await this.audit.record({
+      tenantId: null,
+      actorUserId: null,
+      action: "LOGIN_SUCCEEDED",
+      entityType: "CustomerAccount",
+      entityId: account.id,
+      ipAddress: ip ?? null,
+      userAgent: userAgent ?? null,
+    });
     return this.issueSession(account, ip, userAgent);
   }
 

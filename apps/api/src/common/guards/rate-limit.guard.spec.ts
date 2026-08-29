@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RateLimitGuard } from "./rate-limit.guard";
+import type { AuditService } from "../../audit/audit.service";
 
 /**
  * The limits SECURITY.md §2/§9 actually asks for: sign-in, booking creation,
@@ -182,5 +183,37 @@ describe("RateLimitGuard", () => {
       }
     }
     expect(allowed).toBe(20); // the booking limit, reached despite the spoofing
+  });
+
+  it("audits RATE_LIMIT_EXCEEDED once the limit is actually hit, without blocking the synchronous throw", () => {
+    const audit = { record: vi.fn(async () => undefined) } as unknown as AuditService;
+    const audited = new RateLimitGuard(audit);
+    const req = requestFor({
+      method: "POST",
+      path: "/api/v1/auth/login",
+      body: { email: "someone@demo.salon" },
+    });
+
+    for (let i = 0; i < 5; i += 1) {
+      audited.canActivate(contextFor(req));
+    }
+    expect(() => audited.canActivate(contextFor(req))).toThrow();
+
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "RATE_LIMIT_EXCEEDED", entityId: "sign-in" }),
+    );
+  });
+
+  it("still throws synchronously with no AuditService supplied", () => {
+    const audited = new RateLimitGuard();
+    const req = requestFor({
+      method: "POST",
+      path: "/api/v1/auth/login",
+      body: { email: "someone@demo.salon" },
+    });
+    for (let i = 0; i < 5; i += 1) {
+      audited.canActivate(contextFor(req));
+    }
+    expect(() => audited.canActivate(contextFor(req))).toThrow();
   });
 });

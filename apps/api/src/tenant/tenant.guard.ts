@@ -13,6 +13,11 @@ import { Tenant } from "../entities/tenant.entity";
 import { TenantStatus } from "../enums/tenant-status.enum";
 import { UserTenantRole } from "../entities/user-tenant-role.entity";
 import { IS_PUBLIC_KEY } from "../common/decorators/public.decorator";
+// AuditService must stay a VALUE import: NestJS resolves constructor
+// injection via design:paramtypes metadata at runtime; `import type` would
+// erase it and break DI.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { AuditService } from "../audit/audit.service";
 import type { AccessTokenPayload } from "../auth/services/token.service";
 import type {
   AuthenticatedRequest,
@@ -36,6 +41,7 @@ export class TenantGuard implements CanActivate {
     @InjectRepository(Tenant) private readonly tenants: Repository<Tenant>,
     @InjectRepository(UserTenantRole)
     private readonly roles: Repository<UserTenantRole>,
+    private readonly audit: AuditService,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -83,6 +89,7 @@ export class TenantGuard implements CanActivate {
 
     const tenant = await this.tenants.findOne({ where: { id: tenantId } });
     if (!tenant) {
+      await this.auditRejection(req, user.sub, tenantId, "TENANT_NOT_FOUND");
       throw new ApiError({
         statusCode: 403,
         code: "TENANT_NOT_FOUND",
@@ -90,6 +97,7 @@ export class TenantGuard implements CanActivate {
       });
     }
     if (tenant.status !== TenantStatus.ACTIVE) {
+      await this.auditRejection(req, user.sub, tenantId, "TENANT_SUSPENDED");
       throw new ApiError({
         statusCode: 403,
         code: "TENANT_SUSPENDED",
@@ -101,6 +109,12 @@ export class TenantGuard implements CanActivate {
       where: { userId: user.sub, tenantId },
     });
     if (!membership) {
+      // A JWT that verifies fine but no longer entitles its bearer to the
+      // tenant it claims — removed staff, a tampered claim, or a stale token
+      // from before a membership change. This is the concrete "cross-tenant
+      // access" signal available today (see DECISIONS.md monitoring entry
+      // for why true per-record IDOR-probe detection is out of scope here).
+      await this.auditRejection(req, user.sub, tenantId, "TENANT_ACCESS_DENIED");
       throw new ApiError({
         statusCode: 403,
         code: "TENANT_ACCESS_DENIED",
@@ -127,5 +141,23 @@ export class TenantGuard implements CanActivate {
       limits: resolveLimits(tenant.entitlements),
     };
     (req as AuthenticatedRequest).tenantContext = context;
+  }
+
+  private async auditRejection(
+    req: Request,
+    userId: string,
+    tenantId: string,
+    reason: "TENANT_NOT_FOUND" | "TENANT_SUSPENDED" | "TENANT_ACCESS_DENIED",
+  ): Promise<void> {
+    await this.audit.record({
+      tenantId,
+      actorUserId: userId,
+      action: "CROSS_TENANT_TOKEN_REJECTED",
+      entityType: "Tenant",
+      entityId: tenantId,
+      metadata: { reason },
+      ipAddress: req.ip ?? null,
+      userAgent: req.headers["user-agent"] ?? null,
+    });
   }
 }

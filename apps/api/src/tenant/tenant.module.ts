@@ -5,6 +5,7 @@ import { Tenant } from "../entities/tenant.entity";
 import { UserTenantRole } from "../entities/user-tenant-role.entity";
 import { BranchModule } from "../branch/branch.module";
 import { CloudinaryModule } from "../cloudinary/cloudinary.module";
+import { AuditModule } from "../audit/audit.module";
 import { TenantService } from "./tenant.service";
 import { TenantController } from "./tenant.controller";
 import { TenantGuard } from "./tenant.guard";
@@ -15,7 +16,7 @@ const globalGuard: Provider = {
 };
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Tenant, UserTenantRole]), BranchModule, CloudinaryModule],
+  imports: [TypeOrmModule.forFeature([Tenant, UserTenantRole]), BranchModule, CloudinaryModule, AuditModule],
   controllers: [TenantController],
   providers: [TenantService, TenantGuard, globalGuard],
   exports: [TenantService],

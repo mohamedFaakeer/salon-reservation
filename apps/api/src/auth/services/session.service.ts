@@ -8,6 +8,11 @@ import { User } from "../../entities/user.entity";
 import { UserTenantRole } from "../../entities/user-tenant-role.entity";
 import { UserRole } from "@salon/shared";
 import { ApiError } from "@salon/shared";
+// AuditService must stay a VALUE import: NestJS resolves constructor
+// injection via design:paramtypes metadata at runtime; `import type` would
+// erase it and break DI.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { AuditService } from "../../audit/audit.service";
 
 export interface RefreshTokenPayload {
   refreshToken: string;
@@ -39,6 +44,7 @@ export class SessionService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(UserTenantRole)
     private readonly roleRepo: Repository<UserTenantRole>,
+    private readonly audit: AuditService,
   ) {}
 
   private hashToken(token: string): string {
@@ -91,6 +97,19 @@ export class SessionService {
         { userId: session.userId, revokedAt: IsNull() },
         { revokedAt: new Date() },
       );
+      // High-signal security event — a real login token being replayed after
+      // it was already rotated out, the classic sign of a stolen/leaked
+      // session. Previously this was a silent revoke with no queryable
+      // trace; the super-admin monitoring feature needs it recorded.
+      await this.audit.record({
+        tenantId: null,
+        actorUserId: session.userId,
+        action: "REFRESH_TOKEN_REUSE_DETECTED",
+        entityType: "RefreshSession",
+        entityId: session.id,
+        ipAddress: input.ip ?? null,
+        userAgent: input.userAgent ?? null,
+      });
       throw new ApiError({
         statusCode: 401,
         code: "UNAUTHENTICATED",

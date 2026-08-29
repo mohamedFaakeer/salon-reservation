@@ -4,12 +4,16 @@ import helmet from "helmet";
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { getRepositoryToken } from "@nestjs/typeorm";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import type { Repository } from "typeorm";
 import { AppModule } from "./app.module";
 import { ApiExceptionFilter } from "./common/filters/api-exception.filter";
 import { CsrfOriginGuard } from "./common/guards/csrf-origin.guard";
 import { RateLimitGuard } from "./common/guards/rate-limit.guard";
 import { assertProductionSecrets } from "./common/security/production-secrets";
+import { AuditService } from "./audit/audit.service";
+import { ErrorLog } from "./entities/error-log.entity";
 
 async function bootstrap(): Promise<void> {
   // Before Nest builds anything: a production process must never start
@@ -32,8 +36,19 @@ async function bootstrap(): Promise<void> {
     credentials: true,
   });
 
-  app.useGlobalFilters(new ApiExceptionFilter());
-  app.useGlobalGuards(new CsrfOriginGuard(), new RateLimitGuard());
+  // RateLimitGuard and ApiExceptionFilter are instantiated manually (outside
+  // Nest's DI container) because they must be active before/around the
+  // module tree in a way `APP_GUARD`/`APP_FILTER` providers don't guarantee
+  // for this pair. `app.get(...)` after `NestFactory.create()` is the
+  // standard way to hand a manually-constructed instance a DI-resolved
+  // dependency without converting it into a full module provider — see the
+  // super-admin monitoring feature's DECISIONS.md entry for why that
+  // (bigger, riskier) refactor was deliberately avoided here.
+  const auditService = app.get(AuditService);
+  const errorLogRepo = app.get<Repository<ErrorLog>>(getRepositoryToken(ErrorLog));
+
+  app.useGlobalFilters(new ApiExceptionFilter(errorLogRepo));
+  app.useGlobalGuards(new CsrfOriginGuard(), new RateLimitGuard(auditService));
 
   app.useGlobalPipes(
     new ValidationPipe({

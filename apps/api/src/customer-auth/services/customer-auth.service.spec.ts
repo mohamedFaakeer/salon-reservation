@@ -5,6 +5,11 @@ import type { PasswordService } from "../../auth/services/password.service";
 import type { CustomerSessionService } from "./customer-session.service";
 import type { CustomerTokenService } from "./customer-token.service";
 import type { CustomerOtpService } from "./customer-otp.service";
+import type { AuditService } from "../../audit/audit.service";
+
+function mockAudit(): AuditService {
+  return { record: vi.fn(async () => undefined) } as unknown as AuditService;
+}
 
 function mockRepo<T extends ObjectLiteral>() {
   return {
@@ -35,6 +40,7 @@ describe("CustomerAuthService", () => {
   let sessions: CustomerSessionService;
   let tokens: CustomerTokenService;
   let otp: CustomerOtpService;
+  let audit: AuditService;
   let service: CustomerAuthService;
 
   beforeEach(() => {
@@ -50,7 +56,8 @@ describe("CustomerAuthService", () => {
     } as unknown as CustomerSessionService;
     tokens = { sign: vi.fn(async () => "signed-access-token") } as unknown as CustomerTokenService;
     otp = { verify: vi.fn(async () => undefined) } as unknown as CustomerOtpService;
-    service = new CustomerAuthService(accounts, password, sessions, tokens, otp);
+    audit = mockAudit();
+    service = new CustomerAuthService(accounts, password, sessions, tokens, otp, audit);
   });
 
   describe("signup", () => {
@@ -110,6 +117,7 @@ describe("CustomerAuthService", () => {
       expect(result.accessToken).toBe("signed-access-token");
       expect(result.refreshToken).toBe("raw-refresh");
       expect(result.account.phoneVerified).toBe(false);
+      expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ action: "LOGIN_SUCCEEDED" }));
     });
 
     it("rejects a wrong password without revealing which part was wrong", async () => {
@@ -120,6 +128,7 @@ describe("CustomerAuthService", () => {
         statusCode: 401,
         code: "INVALID_CREDENTIALS",
       });
+      expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ action: "LOGIN_FAILED" }));
     });
 
     it("rejects a phone with no account, same error as a wrong password", async () => {
@@ -128,6 +137,9 @@ describe("CustomerAuthService", () => {
         statusCode: 401,
         code: "INVALID_CREDENTIALS",
       });
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "LOGIN_FAILED", metadata: { attemptedPhone: "94771234567" } }),
+      );
     });
   });
 

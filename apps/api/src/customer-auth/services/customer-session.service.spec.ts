@@ -1,6 +1,7 @@
 import type { ObjectLiteral, Repository } from "typeorm";
 import { ApiError } from "@salon/shared";
 import { CustomerSessionService } from "./customer-session.service";
+import type { AuditService } from "../../audit/audit.service";
 import type { CustomerRefreshSession } from "../../entities/customer-refresh-session.entity";
 import type { CustomerAccount } from "../../entities/customer-account.entity";
 
@@ -14,13 +15,19 @@ function mockRepo<T extends ObjectLiteral>() {
   } as unknown as Repository<T>;
 }
 
+function mockAudit(): AuditService {
+  return { record: vi.fn(async () => undefined) } as unknown as AuditService;
+}
+
 describe("CustomerSessionService", () => {
   let refreshRepo: Repository<CustomerRefreshSession>;
+  let audit: AuditService;
   let session: CustomerSessionService;
 
   beforeEach(() => {
     refreshRepo = mockRepo<CustomerRefreshSession>();
-    session = new CustomerSessionService(refreshRepo);
+    audit = mockAudit();
+    session = new CustomerSessionService(refreshRepo, audit);
   });
 
   describe("createSession", () => {
@@ -77,6 +84,9 @@ describe("CustomerSessionService", () => {
       expect(refreshRepo.update).toHaveBeenCalledWith(
         expect.objectContaining({ customerAccountId: "acct-1", revokedAt: expect.objectContaining({ _type: "isNull" }) }),
         { revokedAt: expect.any(Date) },
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "REFRESH_TOKEN_REUSE_DETECTED" }),
       );
     });
 

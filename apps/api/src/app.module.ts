@@ -38,6 +38,7 @@ import { PaymentModule } from "./payment/payment.module";
 import { NotificationModule } from "./notification/notification.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { CustomerAuthModule } from "./customer-auth/customer-auth.module";
+import { MonitoringModule } from "./monitoring/monitoring.module";
 import { RequestLoggingMiddleware } from "./common/middleware/request-logging.middleware";
 
 @Module({
@@ -106,6 +107,7 @@ import { RequestLoggingMiddleware } from "./common/middleware/request-logging.mi
     NotificationModule,
     DashboardModule,
     CustomerAuthModule,
+    MonitoringModule,
   ],
   controllers: [AppController],
 })

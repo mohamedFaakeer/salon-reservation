@@ -7,6 +7,7 @@ import { Tenant } from "../entities/tenant.entity";
 import { User } from "../entities/user.entity";
 import { UserTenantRole } from "../entities/user-tenant-role.entity";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
+import { AuditModule } from "../audit/audit.module";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./services/auth.service";
 import { PasswordService } from "./services/password.service";
@@ -16,6 +17,7 @@ import { TokenService } from "./services/token.service";
 @Module({
 imports: [
   TypeOrmModule.forFeature([User, UserTenantRole, RefreshSession, Tenant, Branch]),
+  AuditModule, // AuthService/SessionService audit failed logins and refresh-token reuse
 ],
   controllers: [AuthController],
   providers: [

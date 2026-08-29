@@ -6,6 +6,11 @@ import { IsNull, LessThan, MoreThan } from "typeorm";
 import { ApiError } from "@salon/shared";
 import { CustomerRefreshSession } from "../../entities/customer-refresh-session.entity";
 import type { CustomerAccount } from "../../entities/customer-account.entity";
+// AuditService must stay a VALUE import: NestJS resolves constructor
+// injection via design:paramtypes metadata at runtime; `import type` would
+// erase it and break DI.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { AuditService } from "../../audit/audit.service";
 
 export interface CustomerRefreshTokenPayload {
   refreshToken: string;
@@ -24,6 +29,7 @@ export class CustomerSessionService {
   constructor(
     @InjectRepository(CustomerRefreshSession)
     private readonly refreshRepo: Repository<CustomerRefreshSession>,
+    private readonly audit: AuditService,
   ) {}
 
   private hashToken(token: string): string {
@@ -76,6 +82,19 @@ export class CustomerSessionService {
         { customerAccountId: session.customerAccountId, revokedAt: IsNull() },
         { revokedAt: new Date() },
       );
+      // Same high-signal event as the staff session equivalent
+      // (auth/services/session.service.ts) — a customer login token replayed
+      // after rotation, the classic sign of a stolen/leaked session.
+      await this.audit.record({
+        tenantId: null,
+        actorUserId: null,
+        action: "REFRESH_TOKEN_REUSE_DETECTED",
+        entityType: "CustomerRefreshSession",
+        entityId: session.id,
+        metadata: { customerAccountId: session.customerAccountId },
+        ipAddress: input.ip ?? null,
+        userAgent: input.userAgent ?? null,
+      });
       throw new ApiError({
         statusCode: 401,
         code: "UNAUTHENTICATED",

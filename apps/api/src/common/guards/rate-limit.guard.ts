@@ -2,6 +2,12 @@ import type { CanActivate, ExecutionContext } from "@nestjs/common";
 import { Injectable } from "@nestjs/common";
 import type { Request } from "express";
 import { ApiError } from "@salon/shared";
+// AuditService is only ever supplied via `app.get(AuditService)` in main.ts
+// (this guard is instantiated outside Nest's DI container, unlike the
+// others in the global guard chain), so it stays optional here — the
+// existing `new RateLimitGuard()` spec instantiation and any future direct
+// use without an audit sink both keep working, just without this signal.
+import type { AuditService } from "../../audit/audit.service";
 
 export interface RateLimitOptions {
   max: number;
@@ -186,7 +192,10 @@ export class RateLimitGuard implements CanActivate {
   /** Only honour X-Forwarded-For behind a proxy we control (Render sets it). */
   private readonly trustProxy = process.env.TRUST_PROXY === "true";
 
-  constructor(options?: Partial<RateLimitOptions>) {
+  constructor(
+    private readonly audit?: AuditService,
+    options?: Partial<RateLimitOptions>,
+  ) {
     this.options = {
       max: Number(process.env.RATE_LIMIT_MAX ?? 600),
       windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS ?? 60_000),
@@ -206,10 +215,11 @@ export class RateLimitGuard implements CanActivate {
     const rule = RULES.find((r) => r.method === req.method && r.pattern.test(path));
 
     if (rule) {
-      this.consume(res, `${rule.name}:ip:${ip}`, rule.max, rule.windowMs, rule.name);
+      this.consume(req, res, `${rule.name}:ip:${ip}`, rule.max, rule.windowMs, rule.name);
       const account = this.accountOf(req, rule);
       if (account !== null) {
         this.consume(
+          req,
           res,
           `${rule.name}:account:${account}`,
           rule.accountMax ?? rule.max,
@@ -220,7 +230,7 @@ export class RateLimitGuard implements CanActivate {
     }
 
     // Global backstop: not a usage limit, a flood stop.
-    this.consume(res, `global:${ip}`, this.options.max, this.options.windowMs, "request");
+    this.consume(req, res, `global:${ip}`, this.options.max, this.options.windowMs, "request");
     return true;
   }
 
@@ -260,6 +270,7 @@ export class RateLimitGuard implements CanActivate {
   }
 
   private consume(
+    req: Request,
     res: { setHeader: (name: string, value: string) => void },
     key: string,
     max: number,
@@ -276,6 +287,11 @@ export class RateLimitGuard implements CanActivate {
       const retryMs = stamps[0] + windowMs - now;
       res.setHeader("Retry-After", String(Math.max(1, Math.ceil(retryMs / 1000))));
       this.windows.set(key, stamps);
+      // Not awaited: canActivate must stay synchronous (a widely-tested
+      // contract — see rate-limit.guard.spec.ts's `try { guard.canActivate() }
+      // catch {}` pattern), and this write is inherently best-effort anyway
+      // (auditViolation swallows its own failures).
+      void this.auditViolation(req, key, label);
       throw new ApiError({
         statusCode: 429,
         code: "RATE_LIMITED",
@@ -288,6 +304,34 @@ export class RateLimitGuard implements CanActivate {
     // Keys are unbounded otherwise: one entry per address, kept forever.
     if (this.windows.size > 10_000) {
       this.evictExpired(now);
+    }
+  }
+
+  /**
+   * Fire-and-forget in spirit (never lets an audit failure turn a clean 429
+   * into a 500) but awaited, since it's on the rare throw path rather than
+   * every request. Previously a rate-limit hit left zero historical trace —
+   * this is what makes it show up in the super-admin monitoring feature.
+   */
+  private async auditViolation(req: Request, bucketKey: string, ruleLabel: string): Promise<void> {
+    if (!this.audit) {
+      return;
+    }
+    try {
+      await this.audit.record({
+        tenantId: null,
+        actorUserId: null,
+        action: "RATE_LIMIT_EXCEEDED",
+        entityType: "RateLimitRule",
+        entityId: ruleLabel,
+        metadata: { bucketKey, path: this.routePath(req), method: req.method },
+        ipAddress: this.clientIp(req),
+        userAgent: req.headers["user-agent"] ?? null,
+      });
+    } catch {
+      // Never let an audit-write failure affect the 429 the caller is about
+      // to see — same "logging must not become the outage" principle
+      // ApiExceptionFilter already follows.
     }
   }
 

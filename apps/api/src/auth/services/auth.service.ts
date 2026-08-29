@@ -7,6 +7,11 @@ import { User } from "../../entities/user.entity";
 import { PasswordService } from "./password.service";
 import { SessionService } from "./session.service";
 import { TokenService } from "./token.service";
+// AuditService must stay a VALUE import: NestJS resolves constructor
+// injection via design:paramtypes metadata at runtime; `import type` would
+// erase it and break DI.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { AuditService } from "../../audit/audit.service";
 
 export interface AuthResult {
   accessToken: string;
@@ -28,6 +33,7 @@ export class AuthService {
     @Inject(PasswordService) private readonly password: PasswordService,
     @Inject(SessionService) private readonly sessions: SessionService,
     @Inject(TokenService) private readonly tokens: TokenService,
+    private readonly audit: AuditService,
   ) {}
 
   async login(
@@ -35,13 +41,26 @@ export class AuthService {
     ip?: string,
     userAgent?: string,
   ): Promise<AuthResult> {
-    const user = await this.users.findOne({
-      where: { email: dto.email.toLowerCase() },
-    });
+    const email = dto.email.toLowerCase();
+    const user = await this.users.findOne({ where: { email } });
     if (
       !user ||
       !(await this.password.verify(user.passwordHash, dto.password))
     ) {
+      // No tenantId here deliberately — resolving it costs an extra query on
+      // a path that's already the target of brute-force attempts, and the
+      // security-events view doesn't need per-tenant attribution to be
+      // useful for spotting repeated attempts against one email/IP.
+      await this.audit.record({
+        tenantId: null,
+        actorUserId: user?.id ?? null,
+        action: "LOGIN_FAILED",
+        entityType: "User",
+        entityId: user?.id ?? email,
+        metadata: user ? {} : { attemptedEmail: email },
+        ipAddress: ip ?? null,
+        userAgent: userAgent ?? null,
+      });
       throw new ApiError({
         statusCode: 401,
         code: "INVALID_CREDENTIALS",
@@ -58,6 +77,15 @@ export class AuthService {
 
     const sessionUser = await this.sessions.buildSessionUser(user.id);
     await this.users.update({ id: user.id }, { lastLoginAt: new Date() });
+    await this.audit.record({
+      tenantId: sessionUser.tenantId,
+      actorUserId: user.id,
+      action: "LOGIN_SUCCEEDED",
+      entityType: "User",
+      entityId: user.id,
+      ipAddress: ip ?? null,
+      userAgent: userAgent ?? null,
+    });
     const session = await this.sessions.createSession({
       userId: user.id,
       ip,
