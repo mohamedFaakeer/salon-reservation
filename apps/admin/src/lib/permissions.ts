@@ -98,6 +98,16 @@ export function canResetTeamMemberPassword(roles: string[]): boolean {
   return roles.some((r) => r === "OWNER" || r === "MANAGER");
 }
 
+/**
+ * Mirrors MANAGE_CUSTOMER_TAGS (OWNER, MANAGER) — deliberately narrower than
+ * canManageCustomers: anyone who can manage customers can apply an existing
+ * tag, but only an owner or manager can create, rename, or delete the tag
+ * definitions themselves, or change the Customers page's segment settings.
+ */
+export function canManageCustomerTags(roles: string[]): boolean {
+  return roles.some((r) => r === "OWNER" || r === "MANAGER");
+}
+
 /** Mirrors RECORD_ATTENDANCE (OWNER, MANAGER, RECEPTIONIST) — the front-desk punch. */
 export function canRecordAttendance(roles: string[]): boolean {
   return roles.some((r) => r === "OWNER" || r === "MANAGER" || r === "RECEPTIONIST");
@@ -186,4 +196,5 @@ export const MODULES: Array<{ label: string; can: (roles: string[]) => boolean }
   { label: "Audit", can: canViewAudit },
   { label: "Staff logins", can: canManageTeam },
   { label: "Reset staff passwords", can: canResetTeamMemberPassword },
+  { label: "Manage customer tags & segments", can: canManageCustomerTags },
 ];

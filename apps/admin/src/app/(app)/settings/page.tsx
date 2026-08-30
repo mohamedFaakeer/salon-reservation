@@ -11,6 +11,7 @@ import {
   updateTenantSettings,
   type AdvanceRuleValue,
   type BranchRecord,
+  type CustomerSegment,
   type TenantMe,
   type TenantSettingsPatch,
   type TenantSettingsView,
@@ -68,7 +69,20 @@ interface FormState {
   noShowGraceMinutes: string;
   discountCapPercent: string;
   reminderOffsets: number[];
+  newCustomerWindowDays: string;
+  recentVisitWindowDays: string;
+  upcomingBirthdayWindowDays: string;
+  visibleSegments: CustomerSegment[];
 }
+
+const DEFAULT_VISIBLE_SEGMENTS: CustomerSegment[] = ["NEW", "RECENT", "FIRST_VISIT", "UPCOMING_BIRTHDAY", "WEB"];
+const SEGMENT_TOGGLE_LABELS: Record<CustomerSegment, string> = {
+  NEW: "New customers",
+  RECENT: "Recent customers",
+  FIRST_VISIT: "First visit",
+  UPCOMING_BIRTHDAY: "Upcoming birthdays",
+  WEB: "Web customers",
+};
 
 /**
  * An empty box, not the string "undefined".
@@ -109,6 +123,14 @@ function toForm(
     noShowGraceMinutes: String(settings.noShowGraceMinutes),
     discountCapPercent: String(settings.discountCapPercent ?? 0),
     reminderOffsets: [...settings.reminderOffsets].sort((a, b) => b - a),
+    // Absent, not merely missing a key, on tenant rows written before this
+    // section existed — same "missing means not-yet-set" reasoning as the
+    // advance-rule fields above; the server backfills real defaults on
+    // every read, but a defensive fallback here costs nothing.
+    newCustomerWindowDays: String(settings.customerSegmentSettings?.newCustomerWindowDays ?? 30),
+    recentVisitWindowDays: String(settings.customerSegmentSettings?.recentVisitWindowDays ?? 30),
+    upcomingBirthdayWindowDays: String(settings.customerSegmentSettings?.upcomingBirthdayWindowDays ?? 30),
+    visibleSegments: settings.customerSegmentSettings?.visibleSegments ?? DEFAULT_VISIBLE_SEGMENTS,
   };
 }
 
@@ -122,6 +144,9 @@ const BOUNDS = {
   sameDayLeadMinutes: [0, 1440],
   noShowGraceMinutes: [0, 1440],
   discountCapPercent: [0, 100],
+  newCustomerWindowDays: [1, 365],
+  recentVisitWindowDays: [1, 365],
+  upcomingBirthdayWindowDays: [1, 365],
 } as const;
 
 function isValid(form: FormState): boolean {
@@ -296,6 +321,26 @@ export default function SettingsPage() {
     }
     if (Object.keys(patch).length > 0) {
       steps.push({ label: "the booking rules", run: () => updateTenantSettings(patch) });
+    }
+
+    const segmentPatch: TenantSettingsPatch["customerSegmentSettings"] = {};
+    if (form.newCustomerWindowDays !== baseline.newCustomerWindowDays) {
+      segmentPatch.newCustomerWindowDays = Number(form.newCustomerWindowDays);
+    }
+    if (form.recentVisitWindowDays !== baseline.recentVisitWindowDays) {
+      segmentPatch.recentVisitWindowDays = Number(form.recentVisitWindowDays);
+    }
+    if (form.upcomingBirthdayWindowDays !== baseline.upcomingBirthdayWindowDays) {
+      segmentPatch.upcomingBirthdayWindowDays = Number(form.upcomingBirthdayWindowDays);
+    }
+    if (JSON.stringify(form.visibleSegments) !== JSON.stringify(baseline.visibleSegments)) {
+      segmentPatch.visibleSegments = form.visibleSegments;
+    }
+    if (Object.keys(segmentPatch).length > 0) {
+      steps.push({
+        label: "the customer segments",
+        run: () => updateTenantSettings({ customerSegmentSettings: segmentPatch }),
+      });
     }
 
     const done: string[] = [];
@@ -594,6 +639,73 @@ export default function SettingsPage() {
           onChange={(v) => set("reminderOffsets", v)}
           disabled={!canManage}
         />
+      </Section>
+
+      <Section
+        title="Customer segments"
+        description="The quick-filter chips on the Customers page — how far back or ahead each one looks, and which ones show at all."
+      >
+        <div className="grid gap-4 sm:grid-cols-3">
+          <NumberField
+            id="new-customer-window"
+            label="New customer window"
+            value={form.newCustomerWindowDays}
+            onChange={(v) => set("newCustomerWindowDays", v)}
+            min={BOUNDS.newCustomerWindowDays[0]}
+            max={BOUNDS.newCustomerWindowDays[1]}
+            unit="days"
+            hint='Added within this many days counts as "New".'
+            disabled={!canManage}
+          />
+          <NumberField
+            id="recent-visit-window"
+            label="Recent visit window"
+            value={form.recentVisitWindowDays}
+            onChange={(v) => set("recentVisitWindowDays", v)}
+            min={BOUNDS.recentVisitWindowDays[0]}
+            max={BOUNDS.recentVisitWindowDays[1]}
+            unit="days"
+            hint='A completed visit within this many days counts as "Recent".'
+            disabled={!canManage}
+          />
+          <NumberField
+            id="upcoming-birthday-window"
+            label="Upcoming birthday window"
+            value={form.upcomingBirthdayWindowDays}
+            onChange={(v) => set("upcomingBirthdayWindowDays", v)}
+            min={BOUNDS.upcomingBirthdayWindowDays[0]}
+            max={BOUNDS.upcomingBirthdayWindowDays[1]}
+            unit="days"
+            hint='Birthdays falling within this many days show as "Upcoming".'
+            disabled={!canManage}
+          />
+        </div>
+
+        <div className="border-t border-slate-100 pt-3">
+          <p className="mb-2 text-xs font-medium text-slate-700">Visible on the Customers page</p>
+          <div className="flex flex-col gap-2">
+            {(Object.keys(SEGMENT_TOGGLE_LABELS) as CustomerSegment[]).map((segment) => (
+              <label key={segment} className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  data-testid={`segment-visible-${segment}`}
+                  checked={form.visibleSegments.includes(segment)}
+                  disabled={!canManage}
+                  onChange={(e) =>
+                    set(
+                      "visibleSegments",
+                      e.target.checked
+                        ? [...form.visibleSegments, segment]
+                        : form.visibleSegments.filter((s) => s !== segment),
+                    )
+                  }
+                  className="h-4 w-4 rounded border-slate-300 accent-teal-600"
+                />
+                {SEGMENT_TOGGLE_LABELS[segment]}
+              </label>
+            ))}
+          </div>
+        </div>
       </Section>
 
       {canManage ? (

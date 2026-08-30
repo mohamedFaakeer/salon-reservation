@@ -46,7 +46,11 @@
 
 ### 2.3 Customers
 
-**customer** — `id (uuid PK)`, `tenantId (FK)`, `firstName`, `lastName`, `phone (normalized, NOT NULL)`, `email (nullable)`, `notes`, `marketingOptOut (boolean, default false — excludes this customer from win-back/marketing sends; never affects transactional notifications, which have no opt-out)`, `createdAt`, `updatedAt`. Unique index `(tenantId, phone)` AND `(tenantId, email)` (partial: `WHERE email IS NOT NULL`). Duplicate warning on create; no silent merges (spec §21).
+**customer** — `id (uuid PK)`, `tenantId (FK)`, `firstName`, `lastName`, `phone (normalized, NOT NULL)`, `email (nullable)`, `notes`, `marketingOptOut (boolean, default false — excludes this customer from win-back/marketing sends; never affects transactional notifications, which have no opt-out)`, `title (varchar 40, nullable — Mr./Mrs./Ms./Dr. or a tenant-custom value, resolved plain text same as `service.category`)`, `dateOfBirth (date, nullable)`, `profileImageUrl (varchar 500, nullable — Cloudinary URL, same pattern as `staff.imageUrl`)`, `clientSource (varchar 60, nullable — walk-in/web app/referral or a tenant-custom value; deliberately not the source of truth for the "Web Customers" segment, which reads real `appointment.source` history instead)`, `address (varchar 255, nullable)`, `province (varchar 20, nullable — one of Sri Lanka's 9 provinces, fixed enum, no tenant-custom additions)`, `createdAt`, `updatedAt`. Unique index `(tenantId, phone)` AND `(tenantId, email)` (partial: `WHERE email IS NOT NULL`). Duplicate warning on create; no silent merges (spec §21). `dateOfBirth`/`address`/`province`/`profileImageUrl` are cleared (not `title`/`clientSource`) by the tenant-offboarding purge (`TenantOffboardingService.anonymizeCustomers`) as real PII.
+
+**tag** — `id (uuid PK)`, `tenantId (FK, CASCADE)`, `label (varchar 40)`, `color (varchar 7, nullable — hex)`, `createdAt`. Unique `(tenantId, label)`. A configuration/definition object, not a business record — a real hard delete is fine here (unlike appointments/payments), cascading to `customer_tag`.
+
+**customer_tag** — `id (uuid PK)`, `customerId (FK → customer, CASCADE)`, `tagId (FK → tag, CASCADE)`, `createdAt`. Unique `(customerId, tagId)`. Many-to-many join, no business history of its own.
 
 ### 2.4 Appointments (the heart)
 
@@ -376,6 +380,9 @@ Reschedule and cancel touch multiple rows (original appointment + new appointmen
 | `notification` | `(status, next_retry_at)` | retry scheduler |
 | `customer` | `(tenant_id, phone)` unique | duplicate prevention |
 | `customer` | `(tenant_id, email)` partial unique | dedupe |
+| `tag` | `(tenant_id, label)` unique | duplicate-tag prevention |
+| `customer_tag` | `(customer_id, tag_id)` unique | one application of a tag per customer |
+| `customer_tag` | `(tag_id)` | tag-filter queries + delete-tag cascade |
 | `payment` | `(idempotency_key)` unique | idempotency |
 | `payment_attempt` | `(provider, provider_event_id)` unique | callback dedupe |
 | `audit_log` | `(tenant_id, created_at)` | audit queries |

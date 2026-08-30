@@ -74,6 +74,30 @@ export class CloudinaryService {
     );
   }
 
+  /**
+   * A customer's photo is very likely a phone-camera shot, which routinely
+   * carries EXIF GPS coordinates — a real, unrelated-to-the-photo-itself
+   * privacy leak if stored verbatim. `flags: "strip_profile"` drops EXIF/IPTC/
+   * XMP metadata (including GPS) from the stored master, on top of the same
+   * face-aware crop `uploadStaffPhoto` already uses. Re-encoding through
+   * Cloudinary's own pipeline is also what neutralizes a polyglot upload that
+   * smuggled bytes after the real image data — the stored asset is always a
+   * fresh raster re-encode, never a byte-for-byte copy of what was received.
+   */
+  async uploadCustomerPhoto(buffer: Buffer, folder: string): Promise<string> {
+    return this.upload(
+      buffer,
+      folder,
+      "CUSTOMER_PHOTO_UPLOAD_NOT_CONFIGURED",
+      "CUSTOMER_PHOTO_UPLOAD_FAILED",
+      "Couldn't upload the photo right now. Please try again.",
+      [
+        { width: 512, height: 512, crop: "fill", gravity: "face" },
+        { fetch_format: "auto", quality: "auto", flags: "strip_profile" },
+      ],
+    );
+  }
+
   private async upload(
     buffer: Buffer,
     folder: string,

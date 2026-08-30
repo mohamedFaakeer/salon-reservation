@@ -233,6 +233,21 @@ describe("TenantOffboardingService", () => {
       expect(patch1.phone).not.toBe(patch2.phone);
     });
 
+    it("clears the CRM PII fields added after this purge routine was first written", async () => {
+      vi.mocked(tenants.findOne).mockResolvedValueOnce(baseTenant({ deletionRequestedAt: new Date() }));
+      managedRepos.Customer.find.mockResolvedValueOnce([{ id: "cust-1" }]);
+
+      await service.purgeNow("tenant-1", "admin-1");
+
+      const [, patch] = managedRepos.Customer.update.mock.calls[0];
+      expect(patch).toMatchObject({
+        dateOfBirth: null,
+        address: null,
+        province: null,
+        profileImageUrl: null,
+      });
+    });
+
     it("removes this tenant's staff/inquiry PII via a scoped bulk update", async () => {
       vi.mocked(tenants.findOne).mockResolvedValueOnce(baseTenant({ deletionRequestedAt: new Date() }));
 

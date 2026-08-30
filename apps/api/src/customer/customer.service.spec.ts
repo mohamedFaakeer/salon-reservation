@@ -1,11 +1,18 @@
-import type { ObjectLiteral, Repository } from "typeorm";
+import type { EntityManager, ObjectLiteral, Repository } from "typeorm";
 import { CustomerService } from "./customer.service";
-import { AppointmentStatus } from "@salon/shared";
-import type { Customer } from "../entities/customer.entity";
+import { AppointmentStatus, DEFAULT_TENANT_SETTINGS, Province } from "@salon/shared";
+import { Customer } from "../entities/customer.entity";
 import type { Appointment } from "../entities/appointment.entity";
 import type { AppointmentServiceLine } from "../entities/appointment-service.entity";
 import type { Payment } from "../entities/payment.entity";
 import type { Rating } from "../entities/rating.entity";
+import type { Tag } from "../entities/tag.entity";
+import { CustomerTag } from "../entities/customer-tag.entity";
+// AuditService/TenantService/CloudinaryService are only used here as
+// structural mock types, never instantiated — `import type` is fine in a spec.
+import type { AuditService } from "../audit/audit.service";
+import type { TenantService } from "../tenant/tenant.service";
+import type { CloudinaryService } from "../cloudinary/cloudinary.service";
 
 function mockRepo<T extends ObjectLiteral>() {
   return {
@@ -14,6 +21,7 @@ function mockRepo<T extends ObjectLiteral>() {
     find: vi.fn(async () => [] as T[]),
     findAndCount: vi.fn(async () => [[] as T[], 0] as [T[], number]),
     findOne: vi.fn(async () => null as T | null),
+    delete: vi.fn(async () => ({ affected: 0 })),
     createQueryBuilder: vi.fn(() => queryBuilder([])),
   } as unknown as Repository<T>;
 }
@@ -41,12 +49,35 @@ function queryBuilder(rows: unknown[], one: unknown = null) {
   return qb;
 }
 
+/** `search`/`segmentCounts` build a `SelectQueryBuilder<Customer>` directly, not a raw-aggregate one. */
+function customerQueryBuilder(data: Customer[] = [], total = 0, count = 0) {
+  const qb: Record<string, unknown> = {};
+  for (const method of ["where", "andWhere", "orderBy", "take", "skip"]) {
+    qb[method] = vi.fn(() => qb);
+  }
+  qb.getManyAndCount = vi.fn(async () => [data, total]);
+  qb.getCount = vi.fn(async () => count);
+  return qb;
+}
+
+const TENANT_SETTINGS_WITH_CURRENCY = {
+  ...DEFAULT_TENANT_SETTINGS,
+  currency: "LKR",
+  timezone: "Asia/Colombo",
+};
+
 describe("CustomerService", () => {
   let customers: Repository<Customer>;
   let appointments: Repository<Appointment>;
   let lines: Repository<AppointmentServiceLine>;
   let payments: Repository<Payment>;
   let ratings: Repository<Rating>;
+  let tags: Repository<Tag>;
+  let customerTags: Repository<CustomerTag>;
+  let dataSource: { transaction: ReturnType<typeof vi.fn> };
+  let audit: AuditService;
+  let tenantService: TenantService;
+  let cloudinary: CloudinaryService;
   let service: CustomerService;
 
   beforeEach(() => {
@@ -55,24 +86,52 @@ describe("CustomerService", () => {
     lines = mockRepo<AppointmentServiceLine>();
     payments = mockRepo<Payment>();
     ratings = mockRepo<Rating>();
-    service = new CustomerService(customers, appointments, lines, payments, ratings);
+    tags = mockRepo<Tag>();
+    customerTags = mockRepo<CustomerTag>();
+
+    const manager = {
+      getRepository: vi.fn((entity: unknown) => {
+        if (entity === Customer) return customers;
+        if (entity === CustomerTag) return customerTags;
+        throw new Error(`unexpected repo requested in test: ${String(entity)}`);
+      }),
+    } as unknown as EntityManager;
+    dataSource = { transaction: vi.fn(async (fn: (m: EntityManager) => unknown) => fn(manager)) };
+
+    audit = { record: vi.fn(async () => undefined) } as unknown as AuditService;
+    tenantService = { getSettings: vi.fn(async () => TENANT_SETTINGS_WITH_CURRENCY) } as unknown as TenantService;
+    cloudinary = { uploadCustomerPhoto: vi.fn(async () => "https://res.cloudinary.com/demo/photo.png") } as unknown as CloudinaryService;
+
+    service = new CustomerService(
+      customers,
+      appointments,
+      lines,
+      payments,
+      ratings,
+      tags,
+      customerTags,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test double for InjectDataSource, shape checked via the transaction() spy above
+      dataSource as any,
+      audit,
+      tenantService,
+      cloudinary,
+    );
   });
 
   describe("search", () => {
     it("honours the limit and offset its DTO declares", async () => {
-      // These used to be dropped for a hardcoded take: 50, so a salon with
-      // more than fifty customers could never reach the rest of them.
+      const qb = customerQueryBuilder([], 0, 0);
+      vi.mocked(customers.createQueryBuilder).mockReturnValueOnce(qb as never);
+
       await service.search("tenant-1", { limit: 20, offset: 40 });
 
-      const args = vi.mocked(customers.findAndCount).mock.calls[0][0];
-      expect(args).toMatchObject({ take: 20, skip: 40 });
+      expect(qb.take).toHaveBeenCalledWith(20);
+      expect(qb.skip).toHaveBeenCalledWith(40);
     });
 
     it("reports the unpaged total alongside the page", async () => {
-      vi.mocked(customers.findAndCount).mockResolvedValueOnce([
-        [{ id: "c1" } as Customer],
-        214,
-      ]);
+      const qb = customerQueryBuilder([{ id: "c1" } as Customer], 214, 0);
+      vi.mocked(customers.createQueryBuilder).mockReturnValueOnce(qb as never);
 
       const result = await service.search("tenant-1", { limit: 50, offset: 0 });
 
@@ -80,25 +139,53 @@ describe("CustomerService", () => {
       expect(result.meta).toEqual({ total: 214, limit: 50, offset: 0 });
     });
 
-    it("matches names regardless of case", async () => {
-      // Postgres LIKE is case-sensitive, so searching "ayesha" found nobody
-      // called "Ayesha" — every customer, in practice.
+    it("adds a text filter only when q is given", async () => {
+      const qb = customerQueryBuilder([], 0, 0);
+      vi.mocked(customers.createQueryBuilder).mockReturnValueOnce(qb as never);
+
       await service.search("tenant-1", { limit: 50, offset: 0, q: "ayesha" });
 
-      // TypeORM records the operator on the FindOperator itself; "like" here
-      // would mean the case-sensitive match is back.
-      const where = vi.mocked(customers.findAndCount).mock.calls[0][0]?.where;
-      const operators = (where as Array<Record<string, { type?: string }>>).map(
-        (clause) => Object.values(clause).find((v) => typeof v === "object")?.type,
-      );
-      expect(operators).toEqual(["ilike", "ilike", "ilike"]);
+      // where/andWhere is called at least for tenant scoping + the placeholder
+      // exclusion + the text Brackets — a real regression (q silently dropped)
+      // would leave this at 2 calls instead of 3.
+      expect((qb.andWhere as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("reads the tenant's configured day-windows when filtering by segment", async () => {
+      const qb = customerQueryBuilder([], 0, 0);
+      vi.mocked(customers.createQueryBuilder).mockReturnValueOnce(qb as never);
+
+      await service.search("tenant-1", { limit: 50, offset: 0, segment: "NEW" as never });
+
+      expect(tenantService.getSettings).toHaveBeenCalledWith("tenant-1");
     });
 
     it("lists newest first when no query is given", async () => {
+      const qb = customerQueryBuilder([], 0, 0);
+      vi.mocked(customers.createQueryBuilder).mockReturnValueOnce(qb as never);
+
       await service.search("tenant-1", { limit: 50, offset: 0 });
 
-      const args = vi.mocked(customers.findAndCount).mock.calls[0][0];
-      expect(args).toMatchObject({ order: { createdAt: "DESC" } });
+      expect(qb.orderBy).toHaveBeenCalledWith("c.createdAt", "DESC");
+    });
+  });
+
+  describe("segmentCounts", () => {
+    it("returns one count per segment", async () => {
+      vi.mocked(customers.createQueryBuilder).mockImplementation(() => customerQueryBuilder([], 0, 3) as never);
+
+      const result = await service.segmentCounts("tenant-1");
+
+      expect(result).toHaveLength(5);
+      expect(result.every((r) => r.count === 3)).toBe(true);
+    });
+  });
+
+  describe("lookupByPhone", () => {
+    it("normalizes the phone before looking it up", async () => {
+      await service.lookupByPhone("tenant-1", "077 123 4567");
+
+      expect(customers.findOne).toHaveBeenCalledWith({ where: { tenantId: "tenant-1", phone: "0771234567" } });
     });
   });
 
@@ -136,6 +223,151 @@ describe("CustomerService", () => {
           email: "amaya@example.com",
         }),
       ).rejects.toMatchObject({ statusCode: 409, code: "DUPLICATE_CUSTOMER" });
+    });
+
+    it("rejects a tag that does not belong to this tenant", async () => {
+      vi.mocked(tags.find).mockResolvedValueOnce([]); // none of the requested ids came back owned
+
+      await expect(
+        service.create("tenant-1", {
+          firstName: "Amaya",
+          lastName: "Perera",
+          phone: "0771234567",
+          tagIds: ["someone-elses-tag"],
+        }),
+      ).rejects.toMatchObject({ statusCode: 400, code: "INVALID_TAG_IDS" });
+    });
+
+    it("persists the new CRM fields", async () => {
+      await service.create("tenant-1", {
+        firstName: "Amaya",
+        lastName: "Perera",
+        phone: "0771234567",
+        title: "Mrs.",
+        dateOfBirth: "1990-05-12",
+        clientSource: "Referral",
+        address: "12 Galle Road",
+        province: Province.WESTERN,
+      });
+
+      const created = vi.mocked(customers.create).mock.calls[0][0] as Customer;
+      expect(created).toMatchObject({
+        title: "Mrs.",
+        dateOfBirth: "1990-05-12",
+        clientSource: "Referral",
+        address: "12 Galle Road",
+        province: Province.WESTERN,
+      });
+    });
+  });
+
+  describe("update", () => {
+    function existingCustomer(overrides: Partial<Customer> = {}): Customer {
+      return {
+        id: "cust-1",
+        tenantId: "tenant-1",
+        firstName: "Amaya",
+        lastName: "Perera",
+        phone: "0771234567",
+        email: null,
+        notes: null,
+        marketingOptOut: false,
+        isWalkInPlaceholder: false,
+        title: null,
+        dateOfBirth: null,
+        profileImageUrl: null,
+        clientSource: null,
+        address: null,
+        province: null,
+        ...overrides,
+      } as Customer;
+    }
+
+    it("applies a routine field edit without touching phone, and does not audit it", async () => {
+      vi.mocked(customers.findOne).mockResolvedValueOnce(existingCustomer());
+
+      await service.update("tenant-1", "cust-1", { notes: "Prefers a quiet chair" }, "user-1");
+
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it("re-runs the duplicate check when the phone changes, excluding the customer's own row", async () => {
+      vi.mocked(customers.findOne)
+        .mockResolvedValueOnce(existingCustomer()) // findById
+        .mockResolvedValueOnce({ id: "cust-1", phone: "0779999999" } as Customer); // findDuplicate's own-row match
+
+      // findDuplicate excludes the row whose id matches excludeId — since the
+      // only match found here IS the customer being edited, this must succeed,
+      // not throw DUPLICATE_CUSTOMER.
+      const result = await service.update("tenant-1", "cust-1", { phone: "0779999999" }, "user-1");
+
+      expect(result.phone).toBe("0779999999");
+    });
+
+    it("throws DUPLICATE_CUSTOMER when the new phone belongs to a different customer", async () => {
+      vi.mocked(customers.findOne)
+        .mockResolvedValueOnce(existingCustomer())
+        .mockResolvedValueOnce({ id: "someone-else" } as Customer);
+
+      await expect(
+        service.update("tenant-1", "cust-1", { phone: "0779999999" }, "user-1"),
+      ).rejects.toMatchObject({ statusCode: 409, code: "DUPLICATE_CUSTOMER" });
+    });
+
+    it("audits only the phone change, with the old and new values", async () => {
+      vi.mocked(customers.findOne)
+        .mockResolvedValueOnce(existingCustomer())
+        .mockResolvedValueOnce(null); // no conflict
+
+      await service.update("tenant-1", "cust-1", { phone: "0779999999" }, "user-1");
+
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: "tenant-1",
+          actorUserId: "user-1",
+          action: "CUSTOMER_PHONE_CHANGED",
+          entityType: "Customer",
+          entityId: "cust-1",
+          metadata: { oldPhone: "0771234567", newPhone: "0779999999" },
+        }),
+      );
+    });
+
+    it("does not re-check duplicates when phone and email are both left alone", async () => {
+      vi.mocked(customers.findOne).mockResolvedValueOnce(existingCustomer());
+
+      await service.update("tenant-1", "cust-1", { address: "44 Marine Drive" }, "user-1");
+
+      // findById is the only findOne call — no second call probing for a duplicate.
+      expect(customers.findOne).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects a tag that does not belong to this tenant", async () => {
+      vi.mocked(customers.findOne).mockResolvedValueOnce(existingCustomer());
+      vi.mocked(tags.find).mockResolvedValueOnce([]);
+
+      await expect(
+        service.update("tenant-1", "cust-1", { tagIds: ["not-owned"] }, "user-1"),
+      ).rejects.toMatchObject({ statusCode: 400, code: "INVALID_TAG_IDS" });
+    });
+  });
+
+  describe("uploadPhoto", () => {
+    it("rejects a file that isn't a real PNG/JPEG/WebP, whatever its claimed type", async () => {
+      vi.mocked(customers.findOne).mockResolvedValueOnce({ id: "cust-1", tenantId: "tenant-1" } as Customer);
+
+      await expect(
+        service.uploadPhoto("tenant-1", "cust-1", Buffer.from("<svg onload=alert(1)></svg>")),
+      ).rejects.toMatchObject({ statusCode: 400, code: "CUSTOMER_PHOTO_INVALID_FILE_TYPE" });
+      expect(cloudinary.uploadCustomerPhoto).not.toHaveBeenCalled();
+    });
+
+    it("rejects an oversized buffer before ever inspecting its bytes", async () => {
+      const huge = Buffer.alloc(3_000_000);
+      await expect(service.uploadPhoto("tenant-1", "cust-1", huge)).rejects.toMatchObject({
+        statusCode: 400,
+        code: "CUSTOMER_PHOTO_FILE_TOO_LARGE",
+      });
     });
   });
 

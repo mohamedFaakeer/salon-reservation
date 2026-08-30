@@ -183,6 +183,18 @@ const RULES: RateLimitRule[] = [
     max: 10,
     windowMs: 60_000,
   },
+  {
+    // Every photo-upload route (customer, staff) forwards the buffer to
+    // Cloudinary — a real external cost (storage/bandwidth) per call, unlike
+    // an ordinary authenticated read. Previously covered only by the
+    // generous global backstop, so a single compromised staff login could
+    // otherwise hammer this endpoint with many large-but-valid images.
+    name: "photo-upload",
+    method: "POST",
+    pattern: /^\/customers\/[^/]+\/photo$|^\/staff\/[^/]+\/photo$/,
+    max: 20,
+    windowMs: 60_000,
+  },
 ];
 
 /** Health checks must never be throttled — a 429 here reads as an outage. */

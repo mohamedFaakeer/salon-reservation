@@ -300,6 +300,16 @@ function toCustomerRecord(inquiry: InquiryRecord): CustomerRecord {
     phone: inquiry.customer!.phone,
     email: null,
     createdAt: inquiry.createdAt,
+    // None of these are shown by BookingDrawer (the only consumer of this
+    // shape) — placeholders, same reasoning as the createdAt/email fields
+    // above, not a claim that this customer actually lacks a title/DOB/etc.
+    title: null,
+    dateOfBirth: null,
+    profileImageUrl: null,
+    clientSource: null,
+    address: null,
+    province: null,
+    tags: [],
   };
 }
 

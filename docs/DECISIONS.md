@@ -2679,3 +2679,114 @@ defaulting to hidden, like every other field) or skip the field entirely,
 it gets the same toggle **defaulting to visible** — consistent chrome, a
 way to hide it if a coworker walks by or the screen is shared, without
 reintroducing the transcription-typo risk as the default state.
+
+## 59. Customers module: Add/Edit, tags, and five customer segments
+
+The Customers module previously had no way to add a customer proactively
+(only auto-created on first booking), no general edit (`PATCH` touched only
+`marketingOptOut`), no tagging, and no segmentation. This adds an
+"Add customer" drawer mirroring `BookingDrawer`'s conventions, a richer
+profile (title, DOB, profile photo, client source, address, province,
+tags), a live phone-duplicate check while typing, a per-row Edit action, and
+five segment quick-filters (`New`, `Recent`, `First visit`,
+`Upcoming birthdays`, `Web customers`) with a configurable settings section.
+
+**Decisions, confirmed with the user before building:**
+1. Phone number is editable after creation via Edit, re-running the same
+   duplicate check the existing `POST /customers` already enforces —
+   excluding the customer's own row.
+2. Segment day-windows (`New`/`Recent`/`Upcoming birthdays`) are fully
+   tenant-configurable, not fixed — `FIRST_VISIT` and `WEB` are structural
+   conditions with no window to configure.
+3. Day-to-day add/edit/apply-a-tag stays on the existing `MANAGE_CUSTOMERS`
+   (OWNER/MANAGER/RECEPTIONIST, unchanged). Creating/renaming/deleting tag
+   *definitions* needed a new, narrower permission
+   (`MANAGE_CUSTOMER_TAGS`, OWNER/MANAGER only — same split shape as
+   `RESET_TEAM_MEMBER_PASSWORD` carved out of `MANAGE_TEAM`). Segment
+   day-window settings did **not** need a new permission: they're just new
+   fields on the tenant settings JSON, already gated by the existing
+   `MANAGE_TENANT_SETTINGS` (also OWNER/MANAGER-only) — reusing the
+   mechanism already built for exactly this shape of thing rather than
+   inventing a permission that would duplicate it.
+4. Audit logging is narrow on purpose: only a customer's phone number
+   changing gets an audit entry (`CUSTOMER_PHONE_CHANGED`) — the one
+   identity/security-relevant edit. Routine edits (notes, tags, name,
+   address) are not audited, to keep the feed from flooding with everyday
+   CRM data entry. Unlike `ACCOUNT_LOCKED`/`TEAM_MEMBER_PASSWORD_RESET`,
+   this action is **not** added to `SECURITY_EVENT_ACTIONS` — it has no
+   security narrative, so it stays a plain audit-log row and never appears
+   in the Security events monitoring feed.
+
+**Design choices made without asking, stated for visibility:**
+- DOB is a plain native `<input type="date">` — every date field in this
+  app already does this; no custom calendar component was built.
+- Province is a fixed 9-value enum (Sri Lanka's real provinces), no
+  tenant-custom additions — a geographic fact, not a business concept.
+- Title and Client source are resolved plain text on `Customer` (like
+  `service.category` already is); their tenant-addable custom options live
+  as string arrays inside the existing `TenantSettings` JSON blob — no new
+  tables, no dedicated manage screen for these two (only Tags get that,
+  since tags need real relational identity: rename/delete, many-to-many).
+- Profile image upload is sequenced behind one "Save" click (create/update
+  the customer, then immediately upload the photo against its id) rather
+  than requiring the stricter save-then-reopen flow the staff-photo
+  precedent uses — a small UX improvement since the user explicitly wants
+  the photo capturable at creation time. A photo-upload failure surfaces as
+  its own toast without rolling back the customer record.
+- Add and Edit share one component (`CustomerFormDrawer`, mode-switched):
+  the field set, validation, and duplicate-check behavior are identical:
+  only the endpoint called and the pre-filled values differ.
+- `CustomerAccount`/`CustomerAccountSalonLink` (the separate cross-tenant
+  customer-login identity) is untouched — none of these fields belong
+  there; they're salon-specific CRM facts on the tenant-scoped `Customer`
+  row only.
+
+**A real bug found and fixed during planning, not left as a landmine:**
+`TenantService.getSettings()` returned `{ currency, timezone, ...tenant.settings }`
+— it never merged in `DEFAULT_TENANT_SETTINGS` for keys missing from a
+tenant's stored JSONB. Every tenant that existed before this feature has a
+`settings` blob frozen at whatever `DEFAULT_TENANT_SETTINGS` looked like
+when its row was created; simply adding `customerSegmentSettings`/
+`customTitleOptions`/`customClientSourceOptions` to that constant would have
+left every existing tenant reading `undefined` for all three. Fixed by
+having `getSettings()` merge `{ ...DEFAULT_TENANT_SETTINGS, ...tenant.settings }`,
+and by giving `customerSegmentSettings` the same deep-merge treatment
+`updateSettings()` already gives `cancellationPolicy` on patch, rather than
+a blind top-level spread.
+
+**Security hardening on image upload**, raised explicitly by the user
+("stop hackers uploading malicious scripts and other database breach
+codes"): the existing upload pipeline (`detectImage`'s real magic-byte
+parsing — SVG, the one format that can carry a `<script>` tag, never
+parses successfully; hard size/dimension/aspect-ratio bounds; the buffer is
+streamed straight to Cloudinary and re-encoded, never written to or
+executed from this server's own disk; the original filename is never
+captured, so there's no path-traversal surface; only the resulting HTTPS
+URL is ever persisted, always through parameterized TypeORM calls) is
+reused verbatim for customer photos — no separate, laxer path. Two
+additions beyond what already existed: `flags: "strip_profile"` on the
+Cloudinary transformation, stripping EXIF metadata (a phone-camera photo
+routinely carries GPS coordinates) on ingest; and a new `photo-upload` rate
+limit rule (`RateLimitGuard`, 20/min) covering both the new customer-photo
+route and the pre-existing staff-photo route, which had no dedicated rule
+before — only the generous global backstop, unlike every other cost-bearing
+or abuse-prone endpoint in that file.
+
+**Segment queries** follow `ReportsService.lapsedCustomers`'s existing
+hand-written-query style rather than a generic "segments engine" this
+codebase doesn't otherwise have. The trickiest one, `UPCOMING_BIRTHDAY`,
+deliberately avoids constructing a hypothetical "this year's birthday" via
+`make_date` — that throws a real Postgres error for anyone born Feb 29
+whenever the current year isn't a leap year. Instead it walks real calendar
+days forward from Colombo "today" via `generate_series` + `make_interval`,
+comparing `MMDD` strings — this naturally wraps Dec 31 → Jan 1 and never
+constructs an invalid date; the accepted trade-off is that a Feb 29
+birthday doesn't surface in the segment during a run of non-leap years, a
+one-in-1,461-days edge case.
+
+**A pre-existing bug noticed but not fixed** (out of scope, flagged for
+awareness): `removeStaffPhoto` in `apps/admin/src/lib/api-client.ts` builds
+its URL with backslashes (`` `\staff\${staffId}\photo` ``) instead of
+forward slashes — likely broken in practice. Not touched here since it
+predates this feature and isn't part of the Customers module; worth a
+follow-up fix.

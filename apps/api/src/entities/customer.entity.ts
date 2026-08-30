@@ -8,6 +8,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm";
+import type { Province } from "@salon/shared";
 import { Tenant } from "./tenant.entity";
 
 /**
@@ -62,6 +63,29 @@ export class Customer {
    */
   @Column({ type: "boolean", default: false })
   isWalkInPlaceholder!: boolean;
+
+  /** Built-in (Mr./Mrs./Ms./Dr.) or a tenant-custom value — resolved plain text, same treatment `Service.category` already gets. Not identifying enough on its own to need clearing on tenant-offboarding purge. */
+  @Column({ type: "varchar", length: 40, nullable: true })
+  title!: string | null;
+
+  @Column({ type: "date", nullable: true })
+  dateOfBirth!: string | null;
+
+  /** Cloudinary URL, same pattern as `Staff.imageUrl` — a real column, never the tenant settings JSONB. Cleared on tenant-offboarding purge (real PII). */
+  @Column({ type: "varchar", length: 500, nullable: true })
+  profileImageUrl!: string | null;
+
+  /** Built-in (walk-in/web app/referral) or a tenant-custom value — resolved plain text. Deliberately not read by the "Web Customers" segment, which derives channel from real `Appointment.source` history instead of trusting this manually-set field. */
+  @Column({ type: "varchar", length: 60, nullable: true })
+  clientSource!: string | null;
+
+  /** Cleared on tenant-offboarding purge (real PII, tied to a home address). */
+  @Column({ type: "varchar", length: 255, nullable: true })
+  address!: string | null;
+
+  /** Cleared on tenant-offboarding purge alongside `address`. */
+  @Column({ type: "varchar", length: 20, nullable: true })
+  province!: Province | null;
 
   @CreateDateColumn({ type: "timestamptz" })
   createdAt!: Date;

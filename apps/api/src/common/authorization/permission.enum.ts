@@ -111,4 +111,12 @@ export enum Permission {
    * the same split gift cards and service packages already use.
    */
   MANAGE_INVENTORY = "MANAGE_INVENTORY",
+  /**
+   * Create, rename, and delete tag definitions. Deliberately narrower than
+   * MANAGE_CUSTOMERS: OWNER and MANAGER both hold this, but RECEPTIONIST —
+   * who can add/edit customers and apply an existing tag — cannot change
+   * what the tenant's tag list itself contains. Same split shape as
+   * RESET_TEAM_MEMBER_PASSWORD carved out of MANAGE_TEAM.
+   */
+  MANAGE_CUSTOMER_TAGS = "MANAGE_CUSTOMER_TAGS",
 }

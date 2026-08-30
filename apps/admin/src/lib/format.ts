@@ -96,6 +96,23 @@ export const WEEKDAY_NAMES = [
   "Sunday",
 ] as const;
 
+/**
+ * A plain "YYYY-MM-DD" calendar date (e.g. a date of birth) — never
+ * `formatDate`, which parses with the browser's local timezone: for a
+ * date-only string that reads as UTC midnight, a browser west of Greenwich
+ * would roll it back a day. Anchored to UTC the same way `formatDateRange`
+ * already is, so a birthday never drifts by a day depending on where the
+ * browser happens to be.
+ */
+export function formatCalendarDate(date: string): string {
+  return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-LK", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 /** "18–22 Aug" / "2 Sep" — compact ranges for leave and closure rows. */
 export function formatDateRange(startDate: string, endDate: string): string {
   const start = new Date(`${startDate}T00:00:00Z`);

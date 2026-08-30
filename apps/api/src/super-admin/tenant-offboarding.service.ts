@@ -281,6 +281,14 @@ export class TenantOffboardingService {
           phone: `deleted-${c.id}`,
           email: `deleted-${c.id}@deleted.invalid`,
           notes: null,
+          // Real PII added by the customer CRM feature — cleared the same as
+          // name/phone/email/notes above. `title` and `clientSource` are left
+          // alone: a bare salutation or "Referral" isn't identifying on its
+          // own once the name/phone/email/address/photo/DOB are gone.
+          dateOfBirth: null,
+          address: null,
+          province: null,
+          profileImageUrl: null,
         }),
       ),
     );

@@ -32,6 +32,14 @@ const BY_CODE: Record<string, ErrorCopy> = {
     title: "This customer already exists",
     detail: "Search for them by phone number instead of creating a second record.",
   },
+  DUPLICATE_TAG: {
+    title: "That tag already exists",
+    detail: "Pick it from the list instead of creating a duplicate.",
+  },
+  INVALID_TAG_IDS: {
+    title: "One of those tags couldn't be applied",
+    detail: "It may have just been deleted — reopen the tag list and try again.",
+  },
   OUTSIDE_BOOKING_WINDOW: {
     title: "That date is too far ahead",
     detail: "Change how far ahead customers can book under Settings → Booking window.",

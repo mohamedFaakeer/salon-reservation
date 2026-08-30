@@ -101,6 +101,19 @@ export interface TenantSettingsView {
    * `advanceValueCents`; treat missing as `true` (the default).
    */
   staffNotificationPopupsEnabled?: boolean;
+  /** Tenant-added Title options beyond Mr./Mrs./Ms./Dr., offered from the Add/Edit customer drawer's "+ Add new title…". */
+  customTitleOptions?: string[];
+  /** Same shape as `customTitleOptions`, for Client source. */
+  customClientSourceOptions?: string[];
+  /** The Customers page's segment quick-filters — day-windows and which chips show at all. Absent on tenant rows written before this existed; treat as the same defaults the Settings page falls back to. */
+  customerSegmentSettings?: CustomerSegmentSettingsView;
+}
+
+export interface CustomerSegmentSettingsView {
+  newCustomerWindowDays: number;
+  recentVisitWindowDays: number;
+  upcomingBirthdayWindowDays: number;
+  visibleSegments: CustomerSegment[];
 }
 
 export interface TenantSettingsPatch {
@@ -114,6 +127,9 @@ export interface TenantSettingsPatch {
   reminderOffsets?: number[];
   discountCapPercent?: number;
   staffNotificationPopupsEnabled?: boolean;
+  customTitleOptions?: string[];
+  customClientSourceOptions?: string[];
+  customerSegmentSettings?: Partial<CustomerSegmentSettingsView>;
 }
 
 export interface BranchRecord {
@@ -159,6 +175,26 @@ export interface ServiceItem {
   discount?: ServiceDiscountView | null;
 }
 
+/** Sri Lanka's 9 real provinces — fixed, no tenant-custom additions (unlike Title/Client source). */
+export type ProvinceValue =
+  | "WESTERN"
+  | "CENTRAL"
+  | "SOUTHERN"
+  | "NORTHERN"
+  | "EASTERN"
+  | "NORTH_WESTERN"
+  | "NORTH_CENTRAL"
+  | "UVA"
+  | "SABARAGAMUWA";
+
+export type CustomerSegment = "NEW" | "RECENT" | "FIRST_VISIT" | "UPCOMING_BIRTHDAY" | "WEB";
+
+export interface TagRecord {
+  id: string;
+  label: string;
+  color: string | null;
+}
+
 export interface CustomerRecord {
   id: string;
   firstName: string;
@@ -167,6 +203,13 @@ export interface CustomerRecord {
   email: string | null;
   /** Present on every customer response — the API returns whole rows. */
   createdAt: string;
+  title: string | null;
+  dateOfBirth: string | null;
+  profileImageUrl: string | null;
+  clientSource: string | null;
+  address: string | null;
+  province: ProvinceValue | null;
+  tags: TagRecord[];
 }
 
 export interface AvailabilitySlot {
@@ -897,7 +940,23 @@ export interface CustomerDetail extends CustomerRecord {
   marketingOptOut: boolean;
 }
 
-export function updateCustomer(id: string, patch: { marketingOptOut?: boolean }): Promise<CustomerDetail> {
+/** A real general edit — every field optional (PATCH semantics), including replacing the full tag set via `tagIds`. */
+export interface CustomerUpdateInput {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  email?: string | null;
+  notes?: string | null;
+  marketingOptOut?: boolean;
+  title?: string | null;
+  dateOfBirth?: string | null;
+  clientSource?: string | null;
+  address?: string | null;
+  province?: ProvinceValue | null;
+  tagIds?: string[];
+}
+
+export function updateCustomer(id: string, patch: CustomerUpdateInput): Promise<CustomerDetail> {
   return request<CustomerDetail>(`/customers/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
 }
 
@@ -909,14 +968,57 @@ export function fetchCustomers(params: {
   q?: string;
   limit?: number;
   offset?: number;
+  segment?: CustomerSegment;
+  tagId?: string;
 }): Promise<{ data: CustomerRecord[]; meta: ListMeta }> {
   const qs = new URLSearchParams();
   if (params.q?.trim()) {
     qs.set("q", params.q.trim());
   }
+  if (params.segment) {
+    qs.set("segment", params.segment);
+  }
+  if (params.tagId) {
+    qs.set("tagId", params.tagId);
+  }
   qs.set("limit", String(params.limit ?? 25));
   qs.set("offset", String(params.offset ?? 0));
   return request<{ data: CustomerRecord[]; meta: ListMeta }>(`/customers?${qs.toString()}`);
+}
+
+/** Powers the Add/Edit customer drawer's live duplicate-phone check. `null` means no existing customer has this number. */
+export function lookupCustomerByPhone(phone: string): Promise<CustomerRecord | null> {
+  const qs = new URLSearchParams({ phone });
+  return request<CustomerRecord | null>(`/customers/lookup?${qs.toString()}`);
+}
+
+/** Counts per segment for the Customers page's quick-filter chip badges. */
+export function fetchCustomerSegmentCounts(): Promise<Array<{ segment: CustomerSegment; count: number }>> {
+  return request<Array<{ segment: CustomerSegment; count: number }>>("/customers/segments/summary");
+}
+
+export function uploadCustomerPhoto(customerId: string, file: File): Promise<CustomerDetail> {
+  return uploadImageFile<CustomerDetail>(`/customers/${customerId}/photo`, file);
+}
+
+export function removeCustomerPhoto(customerId: string): Promise<CustomerDetail> {
+  return request<CustomerDetail>(`/customers/${customerId}/photo`, { method: "DELETE" });
+}
+
+export function fetchTags(): Promise<TagRecord[]> {
+  return request<TagRecord[]>("/tags");
+}
+
+export function createTag(input: { label: string; color?: string }): Promise<TagRecord> {
+  return request<TagRecord>("/tags", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateTag(id: string, patch: { label?: string; color?: string | null }): Promise<TagRecord> {
+  return request<TagRecord>(`/tags/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+}
+
+export function deleteTag(id: string): Promise<void> {
+  return request<void>(`/tags/${id}`, { method: "DELETE" });
 }
 
 export interface CustomerStats {
@@ -969,12 +1071,21 @@ export function fetchCustomerAppointments(
   return request<{ data: AppointmentRecord[]; meta: ListMeta }>(`/appointments?${qs.toString()}`);
 }
 
-export function createCustomer(input: {
+export interface CustomerCreateInput {
   firstName: string;
   lastName: string;
   phone: string;
   email?: string;
-}): Promise<CustomerRecord> {
+  title?: string;
+  dateOfBirth?: string;
+  clientSource?: string;
+  address?: string;
+  province?: ProvinceValue;
+  notes?: string;
+  tagIds?: string[];
+}
+
+export function createCustomer(input: CustomerCreateInput): Promise<CustomerRecord> {
   return request<CustomerRecord>("/customers", { method: "POST", body: JSON.stringify(input) });
 }
 

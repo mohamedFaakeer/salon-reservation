@@ -31,3 +31,5 @@ export * from "./notification-log.entity";
 export * from "./notification-template.entity";
 export * from "./customer-notification-preferences.entity";
 export * from "./notification-quota.entity";
+export * from "./tag.entity";
+export * from "./customer-tag.entity";

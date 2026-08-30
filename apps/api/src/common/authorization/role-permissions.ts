@@ -34,6 +34,7 @@ const OWNER_MANAGER_PERMISSIONS: Permission[] = [
   Permission.SEND_MARKETING_CAMPAIGN,
   Permission.MANAGE_INVENTORY,
   Permission.RESET_TEAM_MEMBER_PASSWORD,
+  Permission.MANAGE_CUSTOMER_TAGS,
 ];
 
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {

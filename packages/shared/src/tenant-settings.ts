@@ -1,4 +1,20 @@
-import { AdvanceRule } from "./enums";
+import { AdvanceRule, CustomerSegment } from "./enums";
+
+/**
+ * The 3 time-windowed customer segments' configurable lookback/lookahead, in
+ * days, plus which of the 5 segment chips show on the Customers page at all.
+ * `FIRST_VISIT` and `WEB` are structural conditions with no window to
+ * configure. Read defensively everywhere (`TenantService.getSettings()`
+ * merges `DEFAULT_TENANT_SETTINGS` under a tenant's stored JSON) so a tenant
+ * created before this feature shipped still gets sane values instead of
+ * `undefined`.
+ */
+export interface CustomerSegmentSettings {
+  newCustomerWindowDays: number;
+  recentVisitWindowDays: number;
+  upcomingBirthdayWindowDays: number;
+  visibleSegments: CustomerSegment[];
+}
 
 export interface CancellationPolicy {
   selfServiceCutoffHours: number;
@@ -67,6 +83,17 @@ export interface TenantSettings {
    * the underlying notification.
    */
   staffNotificationPopupsEnabled: boolean;
+  /**
+   * Tenant-added options for `Customer.title` beyond the built-in Mr./Mrs./
+   * Ms./Dr. — append-only from the Add/Edit customer drawer, no dedicated
+   * manage screen (unlike Tags, which have real relational identity and a
+   * manage UI). Plain strings, same "resolved text, no enum" treatment
+   * `Customer.title` itself uses.
+   */
+  customTitleOptions: string[];
+  /** Same shape as `customTitleOptions`, for `Customer.clientSource`. */
+  customClientSourceOptions: string[];
+  customerSegmentSettings: CustomerSegmentSettings;
 }
 
 /** DECISIONS.md Q5/Q9 defaults; advanceRule defaults to NO_ADVANCE. */
@@ -91,4 +118,18 @@ export const DEFAULT_TENANT_SETTINGS: TenantSettings = {
   businessRegNo: null,
   logoUrl: null,
   staffNotificationPopupsEnabled: true,
+  customTitleOptions: [],
+  customClientSourceOptions: [],
+  customerSegmentSettings: {
+    newCustomerWindowDays: 30,
+    recentVisitWindowDays: 30,
+    upcomingBirthdayWindowDays: 30,
+    visibleSegments: [
+      CustomerSegment.NEW,
+      CustomerSegment.RECENT,
+      CustomerSegment.FIRST_VISIT,
+      CustomerSegment.UPCOMING_BIRTHDAY,
+      CustomerSegment.WEB,
+    ],
+  },
 };

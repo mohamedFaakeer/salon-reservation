@@ -91,10 +91,20 @@ All auth routes are unauthenticated in the sense that they need no bearer token;
 
 | Method | Path | Roles | Description |
 |---|---|---|---|
-| GET | `/customers?q=` | OWNER, MANAGER, RECEPTIONIST | Search by name/phone; returns dupes flagged |
-| POST | `/customers` | OWNER, MANAGER, RECEPTIONIST | Create; `409 DUPLICATE_CUSTOMER` with `{ existing: {...} }` when phone/email match (no silent duplicates; explicit merge required) |
-| GET | `/customers/:id` | OWNER, MANAGER, RECEPTIONIST | Profile + appointment history |
-| PATCH | `/customers/:id` | OWNER, MANAGER, RECEPTIONIST | Currently just the marketing flag, not a general customer edit. Body `{ marketingOptOut? }` — excludes/re-includes this customer from win-back/marketing sends; never affects transactional notifications. |
+| GET | `/customers?q=&segment=&tagId=` | OWNER, MANAGER, RECEPTIONIST | Search by name/phone, optionally filtered to one segment (`NEW`\|`RECENT`\|`FIRST_VISIT`\|`UPCOMING_BIRTHDAY`\|`WEB`, computed live server-side from the tenant's `customerSegmentSettings`) and/or one tag |
+| GET | `/customers/lookup?phone=` | OWNER, MANAGER, RECEPTIONIST | Exact-match lookup by normalized phone — powers the Add/Edit drawer's live duplicate check. Returns the matching customer or `null`. |
+| GET | `/customers/segments/summary` | OWNER, MANAGER, RECEPTIONIST | `{ segment, count }[]` for the five segment chips |
+| POST | `/customers` | OWNER, MANAGER, RECEPTIONIST | Create; `409 DUPLICATE_CUSTOMER` with `{ existing: {...} }` when phone/email match (no silent duplicates; explicit merge required). Accepts the full CRM field set (`title`, `dateOfBirth`, `clientSource`, `address`, `province`, `notes`, `tagIds`) alongside firstName/lastName/phone/email. |
+| GET | `/customers/:id` | OWNER, MANAGER, RECEPTIONIST | Profile + appointment history + applied tags |
+| PATCH | `/customers/:id` | OWNER, MANAGER, RECEPTIONIST | A real general edit — every field optional. Re-runs the duplicate check (excluding this row) when `phone`/`email` changes; replaces the full tag set when `tagIds` is provided; audits `CUSTOMER_PHONE_CHANGED` only when the phone actually changes (DECISIONS.md). |
+| POST | `/customers/:id/photo` | OWNER, MANAGER, RECEPTIONIST | Multipart upload, same validation as staff photos (magic-byte format check, size/dimension/aspect-ratio bounds) plus EXIF/metadata stripping on ingest |
+| DELETE | `/customers/:id/photo` | OWNER, MANAGER, RECEPTIONIST | Clears `profileImageUrl` (no Cloudinary-side delete — accepted gap, same as staff/logo photos) |
+| GET | `/tags` | OWNER, MANAGER, RECEPTIONIST | List this tenant's tag definitions |
+| POST | `/tags` | OWNER, MANAGER only (`MANAGE_CUSTOMER_TAGS`) | Create a tag; `409 DUPLICATE_TAG` on a label collision |
+| PATCH | `/tags/:id` | OWNER, MANAGER only | Rename/recolor |
+| DELETE | `/tags/:id` | OWNER, MANAGER only | Hard delete — cascades to `CustomerTag`, an accepted exception to the no-hard-delete rule since a tag is a config/definition object, not a business record |
+
+`PATCH /tenant/me/settings` additionally accepts `customTitleOptions`/`customClientSourceOptions` (tenant-appendable option lists for the Title/Client source fields) and `customerSegmentSettings` (`{ newCustomerWindowDays, recentVisitWindowDays, upcomingBirthdayWindowDays, visibleSegments }`, deep-merged onto the existing value the same way `cancellationPolicy` already is) — same route, same `MANAGE_TENANT_SETTINGS` gate, no new permission needed.
 
 ### Services & Staff
 

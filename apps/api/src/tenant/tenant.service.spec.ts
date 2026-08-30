@@ -95,6 +95,68 @@ describe("TenantService.updateSettings — plan ceilings", () => {
   });
 });
 
+describe("TenantService — backfilling settings keys added after a tenant was created", () => {
+  let tenants: Repository<Tenant>;
+  let service: TenantService;
+
+  beforeEach(() => {
+    tenants = mockRepo<Tenant>();
+    const cloudinary = { uploadLogo: vi.fn() } as unknown as CloudinaryService;
+    service = new TenantService(tenants, cloudinary);
+  });
+
+  /**
+   * A tenant's `settings` JSONB is only ever written by `createTenant` (a
+   * full snapshot at that moment) or `updateSettings` (a merge onto whatever
+   * was already there) — nothing reconciles an existing row against a newer
+   * `DEFAULT_TENANT_SETTINGS` shape. Simulates a tenant created before
+   * `customerSegmentSettings`/`customTitleOptions`/`customClientSourceOptions`
+   * existed by stripping them from the stored settings entirely.
+   */
+  function preExistingTenantSettings(): Partial<typeof DEFAULT_TENANT_SETTINGS> {
+    const rest: Partial<typeof DEFAULT_TENANT_SETTINGS> = { ...DEFAULT_TENANT_SETTINGS };
+    delete rest.customerSegmentSettings;
+    delete rest.customTitleOptions;
+    delete rest.customClientSourceOptions;
+    return rest;
+  }
+
+  it("getSettings backfills customerSegmentSettings for a tenant whose stored settings predate the feature", async () => {
+    vi.mocked(tenants.findOne).mockResolvedValueOnce(
+      baseTenant({ settings: preExistingTenantSettings() as never }),
+    );
+
+    const settings = await service.getSettings("tenant-1");
+
+    expect(settings.customerSegmentSettings).toEqual(DEFAULT_TENANT_SETTINGS.customerSegmentSettings);
+    expect(settings.customTitleOptions).toEqual([]);
+    expect(settings.customClientSourceOptions).toEqual([]);
+  });
+
+  it("updateSettings backfills the missing keys too, so a patch to an unrelated field doesn't wipe them", async () => {
+    vi.mocked(tenants.findOne).mockResolvedValueOnce(
+      baseTenant({ settings: preExistingTenantSettings() as never }),
+    );
+
+    const result = await service.updateSettings("tenant-1", { businessRegNo: "PV12345" });
+
+    expect(result.customerSegmentSettings).toEqual(DEFAULT_TENANT_SETTINGS.customerSegmentSettings);
+  });
+
+  it("a partial customerSegmentSettings patch deep-merges onto the existing value, same as cancellationPolicy already does", async () => {
+    vi.mocked(tenants.findOne).mockResolvedValueOnce(baseTenant());
+
+    const result = await service.updateSettings("tenant-1", {
+      customerSegmentSettings: { newCustomerWindowDays: 45 },
+    });
+
+    expect(result.customerSegmentSettings).toEqual({
+      ...DEFAULT_TENANT_SETTINGS.customerSegmentSettings,
+      newCustomerWindowDays: 45,
+    });
+  });
+});
+
 function pngBuffer(width: number, height: number): Buffer {
   const buf = Buffer.alloc(24);
   buf.writeUInt32BE(0x89504e47, 0);

@@ -276,3 +276,36 @@ export enum RetailReturnDisposition {
   RESTOCK = "RESTOCK",
   QUARANTINE = "QUARANTINE",
 }
+
+/**
+ * Sri Lanka's 9 administrative provinces. A fixed, real-world geographic
+ * list — unlike `Customer.title`/`clientSource`, which are tenant-editable
+ * free text, this has no per-tenant customization mechanism, the same
+ * reasoning `BookingSource` already follows for its own small fixed set.
+ */
+export enum Province {
+  WESTERN = "WESTERN",
+  CENTRAL = "CENTRAL",
+  SOUTHERN = "SOUTHERN",
+  NORTHERN = "NORTHERN",
+  EASTERN = "EASTERN",
+  NORTH_WESTERN = "NORTH_WESTERN",
+  NORTH_CENTRAL = "NORTH_CENTRAL",
+  UVA = "UVA",
+  SABARAGAMUWA = "SABARAGAMUWA",
+}
+
+/**
+ * The Customers page's quick-filter segments. `FIRST_VISIT` and `WEB` are
+ * structural conditions (no day-window); `NEW`/`RECENT`/`UPCOMING_BIRTHDAY`
+ * each read a tenant-configurable day-window from
+ * `TenantSettings.customerSegmentSettings`. Computed live on every request
+ * (CustomerService), never stored as a per-customer flag — see DECISIONS.md.
+ */
+export enum CustomerSegment {
+  NEW = "NEW",
+  RECENT = "RECENT",
+  FIRST_VISIT = "FIRST_VISIT",
+  UPCOMING_BIRTHDAY = "UPCOMING_BIRTHDAY",
+  WEB = "WEB",
+}

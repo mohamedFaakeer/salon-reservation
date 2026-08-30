@@ -17,7 +17,7 @@ import {
   MinLength,
   ValidateNested,
 } from "class-validator";
-import { AdvanceRule } from "../enums";
+import { AdvanceRule, CustomerSegment } from "../enums";
 import type { PlanTier } from "../tenant-entitlements";
 
 /** POST /super-admin/tenants (API.md §4) — SUPER_ADMIN only. */
@@ -103,6 +103,32 @@ export class CancellationPolicyUpdateDto {
   @Min(0)
   @Max(100)
   noShowRefundPercent?: number;
+}
+
+/** Nested inside TenantSettingsUpdateDto; all fields optional (PATCH semantics), deep-merged onto the tenant's existing value in TenantService.update — never a blind replace. */
+export class CustomerSegmentSettingsUpdateDto {
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  newCustomerWindowDays?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  recentVisitWindowDays?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  upcomingBirthdayWindowDays?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsEnum(CustomerSegment, { each: true })
+  visibleSegments?: CustomerSegment[];
 }
 
 /** PATCH /tenant/me/settings — API.md §3. All fields optional (PATCH semantics). */
@@ -191,6 +217,27 @@ export class TenantSettingsUpdateDto {
   @IsOptional()
   @IsBoolean()
   staffNotificationPopupsEnabled?: boolean;
+
+  /** Append-only from the Add/Edit customer drawer's "+ Add new title…"; a full replace here (Settings has no dedicated editor for these). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @IsString({ each: true })
+  @MaxLength(40, { each: true })
+  customTitleOptions?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @IsString({ each: true })
+  @MaxLength(60, { each: true })
+  customClientSourceOptions?: string[];
+
+  /** Customer-segments settings section. Deep-merged onto the existing value, same as cancellationPolicy. */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CustomerSegmentSettingsUpdateDto)
+  customerSegmentSettings?: CustomerSegmentSettingsUpdateDto;
 }
 
 /** PATCH /tenant/me — name only; slug/currency/timezone are not editable here. */

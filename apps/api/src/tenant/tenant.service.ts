@@ -125,11 +125,37 @@ export class TenantService {
     return this.tenants.save(tenant);
   }
 
+  /**
+   * Backfills any settings key added to `DEFAULT_TENANT_SETTINGS` after a
+   * tenant's row was created. A tenant's `settings` JSONB is only ever
+   * written by `createTenant` (a full `DEFAULT_TENANT_SETTINGS` snapshot at
+   * that moment) and `updateSettings` (a merge onto whatever was already
+   * there) — nothing ever reconciles an existing tenant against a newer
+   * default shape, so a tenant created before e.g. `customerSegmentSettings`
+   * existed would otherwise read that key as `undefined` forever, not "30
+   * days". Every caller of `tenant.settings` must go through this, not read
+   * the column directly.
+   */
+  private withDefaults(settings: TenantSettings): TenantSettings {
+    return {
+      ...DEFAULT_TENANT_SETTINGS,
+      ...settings,
+      cancellationPolicy: {
+        ...DEFAULT_TENANT_SETTINGS.cancellationPolicy,
+        ...settings?.cancellationPolicy,
+      },
+      customerSegmentSettings: {
+        ...DEFAULT_TENANT_SETTINGS.customerSegmentSettings,
+        ...settings?.customerSegmentSettings,
+      },
+    };
+  }
+
   async getSettings(
     tenantId: string,
   ): Promise<TenantSettings & { currency: string; timezone: string }> {
     const tenant = await this.findById(tenantId);
-    return { currency: tenant.currency, timezone: tenant.timezone, ...tenant.settings };
+    return { currency: tenant.currency, timezone: tenant.timezone, ...this.withDefaults(tenant.settings) };
   }
 
   /**
@@ -145,6 +171,7 @@ export class TenantService {
   ): Promise<TenantSettings> {
     const tenant = await this.findById(tenantId);
     const limits = resolveLimits(tenant.entitlements);
+    const currentSettings = this.withDefaults(tenant.settings);
 
     if (
       patch.bookingWindowDays !== undefined &&
@@ -181,11 +208,14 @@ export class TenantService {
     }
 
     tenant.settings = {
-      ...tenant.settings,
+      ...currentSettings,
       ...patch,
       cancellationPolicy: patch.cancellationPolicy
-        ? { ...tenant.settings.cancellationPolicy, ...patch.cancellationPolicy }
-        : tenant.settings.cancellationPolicy,
+        ? { ...currentSettings.cancellationPolicy, ...patch.cancellationPolicy }
+        : currentSettings.cancellationPolicy,
+      customerSegmentSettings: patch.customerSegmentSettings
+        ? { ...currentSettings.customerSegmentSettings, ...patch.customerSegmentSettings }
+        : currentSettings.customerSegmentSettings,
     };
     await this.tenants.save(tenant);
     return tenant.settings;

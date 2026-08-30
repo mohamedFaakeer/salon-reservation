@@ -24,7 +24,20 @@ import { ListSkeleton } from "../../../../components/loading-skeleton";
 import { Cell, DataTable, Row } from "../../../../components/data-table";
 import { StatusBadge } from "../../../../components/status-badge";
 import { Pager } from "../../../../components/pager";
-import { formatDate, formatPhone, formatPriceCents, formatTime } from "../../../../lib/format";
+import { CustomerFormDrawer } from "../../../../components/customer-form-drawer";
+import { formatCalendarDate, formatDate, formatPhone, formatPriceCents, formatTime } from "../../../../lib/format";
+
+const PROVINCE_LABELS: Record<string, string> = {
+  WESTERN: "Western",
+  CENTRAL: "Central",
+  SOUTHERN: "Southern",
+  NORTHERN: "Northern",
+  EASTERN: "Eastern",
+  NORTH_WESTERN: "North Western",
+  NORTH_CENTRAL: "North Central",
+  UVA: "Uva",
+  SABARAGAMUWA: "Sabaragamuwa",
+};
 
 /**
  * One customer, and everything they have booked.
@@ -56,6 +69,7 @@ export default function CustomerDetailPage() {
   const [optOutSaving, setOptOutSaving] = useState(false);
   const [prefs, setPrefs] = useState<CustomerNotificationPreferencesRecord | null>(null);
   const [prefsSaving, setPrefsSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -149,9 +163,46 @@ export default function CustomerDetailPage() {
       <BackLink />
 
       <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <h1 className="text-xl font-semibold text-slate-900">
-          {customer.firstName} {customer.lastName}
-        </h1>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-50">
+              {customer.profileImageUrl ? (
+                <img src={customer.profileImageUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="text-slate-300">
+                  <circle cx="12" cy="8" r="3.2" />
+                  <path d="M4.5 20c0-3.5 3-6 7.5-6s7.5 2.5 7.5 6" />
+                </svg>
+              )}
+            </span>
+            <h1 className="text-xl font-semibold text-slate-900">
+              {customer.title ? `${customer.title} ` : ""}
+              {customer.firstName} {customer.lastName}
+            </h1>
+          </div>
+          <button
+            type="button"
+            data-testid="customer-edit-button"
+            onClick={() => setEditing(true)}
+            className="min-h-9 shrink-0 rounded border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Edit
+          </button>
+        </div>
+
+        {customer.tags.length > 0 ? (
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
+            {customer.tags.map((t) => (
+              <span
+                key={t.id}
+                className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-white"
+                style={{ backgroundColor: t.color ?? "#64748b" }}
+              >
+                {t.label}
+              </span>
+            ))}
+          </div>
+        ) : null}
 
         <dl className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Fact label="Phone" value={formatPhone(customer.phone)} tabular />
@@ -161,6 +212,17 @@ export default function CustomerDetailPage() {
             label="Last visit"
             value={stats?.lastVisitDate ? formatDate(stats.lastVisitDate) : "Not yet"}
             tabular
+          />
+          <Fact
+            label="Date of birth"
+            value={customer.dateOfBirth ? formatCalendarDate(customer.dateOfBirth) : "Not given"}
+            tabular={!!customer.dateOfBirth}
+          />
+          <Fact label="Client source" value={customer.clientSource ?? "Not given"} />
+          <Fact label="Address" value={customer.address ?? "Not given"} />
+          <Fact
+            label="Province"
+            value={customer.province ? PROVINCE_LABELS[customer.province] : "Not given"}
           />
         </dl>
 
@@ -290,6 +352,18 @@ export default function CustomerDetailPage() {
           </>
         )}
       </div>
+
+      {editing ? (
+        <CustomerFormDrawer
+          mode="edit"
+          initial={customer}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            load();
+          }}
+        />
+      ) : null}
     </div>
   );
 }
