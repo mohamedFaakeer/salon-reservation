@@ -2784,9 +2784,3 @@ constructs an invalid date; the accepted trade-off is that a Feb 29
 birthday doesn't surface in the segment during a run of non-leap years, a
 one-in-1,461-days edge case.
 
-**A pre-existing bug noticed but not fixed** (out of scope, flagged for
-awareness): `removeStaffPhoto` in `apps/admin/src/lib/api-client.ts` builds
-its URL with backslashes (`` `\staff\${staffId}\photo` ``) instead of
-forward slashes — likely broken in practice. Not touched here since it
-predates this feature and isn't part of the Customers module; worth a
-follow-up fix.
