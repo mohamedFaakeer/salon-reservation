@@ -42,7 +42,7 @@ export function TenantUsageTable({ rows }: { rows: MonitoringTenantUsage[] }) {
       <table className="w-full min-w-[760px] border-collapse">
         <thead>
           <tr className="border-b border-slate-700">
-            {["Salon", "Bookings", "Revenue", "Email usage", "SMS usage", "Last staff login"].map((h) => (
+            {["Salon", "Bookings", "Revenue", "Email usage", "SMS usage", "Last staff login", "Locked"].map((h) => (
               <th
                 key={h}
                 className="whitespace-nowrap px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400"
@@ -74,6 +74,15 @@ export function TenantUsageTable({ rows }: { rows: MonitoringTenantUsage[] }) {
                   {row.lastStaffLoginAt ? (
                     <p className="mt-0.5 text-[10px] text-slate-600">{formatDate(row.lastStaffLoginAt)}</p>
                   ) : null}
+                </td>
+                <td className="px-4 py-3 text-sm tabular">
+                  {row.lockedAccountCount > 0 ? (
+                    <span className="rounded bg-red-500/15 px-2 py-0.5 font-semibold text-red-400">
+                      {row.lockedAccountCount}
+                    </span>
+                  ) : (
+                    <span className="text-slate-600">0</span>
+                  )}
                 </td>
               </tr>
             );

@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import argon2 from "argon2";
+import { randomBytes } from "node:crypto";
 
 /**
  * argon2id password hashing (SECURITY.md §2).
@@ -22,5 +23,16 @@ export class PasswordService {
 
   verify(hash: string, plain: string): Promise<boolean> {
     return argon2.verify(hash, plain);
+  }
+
+  /**
+   * URL-safe, ~26 characters of entropy — long enough that nobody retypes it
+   * by hand. The single generator behind every "set someone else's
+   * password" path in this app (the `user:set-password --generate` CLI
+   * break-glass script, and the in-app team/super-admin reset endpoints) —
+   * one strength policy, never a separate/weaker one for either caller.
+   */
+  generate(): string {
+    return randomBytes(24).toString("base64url");
   }
 }

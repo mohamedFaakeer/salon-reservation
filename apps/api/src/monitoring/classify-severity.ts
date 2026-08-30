@@ -33,6 +33,14 @@ export function classifySecurityEventSeverity(
       // A sustained hit against the same rule is more likely a script/bot
       // than an isolated retry.
       return recentCount >= 5 ? "MEDIUM" : "LOW";
+    case "ACCOUNT_LOCKED":
+      // A real consequence, not just a raw failed-attempt count — the
+      // account is now actually blocked, worth a look but automatically
+      // contained already (nobody can keep guessing against it).
+      return "MEDIUM";
+    case "TEAM_MEMBER_PASSWORD_RESET":
+      // Routine, expected remediation — never worth interrupting anyone for.
+      return "LOW";
     default:
       return "LOW";
   }

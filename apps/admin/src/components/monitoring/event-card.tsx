@@ -69,6 +69,7 @@ export function EventCard({
   tags,
   techDetails,
   onChangeStatus,
+  extraAction,
 }: {
   testId: string;
   severity: MonitoringSeverity;
@@ -81,14 +82,26 @@ export function EventCard({
   techDetails: Array<[string, string]>;
   /** Omit to render the card read-only (used for the Overview preview). */
   onChangeStatus?: (next: "ACKNOWLEDGED" | "RESOLVED") => Promise<void>;
+  /** A one-off action specific to this event's kind (e.g. "Reset this account's password" on an ACCOUNT_LOCKED card) — independent of the review-status workflow, so it stays visible even once resolved. */
+  extraAction?: { label: string; busyLabel: string; onClick: () => Promise<void>; testId: string };
 }) {
-  const [busy, setBusy] = useState<"ACKNOWLEDGED" | "RESOLVED" | null>(null);
+  const [busy, setBusy] = useState<"ACKNOWLEDGED" | "RESOLVED" | "EXTRA" | null>(null);
 
   async function act(next: "ACKNOWLEDGED" | "RESOLVED"): Promise<void> {
     if (!onChangeStatus) return;
     setBusy(next);
     try {
       await onChangeStatus(next);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function runExtraAction(): Promise<void> {
+    if (!extraAction) return;
+    setBusy("EXTRA");
+    try {
+      await extraAction.onClick();
     } finally {
       setBusy(null);
     }
@@ -117,12 +130,29 @@ export function EventCard({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           {tags.map((t) => (
             <span key={t} className="rounded-md border border-slate-700 bg-slate-900 px-2 py-0.5 text-[11px] text-slate-400">
               {t}
             </span>
           ))}
+          {extraAction ? (
+            <button
+              type="button"
+              data-testid={extraAction.testId}
+              onClick={() => void runExtraAction()}
+              disabled={busy !== null}
+              className="min-h-9 rounded border border-amber-600 px-2.5 text-xs font-semibold text-amber-300 hover:bg-amber-950 disabled:opacity-60"
+            >
+              {busy === "EXTRA" ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Spinner /> {extraAction.busyLabel}
+                </span>
+              ) : (
+                extraAction.label
+              )}
+            </button>
+          ) : null}
         </div>
         {onChangeStatus && status !== "RESOLVED" ? (
           <div className="flex gap-2">

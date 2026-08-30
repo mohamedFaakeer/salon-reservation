@@ -27,6 +27,7 @@ import { UserStatus } from "../enums/user-status.enum";
 import { PasswordService } from "../auth/services/password.service";
 import { TenantService } from "../tenant/tenant.service";
 import { AuditService } from "../audit/audit.service";
+import { TeamService } from "../team/team.service";
 import { colomboNow } from "../availability/time.util";
 
 /** Mirrors `DOES_NOT_COUNT_TOWARD_DAILY_LIMIT` in booking.service.ts — what an active booking day actually counts. */
@@ -53,11 +54,41 @@ export class SuperAdminService {
   constructor(
     @InjectRepository(Tenant) private readonly tenants: Repository<Tenant>,
     @InjectRepository(Appointment) private readonly appointments: Repository<Appointment>,
+    @InjectRepository(UserTenantRole) private readonly roles: Repository<UserTenantRole>,
     @InjectDataSource() private readonly dataSource: DataSource,
     @Inject(TenantService) private readonly tenantService: TenantService,
     @Inject(PasswordService) private readonly passwordService: PasswordService,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(TeamService) private readonly teamService: TeamService,
   ) {}
+
+  /**
+   * The one path that can reset an OWNER's own password — `TeamService`'s
+   * tenant-scoped version explicitly refuses to touch an OWNER row
+   * (`CANNOT_MODIFY_OWNER`), since nobody within a salon outranks its owner.
+   * Reuses `TeamService.performPasswordReset` for the actual mechanics
+   * (generate, hash, force a first-login change, revoke sessions, audit,
+   * notify) so both callers stay identical in every consequence
+   * (account-lockout-v2, DECISIONS.md).
+   */
+  async resetTeamMemberPassword(
+    tenantId: string,
+    userId: string,
+    actorUserId: string,
+  ): Promise<{ userId: string; temporaryPassword: string }> {
+    const grant = await this.roles.findOne({
+      where: { tenantId, userId },
+      relations: { user: true },
+    });
+    if (!grant?.user) {
+      throw new ApiError({
+        statusCode: 404,
+        code: "TEAM_MEMBER_NOT_FOUND",
+        message: "That person does not have access to this salon.",
+      });
+    }
+    return this.teamService.performPasswordReset(tenantId, grant.user, actorUserId, UserRole.SUPER_ADMIN);
+  }
 
   /**
    * Provisions a tenant + default branch + OWNER user in one transaction, so

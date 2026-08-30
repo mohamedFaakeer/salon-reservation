@@ -13,11 +13,11 @@
  */
 import "reflect-metadata";
 import path from "node:path";
-import { randomBytes } from "node:crypto";
 import argon2 from "argon2";
 import dotenv from "dotenv";
 import { DataSource } from "typeorm";
 import { isPubliclyKnown } from "../../common/security/production-secrets";
+import { PasswordService } from "../../auth/services/password.service";
 
 // Same two-step lookup data-source.ts uses, so this runs with no extra setup
 // whether invoked from apps/api or the repository root.
@@ -60,14 +60,13 @@ function parseArgs(argv: string[]): Args {
   };
 }
 
-/** URL-safe, ~26 characters of entropy — long enough that nobody retypes it by hand. */
-function generatePassword(): string {
-  return randomBytes(24).toString("base64url");
-}
+// Same generator the in-app reset endpoints use (`PasswordService.generate`)
+// — one strength policy, never a separate one for the CLI path.
+const passwords = new PasswordService();
 
 function resolvePassword(args: Args): { password: string; generated: boolean } {
   if (args.generate) {
-    return { password: generatePassword(), generated: true };
+    return { password: passwords.generate(), generated: true };
   }
   if (!args.password) {
     throw new Error("Pass --password '<value>' or --generate.");

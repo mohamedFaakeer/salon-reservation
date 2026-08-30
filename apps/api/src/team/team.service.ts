@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 // Repository/DataSource must stay VALUE imports: NestJS resolves constructor
 // injection via design:paramtypes metadata at runtime; `import type` would
@@ -19,7 +19,10 @@ import { UserStatus } from "../enums/user-status.enum";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { PasswordService } from "../auth/services/password.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { SessionService } from "../auth/services/session.service";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { AuditService } from "../audit/audit.service";
+import { resolveEmailTransport } from "../notification/providers/resolve-email-transport";
 
 export interface TeamMember {
   userId: string;
@@ -34,11 +37,14 @@ export interface TeamMember {
 
 @Injectable()
 export class TeamService {
+  private readonly logger = new Logger(TeamService.name);
+
   constructor(
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(UserTenantRole) private readonly roles: Repository<UserTenantRole>,
     @InjectRepository(Staff) private readonly staff: Repository<Staff>,
     private readonly passwords: PasswordService,
+    private readonly sessions: SessionService,
     private readonly audit: AuditService,
     private readonly dataSource: DataSource,
   ) {}
@@ -188,6 +194,20 @@ export class TeamService {
       });
     }
 
+    if (dto.status === "ACTIVE" && grant.user.status === UserStatus.LOCKED) {
+      // Only a password reset may clear a lockout (account-lockout-v2,
+      // DECISIONS.md) — flipping status back to ACTIVE here would restore
+      // access without forcing a new password, without revoking whatever
+      // sessions were live when it locked, and without resetting the
+      // failure counter, quietly bypassing every hardening the reset
+      // endpoint provides.
+      throw new ApiError({
+        statusCode: 409,
+        code: "ACCOUNT_LOCKED",
+        message: "This account is locked. Reset their password to restore access — a plain status change can't clear a lockout.",
+      });
+    }
+
     if (dto.role) {
       grant.role = dto.role as UserRole;
       await this.roles.save(grant);
@@ -209,6 +229,144 @@ export class TeamService {
 
     const linkedStaff = await this.staff.findOne({ where: { tenantId, userId } });
     return toMember(grant, linkedStaff?.id ?? null);
+  }
+
+  /**
+   * Generates a new temporary password (also clears any lock) — the one
+   * capability MANAGER gets that isn't full `MANAGE_TEAM` (account-lockout-
+   * v2, DECISIONS.md). Same OWNER/self guardrails as `update()`: an OWNER's
+   * own password can only be reset by SUPER_ADMIN (see
+   * `SuperAdminService.resetTeamMemberPassword`), and nobody resets their
+   * own from here — if you're locked out, you can't be the one clicking
+   * this button anyway.
+   */
+  async resetPassword(
+    tenantId: string,
+    userId: string,
+    actorUserId: string,
+  ): Promise<{ userId: string; temporaryPassword: string }> {
+    const grant = await this.roles.findOne({
+      where: { tenantId, userId },
+      relations: { user: true },
+    });
+    if (!grant?.user) {
+      throw new ApiError({
+        statusCode: 404,
+        code: "TEAM_MEMBER_NOT_FOUND",
+        message: "That person does not have access to this salon.",
+      });
+    }
+    if (grant.role === UserRole.OWNER) {
+      throw new ApiError({
+        statusCode: 409,
+        code: "CANNOT_MODIFY_OWNER",
+        message: "The salon owner's access cannot be changed from here.",
+      });
+    }
+    if (userId === actorUserId) {
+      throw new ApiError({
+        statusCode: 409,
+        code: "CANNOT_MODIFY_SELF",
+        message: "You cannot reset your own password from here.",
+      });
+    }
+
+    const actorGrant = await this.roles.findOne({ where: { tenantId, userId: actorUserId } });
+    return this.performPasswordReset(tenantId, grant.user, actorUserId, actorGrant?.role ?? null);
+  }
+
+  /**
+   * Shared by the tenant-scoped reset above and
+   * `SuperAdminService.resetTeamMemberPassword` — the one place that
+   * actually generates, hashes, and reveals a new temporary password, so
+   * both callers stay identical in every consequence: forces a
+   * first-login change, clears any lock, revokes existing sessions, and
+   * notifies (never a lighter-weight variant for either caller).
+   */
+  async performPasswordReset(
+    tenantId: string,
+    target: User,
+    actorUserId: string,
+    actorRole: UserRole | null,
+  ): Promise<{ userId: string; temporaryPassword: string }> {
+    const temporaryPassword = this.passwords.generate();
+    await this.users.update(
+      { id: target.id },
+      {
+        passwordHash: await this.passwords.hash(temporaryPassword),
+        mustChangePassword: true,
+        status: UserStatus.ACTIVE,
+        failedLoginAttempts: 0,
+      },
+    );
+    await this.sessions.revokeAllForUser(target.id);
+
+    await this.audit.record({
+      tenantId,
+      actorUserId,
+      action: "TEAM_MEMBER_PASSWORD_RESET",
+      entityType: "User",
+      entityId: target.id,
+      metadata: { resetByRole: actorRole },
+    });
+
+    await this.notifyPasswordReset(tenantId, target, actorRole);
+
+    return { userId: target.id, temporaryPassword };
+  }
+
+  /**
+   * Best-effort — mirrors `PlatformAlertService`'s own philosophy exactly:
+   * an email that fails to send must never turn a successful reset into an
+   * error, since the reset itself (and its audit trail) already happened.
+   * Tells the affected person directly, and separately tells the OWNER
+   * when a MANAGER (not the owner) performed the reset, so a careless or
+   * compromised manager login can never silently take over a colleague's
+   * account (account-lockout-v2 hardening #4, DECISIONS.md).
+   */
+  private async notifyPasswordReset(tenantId: string, target: User, actorRole: UserRole | null): Promise<void> {
+    const transport = resolveEmailTransport();
+    if (!transport) {
+      this.logger.warn(`No email transport configured — password-reset notification not sent for ${target.email}`);
+      return;
+    }
+
+    const byline = actorRole ? ` by a ${actorRole.toLowerCase()}` : "";
+    try {
+      await transport.send({
+        to: target.email,
+        subject: "Your password was reset",
+        text: `Your password for the salon admin app was just reset${byline}. If you didn't expect this, contact your salon owner immediately.`,
+      });
+    } catch (err) {
+      this.logger.error(
+        `Failed to send password-reset notification to ${target.email}`,
+        err instanceof Error ? err.stack : undefined,
+      );
+    }
+
+    if (actorRole !== UserRole.MANAGER) {
+      return;
+    }
+    const ownerGrant = await this.roles.findOne({
+      where: { tenantId, role: UserRole.OWNER },
+      relations: { user: true },
+    });
+    if (!ownerGrant?.user) {
+      return;
+    }
+    try {
+      await transport.send({
+        to: ownerGrant.user.email,
+        subject: `${target.name}'s password was reset`,
+        text: `A manager reset ${target.name}'s (${target.email}) password just now. No action needed unless this wasn't expected.`,
+      });
+    } catch (err) {
+      this.logger.error(
+        `Failed to notify the owner of a password reset for ${target.email}`,
+        err instanceof Error ? err.stack : undefined,
+      );
+    }
   }
 
   /** One query for every login's linked staff row, keyed by userId. */

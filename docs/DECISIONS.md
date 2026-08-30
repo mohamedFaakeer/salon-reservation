@@ -2562,3 +2562,120 @@ pages or entity fields needed for this pass; `cancelUrl`/`rescheduleUrl`/
    place. Both `today` and `schedule` pass `onReassign`/`canReassign` into
    the same `DayCalendar`, so the one board component gained the capability
    once for both the live and planning views.
+
+## 58. Account lockout v2 — manual reset by owner/manager/super-admin (2026-08-30)
+
+A consultation, not a literal build: the original ask specified 3 attempts
+and "contact manager or admin to reset." Code research surfaced three gaps
+the literal wording didn't account for — an OWNER has no one in-tenant to
+ask, MANAGER had zero Team-page access at all, and no password-reset
+capability existed anywhere in the app — so the design below was worked out
+with the user before writing any code, then explicitly hardened further per
+their instruction to bias every open tradeoff toward stronger security.
+
+**Locked decisions:**
+1. **Reset access**: OWNER (unchanged) + a new, narrow
+   `RESET_TEAM_MEMBER_PASSWORD` permission for MANAGER — full `MANAGE_TEAM`
+   (role changes, enable/disable) stays OWNER-only. SUPER_ADMIN gets the
+   cross-tenant equivalent and is the *only* path that can reset an OWNER
+   (the existing `CANNOT_MODIFY_OWNER` guard is untouched for the
+   tenant-scoped route).
+2. **"Reset" = a full password reset**, not a bare unlock — generates a new
+   temporary password, shown once, and clears the lock.
+3. **Threshold: 5**, not the originally-stated 3 — matches the mechanism
+   already shipped this session and the HIGH-severity trigger already tuned
+   into `classify-severity.ts`, avoiding two different magic numbers for
+   the same concept. This *replaces* that mechanism entirely rather than
+   stacking a second, stricter one on top of it.
+4. **Scope: admin/staff logins only** (OWNER/MANAGER/RECEPTIONIST/STAFF).
+   Customer web accounts also have `LOGIN_FAILED`-tracked passwords, but are
+   explicitly out of scope — they already have OTP-based self-recovery, and
+   "ask your manager" doesn't fit a customer.
+5. **SUPER_ADMIN is not exempt** — it locks after 5 the same as anyone
+   else. Exempting the single most powerful account in the system would be
+   a real regression (a compromised super-admin credential affects every
+   tenant); its recovery path is the existing CLI break-glass script
+   (`user:set-password`), since nothing in the app outranks it to click an
+   "unlock" button.
+6. **Bonus, folded in mid-consultation**: any password set by someone other
+   than the account holder (creation, or this new reset) now forces a
+   mandatory password change on next login, before any real session is
+   issued — raised by the user as a related gap once they noticed the app
+   had never had this. Mirrors AWS Cognito's/Okta's
+   `NEW_PASSWORD_REQUIRED` challenge shape: the server withholds real
+   access/refresh tokens entirely, returning a short-lived, single-purpose
+   change-token instead.
+
+**Maximum-security hardening**, added on top of the above per explicit
+instruction to resolve every open tradeoff toward stronger security:
+1. **Enumeration-resistance preserved for unknown emails.** A persisted
+   counter on the `User` row (needed for a manual-reset design) has nothing
+   to persist for a nonexistent email. Rather than let that silently reopen
+   the exact gap the old mechanism closed, an unknown email still falls
+   back to the *original* audit-log-derived sliding window
+   (`AuditService.lockoutExpiry`, unchanged) and returns the identically-
+   worded `ACCOUNT_LOCKED` response — a fake identity has nothing real to
+   protect, so auto-expiry there is correct, not a compromise.
+2. **Sessions revoke the moment an account locks**, not only at reset —
+   five wrong passwords is itself a signal worth acting on immediately,
+   closing the window where a stale session on a front-desk machine stays
+   valid throughout an active attack on the same account.
+3. **The first-login change-token is fingerprinted against the exact
+   password it was issued for** (a hash of `passwordHash` at issuance,
+   rechecked at redemption) and rejected outright by the normal
+   `TokenService.verify()` via a `purpose` claim — a password-change token
+   can never work as a real access token, and can't be replayed after the
+   password already changed through some other path.
+4. **The affected person is told when their own password is reset**, not
+   just the person who reset it — a best-effort email (reusing
+   `resolveEmailTransport()`, the same low-level sender
+   `PlatformAlertService` already uses, generalized beyond its
+   platform-admin-only original use) to the account holder, and separately
+   to the OWNER whenever a MANAGER performed the reset. A careless or
+   compromised manager login can never silently take over a colleague's
+   account unnoticed.
+5. **No weaker password-generation path**: `PasswordService.generate()` is
+   now the one generator behind both the CLI break-glass script and the new
+   in-app reset endpoints — extracted from the CLI script's own
+   `generatePassword()`, not reimplemented.
+6. **A plain status change can no longer clear a lockout.** Discovered
+   while wiring the Team page: the pre-existing ACTIVE/DISABLED toggle
+   would otherwise let an OWNER "restore access" on a LOCKED row without
+   forcing a password change, without revoking sessions, and without
+   resetting the failure counter — quietly bypassing every hardening above.
+   `TeamService.update()` now explicitly refuses an ACTIVE transition while
+   `status === LOCKED`; only the reset endpoint may clear it. Disabling a
+   locked account outright is still allowed.
+
+**Implementation shape:** `UserStatus` gains `LOCKED`; `User` gains
+`failedLoginAttempts` (a real persisted counter, replacing the old
+audit-log-derived window for known accounts — cheaper, and there's nothing
+left to "expire" once the design is manual-reset) and `mustChangePassword`.
+`ACCOUNT_LOCKED` and `TEAM_MEMBER_PASSWORD_RESET` join
+`SECURITY_EVENT_ACTIONS`, the former MEDIUM severity (a real consequence,
+worth a look), the latter permanently LOW and non-alerting (routine,
+expected remediation) — both now appear in the existing Security events
+feed rather than a new screen. The platform's Tenant usage table gained a
+live `lockedAccountCount` column. The super-admin's OWNER-reset action lives
+directly on an `ACCOUNT_LOCKED` event card (a new generic `extraAction` slot
+on `EventCard`) rather than a new "browse this salon's team" screen, since
+the platform page is deliberately scoped to lifecycle/plan/visibility only
+and team management is "the salon's own business" — reusing the row's
+already-present `tenantId`/`entityId` instead. `ACCOUNT_LOCKED` resolves and
+records a real `tenantId` (unlike the hot-path-sensitive `LOGIN_FAILED`)
+since it fires once per lockout, not once per attempt, and the platform
+feature needs to know which salon to act on.
+
+Every typed password field this work touched now uses the same show/hide
+toggle the login page already had (extracted into
+`PasswordVisibilityToggle`), per explicit instruction to keep that
+convention everywhere a password is typed — including `TeamDrawer`'s
+temporary-password field at account creation, which previously showed the
+password permanently unmasked with no toggle at all, by original design
+(the code's own comment: masking a value the owner must read aloud or
+transcribe causes typos, not security, since nobody is shoulder-surfing
+their own screen). Rather than either regress that reasoning (a toggle
+defaulting to hidden, like every other field) or skip the field entirely,
+it gets the same toggle **defaulting to visible** — consistent chrome, a
+way to hide it if a coworker walks by or the screen is shared, without
+reintroducing the transcription-typo risk as the default state.

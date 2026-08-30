@@ -12,5 +12,6 @@ import { TeamService } from "./team.service";
   imports: [TypeOrmModule.forFeature([User, UserTenantRole, Staff]), AuthModule, AuditModule],
   controllers: [TeamController],
   providers: [TeamService],
+  exports: [TeamService],
 })
 export class TeamModule {}

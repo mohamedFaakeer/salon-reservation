@@ -1,11 +1,14 @@
 import type { DataSource, ObjectLiteral, Repository } from "typeorm";
-import { DEFAULT_TENANT_ENTITLEMENTS } from "@salon/shared";
+import { DEFAULT_TENANT_ENTITLEMENTS, UserRole } from "@salon/shared";
 import { SuperAdminService } from "./super-admin.service";
 import type { Appointment } from "../entities/appointment.entity";
 import type { Tenant } from "../entities/tenant.entity";
+import type { User } from "../entities/user.entity";
+import type { UserTenantRole } from "../entities/user-tenant-role.entity";
 import type { PasswordService } from "../auth/services/password.service";
 import type { AuditService } from "../audit/audit.service";
 import type { TenantService } from "../tenant/tenant.service";
+import type { TeamService } from "../team/team.service";
 
 function mockRepo<T extends ObjectLiteral>() {
   return {
@@ -36,10 +39,12 @@ function baseTenant(overrides: Partial<Tenant> = {}): Tenant {
 describe("SuperAdminService", () => {
   let tenants: Repository<Tenant>;
   let appointments: Repository<Appointment>;
+  let roles: Repository<UserTenantRole>;
   let dataSource: DataSource;
   let tenantService: TenantService;
   let passwordService: PasswordService;
   let audit: AuditService;
+  let teamService: TeamService;
   let service: SuperAdminService;
   let queryBuilderRows: Array<{ tenantId: string; count: string }>;
 
@@ -56,11 +61,54 @@ describe("SuperAdminService", () => {
         getRawMany: vi.fn(async () => queryBuilderRows),
       })),
     } as unknown as Repository<Appointment>;
+    roles = mockRepo<UserTenantRole>();
     dataSource = {} as DataSource;
     tenantService = {} as TenantService;
     passwordService = {} as PasswordService;
     audit = { record: vi.fn(async () => undefined) } as unknown as AuditService;
-    service = new SuperAdminService(tenants, appointments, dataSource, tenantService, passwordService, audit);
+    teamService = {
+      performPasswordReset: vi.fn(async () => ({ userId: "u2", temporaryPassword: "generated-temp-password" })),
+    } as unknown as TeamService;
+    service = new SuperAdminService(
+      tenants,
+      appointments,
+      roles,
+      dataSource,
+      tenantService,
+      passwordService,
+      audit,
+      teamService,
+    );
+  });
+
+  describe("resetTeamMemberPassword", () => {
+    it("404s when the target has no access to this salon", async () => {
+      vi.mocked(roles.findOne).mockResolvedValueOnce(null);
+
+      await expect(service.resetTeamMemberPassword("tenant-1", "u2", "super-1")).rejects.toMatchObject({
+        statusCode: 404,
+        code: "TEAM_MEMBER_NOT_FOUND",
+      });
+    });
+
+    it("can reset an OWNER's password — the one path that can", async () => {
+      vi.mocked(roles.findOne).mockResolvedValueOnce({
+        userId: "u2",
+        tenantId: "tenant-1",
+        role: UserRole.OWNER,
+        user: { id: "u2" } as User,
+      } as UserTenantRole & { user: User });
+
+      const result = await service.resetTeamMemberPassword("tenant-1", "u2", "super-1");
+
+      expect(result).toEqual({ userId: "u2", temporaryPassword: "generated-temp-password" });
+      expect(teamService.performPasswordReset).toHaveBeenCalledWith(
+        "tenant-1",
+        { id: "u2" },
+        "super-1",
+        UserRole.SUPER_ADMIN,
+      );
+    });
   });
 
   describe("getEntitlements / updateEntitlements", () => {

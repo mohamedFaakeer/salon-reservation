@@ -16,9 +16,8 @@ function mockRepo<T extends ObjectLiteral>() {
 function mockAudit(): AuditService {
   return {
     record: vi.fn(async () => undefined),
-    // Not locked by default — every existing login test exercises this path
-    // whether or not it cares about lockout, so "not currently locked" has
-    // to be the harmless default.
+    // Not locked by default — every test that doesn't care about the
+    // unknown-email fallback exercises this path regardless.
     lockoutExpiry: vi.fn(async () => null as Date | null),
   } as unknown as AuditService;
 }
@@ -30,6 +29,8 @@ function fakeUser(overrides: Partial<User> = {}): User {
     name: "Nadeesha",
     passwordHash: "hashed",
     status: "ACTIVE",
+    failedLoginAttempts: 0,
+    mustChangePassword: false,
     lastLoginAt: null,
     ...overrides,
   } as User;
@@ -45,7 +46,7 @@ describe("AuthService.login — audit trail", () => {
 
   beforeEach(() => {
     users = mockRepo<User>();
-    password = { verify: vi.fn(async () => true) } as unknown as PasswordService;
+    password = { verify: vi.fn(async () => true), hash: vi.fn(async (p: string) => `hashed:${p}`) } as unknown as PasswordService;
     sessions = {
       buildSessionUser: vi.fn(async () => ({
         userId: "user-1",
@@ -56,8 +57,14 @@ describe("AuthService.login — audit trail", () => {
         branchId: null,
       })),
       createSession: vi.fn(async () => ({ refreshToken: "raw-refresh", sid: "sid-1" })),
+      revokeAllForUser: vi.fn(async () => undefined),
+      primaryTenantId: vi.fn(async () => "tenant-1"),
     } as unknown as SessionService;
-    tokens = { sign: vi.fn(async () => "signed-access-token") } as unknown as TokenService;
+    tokens = {
+      sign: vi.fn(async () => "signed-access-token"),
+      signPasswordChangeToken: vi.fn(async () => "signed-change-token"),
+      verifyPasswordChangeToken: vi.fn(async () => ({ userId: "user-1", passwordHashFingerprint: "fp" })),
+    } as unknown as TokenService;
     audit = mockAudit();
     service = new AuthService(users, password, sessions, tokens, audit);
   });
@@ -69,6 +76,17 @@ describe("AuthService.login — audit trail", () => {
 
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ action: "LOGIN_SUCCEEDED", actorUserId: "user-1", tenantId: "tenant-1" }),
+    );
+  });
+
+  it("resets failedLoginAttempts to 0 on a successful login", async () => {
+    vi.mocked(users.findOne).mockResolvedValue(fakeUser({ failedLoginAttempts: 3 }));
+
+    await service.login({ email: "owner@elegance.salon", password: "correct horse" });
+
+    expect(users.update).toHaveBeenCalledWith(
+      { id: "user-1" },
+      expect.objectContaining({ failedLoginAttempts: 0 }),
     );
   });
 
@@ -101,25 +119,57 @@ describe("AuthService.login — audit trail", () => {
     );
   });
 
-  describe("account lockout", () => {
-    it("checks lockout on the user's own id, before ever verifying the password", async () => {
-      vi.mocked(users.findOne).mockResolvedValue(fakeUser());
+  describe("account lockout (persisted, manual-reset — DECISIONS.md)", () => {
+    it("rejects immediately with ACCOUNT_LOCKED when the account's status is already LOCKED, before verifying the password", async () => {
+      vi.mocked(users.findOne).mockResolvedValue(fakeUser({ status: "LOCKED" as User["status"] }));
 
-      await service.login({ email: "owner@elegance.salon", password: "correct horse" });
+      await expect(
+        service.login({ email: "owner@elegance.salon", password: "correct horse" }),
+      ).rejects.toMatchObject({ statusCode: 403, code: "ACCOUNT_LOCKED" });
 
-      expect(audit.lockoutExpiry).toHaveBeenCalledWith(
-        "user-1",
-        "LOGIN_FAILED",
-        "LOGIN_SUCCEEDED",
-        5,
-        15 * 60_000,
+      expect(password.verify).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it("increments failedLoginAttempts on a wrong password without locking, below the threshold", async () => {
+      vi.mocked(users.findOne).mockResolvedValue(fakeUser({ failedLoginAttempts: 2 }));
+      vi.mocked(password.verify).mockResolvedValue(false);
+
+      await expect(service.login({ email: "owner@elegance.salon", password: "wrong" })).rejects.toBeDefined();
+
+      expect(users.update).toHaveBeenCalledWith({ id: "user-1" }, { failedLoginAttempts: 3 });
+      expect(sessions.revokeAllForUser).not.toHaveBeenCalled();
+    });
+
+    it("locks the account, revokes its sessions, and audits ACCOUNT_LOCKED on the 5th consecutive wrong password", async () => {
+      vi.mocked(users.findOne).mockResolvedValue(fakeUser({ failedLoginAttempts: 4 }));
+      vi.mocked(password.verify).mockResolvedValue(false);
+
+      await expect(service.login({ email: "owner@elegance.salon", password: "wrong" })).rejects.toBeDefined();
+
+      expect(users.update).toHaveBeenCalledWith(
+        { id: "user-1" },
+        { failedLoginAttempts: 5, status: "LOCKED" },
+      );
+      expect(sessions.revokeAllForUser).toHaveBeenCalledWith("user-1");
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "ACCOUNT_LOCKED",
+          entityId: "user-1",
+          tenantId: "tenant-1",
+          metadata: { failedLoginAttempts: 5 },
+        }),
       );
     });
 
-    it("checks lockout on the attempted email when no account exists — same as LOGIN_FAILED's own entityId convention", async () => {
+    it("falls back to the audit-log sliding window for an unknown email — same enumeration-resistance the old mechanism had", async () => {
       vi.mocked(users.findOne).mockResolvedValue(null);
+      const lockedUntil = new Date(Date.now() + 7 * 60_000);
+      vi.mocked(audit.lockoutExpiry).mockResolvedValueOnce(lockedUntil);
 
-      await expect(service.login({ email: "nobody@elegance.salon", password: "whatever" })).rejects.toBeDefined();
+      await expect(
+        service.login({ email: "nobody@elegance.salon", password: "whatever" }),
+      ).rejects.toMatchObject({ statusCode: 403, code: "ACCOUNT_LOCKED" });
 
       expect(audit.lockoutExpiry).toHaveBeenCalledWith(
         "nobody@elegance.salon",
@@ -130,35 +180,88 @@ describe("AuthService.login — audit trail", () => {
       );
     });
 
-    it("rejects with ACCOUNT_TEMPORARILY_LOCKED before checking the password at all, when locked", async () => {
-      vi.mocked(users.findOne).mockResolvedValue(fakeUser());
-      const lockedUntil = new Date(Date.now() + 7 * 60_000);
-      vi.mocked(audit.lockoutExpiry).mockResolvedValueOnce(lockedUntil);
+    it("shows the identical ACCOUNT_LOCKED shape for an unknown email as for a real locked account", async () => {
+      vi.mocked(users.findOne).mockResolvedValue(null);
+      vi.mocked(audit.lockoutExpiry).mockResolvedValueOnce(new Date(Date.now() + 60_000));
 
       await expect(
-        service.login({ email: "owner@elegance.salon", password: "correct horse" }),
-      ).rejects.toMatchObject({ statusCode: 429, code: "ACCOUNT_TEMPORARILY_LOCKED" });
+        service.login({ email: "nobody@elegance.salon", password: "whatever" }),
+      ).rejects.toMatchObject({
+        statusCode: 403,
+        code: "ACCOUNT_LOCKED",
+        message: "Too many incorrect attempts. Your account is locked. Ask your manager, salon owner, or platform admin to unlock it.",
+      });
+    });
+  });
 
-      expect(password.verify).not.toHaveBeenCalled();
-      expect(audit.record).not.toHaveBeenCalled();
+  describe("forced first-login password change", () => {
+    it("returns a change-token instead of a session when mustChangePassword is set, without recording LOGIN_SUCCEEDED", async () => {
+      vi.mocked(users.findOne).mockResolvedValue(fakeUser({ mustChangePassword: true }));
+
+      const result = await service.login({ email: "owner@elegance.salon", password: "temp-pass-123" });
+
+      expect(result).toEqual({ requiresPasswordChange: true, changeToken: "signed-change-token" });
+      expect(sessions.createSession).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalledWith(expect.objectContaining({ action: "LOGIN_SUCCEEDED" }));
     });
 
-    it("states the wait time, rounded up to the nearest whole minute", async () => {
-      vi.mocked(users.findOne).mockResolvedValue(fakeUser());
-      vi.mocked(audit.lockoutExpiry).mockResolvedValueOnce(new Date(Date.now() + 61_000)); // 1m01s left
+    it("signs the change-token with a fingerprint of the current password hash", async () => {
+      vi.mocked(users.findOne).mockResolvedValue(fakeUser({ mustChangePassword: true, passwordHash: "hashed" }));
+
+      await service.login({ email: "owner@elegance.salon", password: "temp-pass-123" });
+
+      expect(tokens.signPasswordChangeToken).toHaveBeenCalledWith("user-1", expect.any(String));
+    });
+  });
+
+  describe("completeFirstLogin", () => {
+    it("rejects an invalid or expired change-token", async () => {
+      vi.mocked(tokens.verifyPasswordChangeToken).mockRejectedValueOnce(new Error("expired"));
 
       await expect(
-        service.login({ email: "owner@elegance.salon", password: "correct horse" }),
-      ).rejects.toMatchObject({ message: "Too many incorrect attempts. Try again in 2 minutes." });
+        service.completeFirstLogin({ changeToken: "bad", newPassword: "new-password-123" }),
+      ).rejects.toMatchObject({ statusCode: 401, code: "TOKEN_INVALID" });
     });
 
-    it("lets a genuinely correct login through once the lockout has lifted", async () => {
-      vi.mocked(users.findOne).mockResolvedValue(fakeUser());
-      vi.mocked(audit.lockoutExpiry).mockResolvedValueOnce(null);
+    it("rejects when the account no longer needs a password change (already redeemed, or reset again since)", async () => {
+      vi.mocked(users.findOne).mockResolvedValue(fakeUser({ mustChangePassword: false }));
 
       await expect(
-        service.login({ email: "owner@elegance.salon", password: "correct horse" }),
-      ).resolves.toBeDefined();
+        service.completeFirstLogin({ changeToken: "signed-change-token", newPassword: "new-password-123" }),
+      ).rejects.toMatchObject({ statusCode: 401, code: "TOKEN_INVALID" });
+    });
+
+    it("rejects when the password hash has changed since the token was issued (replay protection)", async () => {
+      vi.mocked(users.findOne).mockResolvedValue(fakeUser({ mustChangePassword: true, passwordHash: "a-different-hash-now" }));
+      vi.mocked(tokens.verifyPasswordChangeToken).mockResolvedValueOnce({
+        userId: "user-1",
+        passwordHashFingerprint: "fingerprint-of-the-old-hash",
+      });
+
+      await expect(
+        service.completeFirstLogin({ changeToken: "signed-change-token", newPassword: "new-password-123" }),
+      ).rejects.toMatchObject({ statusCode: 401, code: "TOKEN_INVALID" });
+    });
+
+    it("sets the new password, clears mustChangePassword, and issues a real session on success", async () => {
+      const user = fakeUser({ mustChangePassword: true, passwordHash: "hashed" });
+      vi.mocked(users.findOne).mockResolvedValue(user);
+      const fingerprint = (service as unknown as { fingerprint: (h: string) => string }).fingerprint("hashed");
+      vi.mocked(tokens.verifyPasswordChangeToken).mockResolvedValueOnce({
+        userId: "user-1",
+        passwordHashFingerprint: fingerprint,
+      });
+
+      const result = await service.completeFirstLogin({
+        changeToken: "signed-change-token",
+        newPassword: "new-password-123",
+      });
+
+      expect(users.update).toHaveBeenCalledWith(
+        { id: "user-1" },
+        expect.objectContaining({ passwordHash: "hashed:new-password-123", mustChangePassword: false }),
+      );
+      expect("accessToken" in result && result.accessToken).toBe("signed-access-token");
     });
   });
 });

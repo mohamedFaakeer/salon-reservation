@@ -88,6 +88,16 @@ export function canManageTeam(roles: string[]): boolean {
   return roles.includes("OWNER");
 }
 
+/**
+ * Mirrors RESET_TEAM_MEMBER_PASSWORD (OWNER, MANAGER) — account-lockout-v2,
+ * DECISIONS.md. Deliberately narrower than canManageTeam: a MANAGER can see
+ * who's locked and reset a colleague's password, but cannot change a role
+ * or enable/disable anyone — that stays OWNER-only.
+ */
+export function canResetTeamMemberPassword(roles: string[]): boolean {
+  return roles.some((r) => r === "OWNER" || r === "MANAGER");
+}
+
 /** Mirrors RECORD_ATTENDANCE (OWNER, MANAGER, RECEPTIONIST) — the front-desk punch. */
 export function canRecordAttendance(roles: string[]): boolean {
   return roles.some((r) => r === "OWNER" || r === "MANAGER" || r === "RECEPTIONIST");
@@ -175,4 +185,5 @@ export const MODULES: Array<{ label: string; can: (roles: string[]) => boolean }
   { label: "Reports", can: canViewReports },
   { label: "Audit", can: canViewAudit },
   { label: "Staff logins", can: canManageTeam },
+  { label: "Reset staff passwords", can: canResetTeamMemberPassword },
 ];

@@ -91,6 +91,28 @@ describe("MonitoringService", () => {
     );
   });
 
+  describe("tenantUsage", () => {
+    it("includes a live lockedAccountCount per tenant, defaulting to 0", async () => {
+      tenants.findAndCount = vi.fn(async () => [[{ id: "tenant-1", name: "Elegance", slug: "elegance" }] as Tenant[], 1] as [Tenant[], number]);
+      users.__queryBuilder.getRawMany
+        .mockResolvedValueOnce([]) // lastLoginRows
+        .mockResolvedValueOnce([{ tenantId: "tenant-1", count: 2 }]); // lockedRows
+
+      const result = await service.tenantUsage({ limit: 50, offset: 0 });
+
+      expect(result.data[0]).toMatchObject({ tenantId: "tenant-1", lockedAccountCount: 2 });
+    });
+
+    it("defaults lockedAccountCount to 0 for a tenant with nothing locked", async () => {
+      tenants.findAndCount = vi.fn(async () => [[{ id: "tenant-2", name: "Serenity", slug: "serenity" }] as Tenant[], 1] as [Tenant[], number]);
+      users.__queryBuilder.getRawMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+      const result = await service.tenantUsage({ limit: 50, offset: 0 });
+
+      expect(result.data[0].lockedAccountCount).toBe(0);
+    });
+  });
+
   describe("overview", () => {
     it("counts a tenant near quota only once even if multiple channels are near their limit", async () => {
       vi.mocked(quotas.find).mockResolvedValue([

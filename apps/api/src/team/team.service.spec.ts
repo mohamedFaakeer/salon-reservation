@@ -6,6 +6,7 @@ import type { User } from "../entities/user.entity";
 import type { UserTenantRole } from "../entities/user-tenant-role.entity";
 import type { Staff } from "../entities/staff.entity";
 import type { PasswordService } from "../auth/services/password.service";
+import type { SessionService } from "../auth/services/session.service";
 import type { AuditService } from "../audit/audit.service";
 
 function mockRepo<T extends ObjectLiteral>() {
@@ -15,6 +16,7 @@ function mockRepo<T extends ObjectLiteral>() {
     find: vi.fn(async () => [] as T[]),
     findOne: vi.fn(async () => null as T | null),
     count: vi.fn(async () => 0),
+    update: vi.fn(async () => undefined),
   } as unknown as Repository<T>;
 }
 
@@ -35,6 +37,7 @@ describe("TeamService", () => {
   let roles: Repository<UserTenantRole>;
   let staff: Repository<Staff>;
   let passwords: PasswordService;
+  let sessions: SessionService;
   let audit: AuditService;
   let dataSource: DataSource;
   let service: TeamService;
@@ -48,7 +51,11 @@ describe("TeamService", () => {
     staff = mockRepo<Staff>();
     txUsers = mockRepo<User>();
     txRoles = mockRepo<UserTenantRole>();
-    passwords = { hash: vi.fn(async () => "argon2-hash") } as unknown as PasswordService;
+    passwords = {
+      hash: vi.fn(async () => "argon2-hash"),
+      generate: vi.fn(() => "generated-temp-password"),
+    } as unknown as PasswordService;
+    sessions = { revokeAllForUser: vi.fn(async () => undefined) } as unknown as SessionService;
     audit = { record: vi.fn(async () => undefined) } as unknown as AuditService;
     dataSource = {
       transaction: vi.fn(async (cb: (m: unknown) => unknown) =>
@@ -58,7 +65,7 @@ describe("TeamService", () => {
         }),
       ),
     } as unknown as DataSource;
-    service = new TeamService(users, roles, staff, passwords, audit, dataSource);
+    service = new TeamService(users, roles, staff, passwords, sessions, audit, dataSource);
   });
 
   describe("create", () => {
@@ -216,6 +223,34 @@ describe("TeamService", () => {
       ).rejects.toMatchObject({ code: "CANNOT_MODIFY_SELF" });
     });
 
+    it("refuses to clear a lockout via a plain status change — only a password reset may", async () => {
+      vi.mocked(roles.findOne).mockResolvedValue({
+        userId: "u2",
+        tenantId: "tenant-1",
+        role: UserRole.RECEPTIONIST,
+        user: fakeUser({ id: "u2", status: UserStatus.LOCKED }),
+      } as UserTenantRole & { user: User });
+
+      await expect(
+        service.update("tenant-1", "u2", { status: "ACTIVE" }, "owner-1"),
+      ).rejects.toMatchObject({ code: "ACCOUNT_LOCKED" });
+      expect(users.save).not.toHaveBeenCalled();
+    });
+
+    it("still allows disabling a locked account outright", async () => {
+      grantFor(UserRole.RECEPTIONIST);
+      vi.mocked(roles.findOne).mockResolvedValue({
+        userId: "u2",
+        tenantId: "tenant-1",
+        role: UserRole.RECEPTIONIST,
+        user: fakeUser({ id: "u2", status: UserStatus.LOCKED }),
+      } as UserTenantRole & { user: User });
+
+      const result = await service.update("tenant-1", "u2", { status: "DISABLED" }, "owner-1");
+
+      expect(result.status).toBe(UserStatus.DISABLED);
+    });
+
     it("disables rather than deletes, so the audit trail keeps its actor", async () => {
       grantFor(UserRole.RECEPTIONIST);
 
@@ -233,6 +268,105 @@ describe("TeamService", () => {
       expect(audit.record).toHaveBeenCalledWith(
         expect.objectContaining({ action: "TEAM_MEMBER_UPDATED", tenantId: "tenant-1" }),
       );
+    });
+  });
+
+  describe("resetPassword", () => {
+    function grantFor(role: UserRole, userId = "u2") {
+      vi.mocked(roles.findOne).mockResolvedValue({
+        userId,
+        tenantId: "tenant-1",
+        role,
+        user: fakeUser({ id: userId }),
+      } as UserTenantRole & { user: User });
+    }
+
+    it("refuses someone who has no access to this salon", async () => {
+      vi.mocked(roles.findOne).mockResolvedValue(null);
+
+      await expect(service.resetPassword("tenant-1", "stranger", "owner-1")).rejects.toMatchObject({
+        statusCode: 404,
+        code: "TEAM_MEMBER_NOT_FOUND",
+      });
+    });
+
+    it("refuses to reset the owner's own password", async () => {
+      grantFor(UserRole.OWNER);
+
+      await expect(service.resetPassword("tenant-1", "u2", "owner-1")).rejects.toMatchObject({
+        code: "CANNOT_MODIFY_OWNER",
+      });
+    });
+
+    it("refuses to reset your own password", async () => {
+      grantFor(UserRole.MANAGER, "owner-1");
+
+      await expect(service.resetPassword("tenant-1", "owner-1", "owner-1")).rejects.toMatchObject({
+        code: "CANNOT_MODIFY_SELF",
+      });
+    });
+
+    it("generates a new temporary password, forces a first-login change, clears any lock, and revokes sessions", async () => {
+      grantFor(UserRole.RECEPTIONIST);
+      vi.mocked(roles.findOne)
+        .mockResolvedValueOnce({
+          userId: "u2",
+          tenantId: "tenant-1",
+          role: UserRole.RECEPTIONIST,
+          user: fakeUser({ id: "u2" }),
+        } as UserTenantRole & { user: User })
+        .mockResolvedValueOnce({ role: UserRole.OWNER } as UserTenantRole); // actor's own grant lookup
+
+      const result = await service.resetPassword("tenant-1", "u2", "owner-1");
+
+      expect(result).toEqual({ userId: "u2", temporaryPassword: "generated-temp-password" });
+      expect(users.update).toHaveBeenCalledWith(
+        { id: "u2" },
+        expect.objectContaining({
+          passwordHash: "argon2-hash",
+          mustChangePassword: true,
+          status: UserStatus.ACTIVE,
+          failedLoginAttempts: 0,
+        }),
+      );
+      expect(sessions.revokeAllForUser).toHaveBeenCalledWith("u2");
+    });
+
+    it("records TEAM_MEMBER_PASSWORD_RESET with who performed it", async () => {
+      vi.mocked(roles.findOne)
+        .mockResolvedValueOnce({
+          userId: "u2",
+          tenantId: "tenant-1",
+          role: UserRole.STAFF,
+          user: fakeUser({ id: "u2" }),
+        } as UserTenantRole & { user: User })
+        .mockResolvedValueOnce({ role: UserRole.MANAGER } as UserTenantRole);
+
+      await service.resetPassword("tenant-1", "u2", "manager-1");
+
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "TEAM_MEMBER_PASSWORD_RESET",
+          entityId: "u2",
+          metadata: { resetByRole: UserRole.MANAGER },
+        }),
+      );
+    });
+
+    it("never leaks the temporary password into the audit trail", async () => {
+      vi.mocked(roles.findOne)
+        .mockResolvedValueOnce({
+          userId: "u2",
+          tenantId: "tenant-1",
+          role: UserRole.STAFF,
+          user: fakeUser({ id: "u2" }),
+        } as UserTenantRole & { user: User })
+        .mockResolvedValueOnce({ role: UserRole.OWNER } as UserTenantRole);
+
+      await service.resetPassword("tenant-1", "u2", "owner-1");
+
+      const entry = vi.mocked(audit.record).mock.calls[0][0];
+      expect(JSON.stringify(entry)).not.toContain("generated-temp-password");
     });
   });
 

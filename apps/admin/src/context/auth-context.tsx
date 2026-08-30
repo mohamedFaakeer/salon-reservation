@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import * as api from "../lib/api-client";
-import type { AuthUser } from "../lib/api-client";
+import type { AuthUser, FirstLoginChallenge, LoginResponse } from "../lib/api-client";
 
 const STORAGE_KEY = "salon_admin_session";
 
@@ -15,8 +15,16 @@ interface StoredSession {
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
-  /** Resolves with the signed-in user so the caller can route by role. */
-  login: (email: string, password: string) => Promise<AuthUser>;
+  /**
+   * Resolves with the signed-in user so the caller can route by role — or,
+   * when the current password was set by someone else (creation, or a
+   * reset), a change-token instead. No session is established in that case
+   * until the caller redeems it via `loginWithSession` (DECISIONS.md,
+   * account-lockout-v2: zero functional access until the change happens).
+   */
+  login: (email: string, password: string) => Promise<AuthUser | FirstLoginChallenge>;
+  /** Establishes the session from an already-completed login response — used after the forced first-login password change succeeds. */
+  loginWithSession: (result: LoginResponse) => AuthUser;
   logout: () => Promise<void>;
 }
 
@@ -54,8 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => api.setUnauthorizedHandler(null);
   }, [handleUnauthorized]);
 
-  const login = useCallback(async (email: string, password: string): Promise<AuthUser> => {
-    const res = await api.login(email, password);
+  const establishSession = useCallback((res: LoginResponse): AuthUser => {
     const session: StoredSession = { accessToken: res.accessToken, user: res.user };
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
     api.setAuthToken(res.accessToken);
@@ -64,6 +71,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // the caller needs to decide where to send them.
     return res.user;
   }, []);
+
+  const login = useCallback(
+    async (email: string, password: string): Promise<AuthUser | FirstLoginChallenge> => {
+      const res = await api.login(email, password);
+      if ("requiresPasswordChange" in res) {
+        // No session established — the caller must redeem the change-token
+        // via loginWithSession before anything else is possible.
+        return res;
+      }
+      return establishSession(res);
+    },
+    [establishSession],
+  );
 
   const logout = useCallback(async () => {
     try {
@@ -75,7 +95,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [clearSession, router]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, loading, login, loginWithSession: establishSession, logout }}>
+      {children}
+    </AuthContext.Provider>
   );
 }
 

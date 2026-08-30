@@ -58,6 +58,23 @@ export function explainSecurityEvent(facts: SecurityEventFacts): EventExplanatio
         plainLanguage: `Someone tried to log in as ${who}${where} with the wrong password.`,
         recommendedAction: "No action needed unless this repeats.",
       };
+    case "ACCOUNT_LOCKED": {
+      const attempts = typeof facts.metadata.failedLoginAttempts === "number" ? facts.metadata.failedLoginAttempts : 5;
+      return {
+        title: "Account locked after repeated failed logins",
+        plainLanguage: `${who}${where} entered the wrong password ${attempts} times in a row and is now locked out — nobody can attempt that login again until it's reset.`,
+        recommendedAction: `Confirm with ${who === "someone" ? "them" : who} that it was really a forgotten password before resetting it, in case someone else was guessing.`,
+      };
+    }
+    case "TEAM_MEMBER_PASSWORD_RESET": {
+      const resetBy = typeof facts.metadata.resetByRole === "string" ? facts.metadata.resetByRole : null;
+      const byText = resetBy ? ` by a ${resetBy.toLowerCase()}` : "";
+      return {
+        title: "A password was reset",
+        plainLanguage: `${who}${where}'s password was reset${byText} — a new temporary password was issued and any existing sessions were signed out.`,
+        recommendedAction: "No action needed — this is routine, expected remediation.",
+      };
+    }
     case "RATE_LIMIT_EXCEEDED": {
       const rule = typeof facts.metadata.bucketKey === "string" ? facts.metadata.bucketKey.split(":")[0] : "a feature";
       return {

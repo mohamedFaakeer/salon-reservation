@@ -20,6 +20,7 @@ import { Pager } from "../../../../components/pager";
 import { EventCard } from "../../../../components/monitoring/event-card";
 import { OverviewPanel } from "../../../../components/monitoring/overview-panel";
 import { TenantUsageTable } from "../../../../components/monitoring/tenant-usage-table";
+import { ResetLockedAccountModal } from "../../../../components/reset-locked-account-modal";
 import { formatRelativeTime } from "../../../../lib/format";
 
 /**
@@ -180,6 +181,8 @@ function SecurityTab() {
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [resetTarget, setResetTarget] = useState<{ tenantId: string; tenantName: string | null; userId: string } | null>(null);
+  const [resetResult, setResetResult] = useState<{ temporaryPassword: string } | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -214,6 +217,28 @@ function SecurityTab() {
 
   return (
     <div className="flex flex-col gap-3">
+      {resetResult ? (
+        <div
+          data-testid="reset-locked-account-credentials"
+          role="status"
+          className="rounded-xl border border-amber-700 bg-amber-950/60 p-4"
+        >
+          <p className="text-sm font-semibold text-amber-200">Password reset. Share this once.</p>
+          <p className="mt-1 text-xs text-amber-300">
+            It is not stored and cannot be shown again — the account is asked to choose its own on next sign-in.
+          </p>
+          <p className="mt-3 text-sm tabular text-white">{resetResult.temporaryPassword}</p>
+          <button
+            type="button"
+            data-testid="dismiss-reset-locked-account-credentials"
+            onClick={() => setResetResult(null)}
+            className="mt-3 min-h-9 rounded border border-amber-700 px-3 text-xs font-medium text-amber-200 hover:bg-amber-900"
+          >
+            Saved it
+          </button>
+        </div>
+      ) : null}
+
       <div className="flex flex-col gap-2.5">
         {rows.map((row) => (
           <EventCard
@@ -231,6 +256,23 @@ function SecurityTab() {
               ["IP address", row.ipAddress ?? "Not recorded"],
             ]}
             onChangeStatus={(next) => changeStatus(row.id, next)}
+            // Only when the lockout resolved to a real tenant grant — a
+            // locked SUPER_ADMIN (no tenant) has no salon to act on here at
+            // all; its recovery is the CLI break-glass script instead
+            // (DECISIONS.md).
+            extraAction={
+              row.action === "ACCOUNT_LOCKED" && row.tenantId
+                ? {
+                    label: "Reset password",
+                    busyLabel: "Opening…",
+                    testId: `security-event-${row.id}-reset-password`,
+                    onClick: () => {
+                      setResetTarget({ tenantId: row.tenantId as string, tenantName: row.tenantName, userId: row.entityId });
+                      return Promise.resolve();
+                    },
+                  }
+                : undefined
+            }
           />
         ))}
       </div>
@@ -238,6 +280,19 @@ function SecurityTab() {
         <div className="text-slate-400">
           <Pager total={meta.total} limit={meta.limit} offset={meta.offset} onOffsetChange={setOffset} unit="event" busy={loading} />
         </div>
+      ) : null}
+
+      {resetTarget ? (
+        <ResetLockedAccountModal
+          tenantId={resetTarget.tenantId}
+          tenantName={resetTarget.tenantName}
+          userId={resetTarget.userId}
+          onClose={() => setResetTarget(null)}
+          onReset={(result) => {
+            setResetTarget(null);
+            setResetResult(result);
+          }}
+        />
       ) : null}
     </div>
   );

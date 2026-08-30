@@ -116,4 +116,21 @@ export class SuperAdminController {
   purgeNow(@Req() req: AuthenticatedRequest, @Param("tenantId", ParseUUIDPipe) tenantId: string) {
     return this.offboarding.purgeNow(tenantId, req.user.sub);
   }
+
+  /**
+   * The one path that can reset an OWNER's own password — a locked-out
+   * OWNER has nobody within their salon who outranks them
+   * (`TeamController`'s equivalent explicitly refuses an OWNER target).
+   * Also usable on any non-owner login in the salon, same as the
+   * tenant-scoped route (account-lockout-v2, DECISIONS.md).
+   */
+  @Post(":tenantId/team/:userId/reset-password")
+  @Permissions(Permission.PLATFORM_ADMIN)
+  resetTeamMemberPassword(
+    @Req() req: AuthenticatedRequest,
+    @Param("tenantId", ParseUUIDPipe) tenantId: string,
+    @Param("userId", ParseUUIDPipe) userId: string,
+  ) {
+    return this.superAdmin.resetTeamMemberPassword(tenantId, userId, req.user.sub);
+  }
 }

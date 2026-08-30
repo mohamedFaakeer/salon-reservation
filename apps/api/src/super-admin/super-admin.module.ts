@@ -15,6 +15,7 @@ import { AuditModule } from "../audit/audit.module";
 import { AvailabilityModule } from "../availability/availability.module";
 import { BookingModule } from "../booking/booking.module";
 import { PlatformAlertModule } from "../alerting/platform-alert.module";
+import { TeamModule } from "../team/team.module";
 import { SuperAdminController } from "./super-admin.controller";
 import { SuperAdminService } from "./super-admin.service";
 import { DemoSeedService } from "./demo-seed.service";
@@ -40,6 +41,7 @@ import { TenantOffboardingScheduler } from "./tenant-offboarding.scheduler";
     AvailabilityModule,
     BookingModule,
     PlatformAlertModule,
+    TeamModule,
   ],
   controllers: [SuperAdminController],
   providers: [SuperAdminService, DemoSeedService, TenantOffboardingService, TenantOffboardingScheduler],

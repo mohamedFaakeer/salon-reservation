@@ -199,4 +199,20 @@ describe("SessionService", () => {
       expect(result.roles).toEqual(["SUPER_ADMIN"]);
     });
   });
+
+  describe("primaryTenantId", () => {
+    it("returns the tenant of the first non-SUPER_ADMIN grant, for account-lockout auditing", async () => {
+      vi.mocked(roleRepo.find).mockResolvedValue([
+        { userId: "u1", tenantId: "tenant-1", role: "OWNER" },
+      ] as UserTenantRole[]);
+
+      await expect(session.primaryTenantId("u1")).resolves.toBe("tenant-1");
+    });
+
+    it("returns null for a platform-only SUPER_ADMIN with no tenant grant", async () => {
+      vi.mocked(roleRepo.find).mockResolvedValue([]);
+
+      await expect(session.primaryTenantId("u2")).resolves.toBeNull();
+    });
+  });
 });

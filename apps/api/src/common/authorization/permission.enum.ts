@@ -9,6 +9,13 @@ export enum Permission {
   MANAGE_TENANT_SETTINGS = "MANAGE_TENANT_SETTINGS",
   /** Create and suspend staff logins. OWNER only — this grants privilege. */
   MANAGE_TEAM = "MANAGE_TEAM",
+  /**
+   * See the team list and reset a colleague's password (which also clears
+   * a lockout). Deliberately narrower than MANAGE_TEAM: OWNER and MANAGER
+   * both hold this, but only OWNER can change a role or enable/disable
+   * someone (account-lockout-v2, DECISIONS.md).
+   */
+  RESET_TEAM_MEMBER_PASSWORD = "RESET_TEAM_MEMBER_PASSWORD",
   MANAGE_SERVICES = "MANAGE_SERVICES",
   MANAGE_STAFF = "MANAGE_STAFF",
   MANAGE_APPOINTMENTS = "MANAGE_APPOINTMENTS",

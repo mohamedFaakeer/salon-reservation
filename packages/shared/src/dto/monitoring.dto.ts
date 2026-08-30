@@ -1,12 +1,21 @@
 import { IsDateString, IsIn, IsOptional, IsUUID } from "class-validator";
 import { PaginationQueryDto } from "./common.dto";
 
-/** The five audit actions the super-admin monitoring feature treats as security events. */
+/** The audit actions the super-admin monitoring feature treats as security events. */
 export const SECURITY_EVENT_ACTIONS = [
   "LOGIN_FAILED",
   "CROSS_TENANT_TOKEN_REJECTED",
   "REFRESH_TOKEN_REUSE_DETECTED",
   "RATE_LIMIT_EXCEEDED",
+  /** An account was hard-locked after 5 wrong passwords in a row (account-lockout-v2, DECISIONS.md). */
+  "ACCOUNT_LOCKED",
+  /**
+   * Routine remediation, not a threat signal — always LOW severity, never
+   * alerts (see classify-severity.ts) — included so a super admin scanning
+   * one tenant's feed sees the whole story (locked → who reset it → when)
+   * in one list rather than needing a second screen.
+   */
+  "TEAM_MEMBER_PASSWORD_RESET",
 ] as const;
 export type SecurityEventAction = (typeof SECURITY_EVENT_ACTIONS)[number];
 

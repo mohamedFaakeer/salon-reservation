@@ -47,7 +47,10 @@ const RULES: RateLimitRule[] = [
   {
     name: "sign-in",
     method: "POST",
-    pattern: /^\/auth\/(login|refresh)$/,
+    // complete-first-login included: it's guarded by a short-lived,
+    // high-entropy token rather than a guessable credential, but the same
+    // per-IP flood backstop is cheap defense-in-depth to keep either way.
+    pattern: /^\/auth\/(login|refresh|complete-first-login)$/,
     max: 10,
     windowMs: 60_000,
     // Per-account as well as per-IP, so one account cannot be brute-forced

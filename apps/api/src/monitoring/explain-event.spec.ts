@@ -66,6 +66,31 @@ describe("explainSecurityEvent", () => {
     });
     expect(explanation.plainLanguage).toContain("sign-in");
   });
+
+  it("names the person and the attempt count for an account lockout", () => {
+    const explanation = explainSecurityEvent({
+      action: "ACCOUNT_LOCKED",
+      actorName: "receptionist@elegance.salon",
+      tenantName: "Elegance Salon",
+      recentCount: 1,
+      metadata: { failedLoginAttempts: 5 },
+    });
+    expect(explanation.title).not.toMatch(/ACCOUNT_LOCKED/);
+    expect(explanation.plainLanguage).toContain("receptionist@elegance.salon");
+    expect(explanation.plainLanguage).toContain("5");
+  });
+
+  it("names who performed a password reset, and never suggests action is needed", () => {
+    const explanation = explainSecurityEvent({
+      action: "TEAM_MEMBER_PASSWORD_RESET",
+      actorName: "receptionist@elegance.salon",
+      tenantName: "Elegance Salon",
+      recentCount: 1,
+      metadata: { resetByRole: "MANAGER" },
+    });
+    expect(explanation.plainLanguage).toContain("manager");
+    expect(explanation.recommendedAction).toMatch(/no action needed/i);
+  });
 });
 
 describe("explainErrorLog", () => {

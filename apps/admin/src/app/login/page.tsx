@@ -6,33 +6,48 @@ import { useAuth } from "../../context/auth-context";
 import { ApiRequestError } from "../../lib/api-client";
 import { isStaffOnly, isSuperAdmin } from "../../lib/permissions";
 import { BusyLabel } from "../../components/spinner";
+import { PasswordVisibilityToggle } from "../../components/password-visibility-toggle";
+import { FirstLoginPasswordChange } from "../../components/first-login-password-change";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, loginWithSession } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   // Never persisted: a revealed password must not survive a reload.
   const [showPassword, setShowPassword] = useState(false);
+  // Set only when the server returns a change-token instead of a session
+  // (the password was set by someone else — creation, or a reset) — the
+  // form below is swapped for the mandatory "set a new password" screen,
+  // with zero functional access granted until that completes.
+  const [changeToken, setChangeToken] = useState<string | null>(null);
+
+  function proceedFor(roles: string[]): void {
+    // SUPER_ADMIN has no tenant permissions, so /today would render an
+    // empty shell and a failing dashboard request. A STAFF-only login has
+    // no dashboard permission either, and belongs on the floor, not the desk.
+    if (isSuperAdmin(roles)) {
+      router.replace("/platform");
+    } else if (isStaffOnly(roles)) {
+      router.replace("/floor");
+    } else {
+      router.replace("/today");
+    }
+  }
 
   async function handleSubmit(e: FormEvent): Promise<void> {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
     try {
-      const user = await login(email, password);
-      // SUPER_ADMIN has no tenant permissions, so /today would render an
-      // empty shell and a failing dashboard request. A STAFF-only login has
-      // no dashboard permission either, and belongs on the floor, not the desk.
-      if (isSuperAdmin(user.roles)) {
-        router.replace("/platform");
-      } else if (isStaffOnly(user.roles)) {
-        router.replace("/floor");
-      } else {
-        router.replace("/today");
+      const result = await login(email, password);
+      if ("requiresPasswordChange" in result) {
+        setChangeToken(result.changeToken);
+        return;
       }
+      proceedFor(result.roles);
     } catch (err) {
       setError(
         err instanceof ApiRequestError ? err.message : "Could not sign in. Please try again.",
@@ -40,6 +55,18 @@ export default function LoginPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (changeToken) {
+    return (
+      <FirstLoginPasswordChange
+        changeToken={changeToken}
+        onComplete={(result) => {
+          const loggedInUser = loginWithSession(result);
+          proceedFor(loggedInUser.roles);
+        }}
+      />
+    );
   }
 
   return (
@@ -79,17 +106,11 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 className="min-h-11 w-full rounded border border-slate-300 py-2 pl-3 pr-12 text-sm"
               />
-              <button
-                type="button"
-                data-testid="toggle-password"
-                onClick={() => setShowPassword((v) => !v)}
-                aria-pressed={showPassword}
-                aria-label={showPassword ? "Hide password" : "Show password"}
-                title={showPassword ? "Hide password" : "Show password"}
-                className="absolute right-0 flex h-11 w-11 items-center justify-center rounded text-slate-500 hover:text-slate-900"
-              >
-                {showPassword ? <EyeOffIcon /> : <EyeIcon />}
-              </button>
+              <PasswordVisibilityToggle
+                testId="toggle-password"
+                visible={showPassword}
+                onToggle={() => setShowPassword((v) => !v)}
+              />
             </span>
           </label>
 
@@ -112,35 +133,5 @@ export default function LoginPage() {
         </div>
       </form>
     </main>
-  );
-}
-
-/** Drawn, not a glyph — one stroke weight shared with the rest of the app. */
-function EyeIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
-      <path
-        d="M1.5 8s2.4-4.2 6.5-4.2S14.5 8 14.5 8s-2.4 4.2-6.5 4.2S1.5 8 1.5 8Z"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinejoin="round"
-      />
-      <circle cx="8" cy="8" r="1.9" stroke="currentColor" strokeWidth="1.3" />
-    </svg>
-  );
-}
-
-function EyeOffIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
-      <path
-        d="M6.2 3.9A7.3 7.3 0 0 1 8 3.8c4.1 0 6.5 4.2 6.5 4.2a12 12 0 0 1-2 2.5M4 4.8A11.8 11.8 0 0 0 1.5 8S3.9 12.2 8 12.2c1 0 1.9-.2 2.7-.6"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path d="m2.5 2.5 11 11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-    </svg>
   );
 }

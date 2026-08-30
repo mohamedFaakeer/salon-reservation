@@ -93,10 +93,7 @@ export class SessionService {
     if (session.revokedAt !== null) {
       // Reuse of an already-rotated/revoked token → revoke the entire family
       // to kill a stolen session chain.
-      await this.refreshRepo.update(
-        { userId: session.userId, revokedAt: IsNull() },
-        { revokedAt: new Date() },
-      );
+      await this.revokeAllForUser(session.userId);
       // High-signal security event — a real login token being replayed after
       // it was already rotated out, the classic sign of a stolen/leaked
       // session. Previously this was a silent revoke with no queryable
@@ -150,6 +147,35 @@ export class SessionService {
   async revoke(refreshToken: string): Promise<void> {
     const tokenHash = this.hashToken(refreshToken);
     await this.refreshRepo.update({ tokenHash }, { revokedAt: new Date() });
+  }
+
+  /**
+   * Kills every active session for one account — used by refresh-token-reuse
+   * detection above, and by account lockout / password reset (DECISIONS.md):
+   * a password change or a suspected brute-force attempt both mean any
+   * already-open session should require re-authentication, not stay valid
+   * on whatever it was issued against.
+   */
+  async revokeAllForUser(userId: string): Promise<void> {
+    await this.refreshRepo.update(
+      { userId, revokedAt: IsNull() },
+      { revokedAt: new Date() },
+    );
+  }
+
+  /**
+   * The one tenant a login is "for," same rule `buildSessionUser` already
+   * uses (the first non-SUPER_ADMIN grant) — used by account lockout to
+   * attach a tenantId to the (rare) `ACCOUNT_LOCKED` audit row, so the
+   * platform monitoring feature knows which salon's team to act on. Unlike
+   * `LOGIN_FAILED` (fired on every wrong attempt, hot-path sensitive),
+   * lockout only fires once per lockout event, so this extra query is
+   * negligible. Returns `null` for a platform-only SUPER_ADMIN with no
+   * tenant grant.
+   */
+  async primaryTenantId(userId: string): Promise<string | null> {
+    const tenantRoles = await this.roleRepo.find({ where: { userId } });
+    return tenantRoles.find((r) => r.role !== UserRole.SUPER_ADMIN)?.tenantId ?? null;
   }
 
   /** Session was used for access control; returns the user + tenant context. */

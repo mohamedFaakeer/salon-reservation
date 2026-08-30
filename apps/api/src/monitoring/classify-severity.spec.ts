@@ -23,6 +23,16 @@ describe("classifySecurityEventSeverity", () => {
     expect(classifySecurityEventSeverity("RATE_LIMIT_EXCEEDED", 1)).toBe("LOW");
     expect(classifySecurityEventSeverity("RATE_LIMIT_EXCEEDED", 5)).toBe("MEDIUM");
   });
+
+  it("always rates ACCOUNT_LOCKED MEDIUM — a real consequence, not just a raw count", () => {
+    expect(classifySecurityEventSeverity("ACCOUNT_LOCKED", 1)).toBe("MEDIUM");
+    expect(classifySecurityEventSeverity("ACCOUNT_LOCKED", 20)).toBe("MEDIUM");
+  });
+
+  it("always rates TEAM_MEMBER_PASSWORD_RESET LOW — routine, never alerting", () => {
+    expect(classifySecurityEventSeverity("TEAM_MEMBER_PASSWORD_RESET", 1)).toBe("LOW");
+    expect(classifySecurityEventSeverity("TEAM_MEMBER_PASSWORD_RESET", 20)).toBe("LOW");
+  });
 });
 
 describe("classifyErrorLogSeverity", () => {

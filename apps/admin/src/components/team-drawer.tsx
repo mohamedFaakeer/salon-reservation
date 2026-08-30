@@ -6,6 +6,7 @@ import { MODULES } from "../lib/permissions";
 import { errorCopy } from "../lib/error-copy";
 import { DrawerShell } from "./drawer-shell";
 import { BusyLabel } from "./spinner";
+import { PasswordVisibilityToggle } from "./password-visibility-toggle";
 import { useToast } from "./toast";
 
 /**
@@ -48,6 +49,13 @@ export function TeamDrawer({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  // Defaults visible, unlike every other password field in this app — this
+  // one isn't a secret being protected from the person typing it, it's a
+  // value the owner is about to read aloud or write down for someone else.
+  // The toggle exists so they can still hide it (a coworker walks by, the
+  // screen is shared), but starting hidden would reintroduce exactly the
+  // transcription-typo risk this field's own history warns against.
+  const [showPassword, setShowPassword] = useState(true);
   const [role, setRole] = useState<AssignableRole>("RECEPTIONIST");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,16 +115,24 @@ export function TeamDrawer({
 
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium text-slate-700">Temporary password</span>
-          <input
-            data-testid="team-password"
-            type="text"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            aria-invalid={password.length > 0 && password.length < 8}
-            className="min-h-11 rounded border border-slate-300 px-3 text-sm aria-invalid:border-red-500"
-          />
-          {/* Shown rather than masked: it has to be read out to them, and
-              masking a value you must transcribe causes typos, not security. */}
+          {/* Defaults visible (see showPassword above) — the toggle sits
+              inside the field like every other password field, padding
+              reserves its width so a long password never hides behind it. */}
+          <span className="relative flex items-center">
+            <input
+              data-testid="team-password"
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              aria-invalid={password.length > 0 && password.length < 8}
+              className="min-h-11 w-full rounded border border-slate-300 py-2 pl-3 pr-12 text-sm aria-invalid:border-red-500"
+            />
+            <PasswordVisibilityToggle
+              testId="toggle-team-password"
+              visible={showPassword}
+              onToggle={() => setShowPassword((v) => !v)}
+            />
+          </span>
           <span className="text-xs text-slate-500">
             At least 8 characters. Shown once — the server keeps only a hash.
           </span>

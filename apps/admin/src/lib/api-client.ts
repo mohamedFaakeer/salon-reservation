@@ -19,6 +19,17 @@ export interface LoginResponse {
   user: AuthUser;
 }
 
+/**
+ * Returned by `login()` instead of `LoginResponse` when the current
+ * password was set by someone other than the account holder (creation, or
+ * an OWNER/MANAGER/SUPER_ADMIN reset) — no session exists yet.
+ * `completeFirstLogin` redeems `changeToken` for a real `LoginResponse`.
+ */
+export interface FirstLoginChallenge {
+  requiresPasswordChange: true;
+  changeToken: string;
+}
+
 export type ModuleKey = "attendance" | "incentives" | "reports" | "auditLog" | "invoices" | "inventory";
 export type ReportPanelKey =
   | "takings"
@@ -528,10 +539,19 @@ async function request<T>(
   return (await res.json()) as T;
 }
 
-export function login(email: string, password: string): Promise<LoginResponse> {
-  return request<LoginResponse>("/auth/login", {
+export function login(email: string, password: string): Promise<LoginResponse | FirstLoginChallenge> {
+  return request<LoginResponse | FirstLoginChallenge>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
+    skipAuthRedirect: true,
+  });
+}
+
+/** Redeems the forced-first-login "set a new password" challenge — succeeds exactly like `login()` once it does. */
+export function completeFirstLogin(changeToken: string, newPassword: string): Promise<LoginResponse> {
+  return request<LoginResponse>("/auth/complete-first-login", {
+    method: "POST",
+    body: JSON.stringify({ changeToken, newPassword }),
     skipAuthRedirect: true,
   });
 }
@@ -1484,6 +1504,22 @@ export function purgeTenant(tenantId: string): Promise<{ id: string; purgedAt: s
   return request(`/super-admin/tenants/${tenantId}/purge`, { method: "POST", body: JSON.stringify({}) });
 }
 
+/**
+ * POST /super-admin/tenants/:tenantId/team/:userId/reset-password — the one
+ * path that can reset an OWNER's own password (nobody within a salon
+ * outranks its owner); also usable on any other login in the salon
+ * (account-lockout-v2, DECISIONS.md).
+ */
+export function resetTeamMemberPasswordAsSuperAdmin(
+  tenantId: string,
+  userId: string,
+): Promise<{ userId: string; temporaryPassword: string }> {
+  return request<{ userId: string; temporaryPassword: string }>(
+    `/super-admin/tenants/${tenantId}/team/${userId}/reset-password`,
+    { method: "POST" },
+  );
+}
+
 /* ------------------------------------------------------- tenant entitlements */
 
 export interface ModuleOverridesInput {
@@ -1554,7 +1590,8 @@ export interface TeamMember {
   name: string;
   email: string;
   role: string;
-  status: "ACTIVE" | "DISABLED";
+  /** LOCKED = hard-locked after 5 wrong passwords in a row; only a reset clears it (account-lockout-v2, DECISIONS.md). */
+  status: "ACTIVE" | "DISABLED" | "LOCKED";
   staffId: string | null;
   lastLoginAt: string | null;
   createdAt: string;
@@ -1580,6 +1617,13 @@ export function updateTeamMember(
   return request<TeamMember>(`/team/${userId}`, {
     method: "PATCH",
     body: JSON.stringify(patch),
+  });
+}
+
+/** OWNER or MANAGER (a narrower permission than full team management) — also clears any lockout. */
+export function resetTeamMemberPassword(userId: string): Promise<{ userId: string; temporaryPassword: string }> {
+  return request<{ userId: string; temporaryPassword: string }>(`/team/${userId}/reset-password`, {
+    method: "POST",
   });
 }
 
@@ -2932,6 +2976,8 @@ export interface MonitoringTenantUsage {
   emailUsage: { sent: number; limit: number };
   smsUsage: { sent: number; limit: number };
   lastStaffLoginAt: string | null;
+  /** Live count of accounts currently hard-locked (account-lockout-v2, DECISIONS.md) — not a historical rollup. */
+  lockedAccountCount: number;
 }
 
 export function fetchMonitoringTenantUsage(params: { limit?: number; offset?: number } = {}): Promise<{
@@ -2949,6 +2995,8 @@ export function fetchMonitoringTenantUsage(params: { limit?: number; offset?: nu
 export interface MonitoringSecurityEvent {
   id: string;
   action: string;
+  /** The audited entity's id — for ACCOUNT_LOCKED, the locked User's id. */
+  entityId: string;
   tenantId: string | null;
   tenantName: string | null;
   createdAt: string;

@@ -4,7 +4,8 @@ import type { Request, Response } from "express";
 // DTOs must stay VALUE imports: NestJS ValidationPipe resolves them via
 // design:paramtypes metadata at runtime; `import type` would erase them.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import { LoginDto, LogoutDto, RefreshTokenDto } from "@salon/shared";
+import { CompleteFirstLoginDto, LoginDto, LogoutDto, RefreshTokenDto } from "@salon/shared";
+import type { AuthResult } from "./services/auth.service";
 import { ApiError } from "@salon/shared";
 import { Public } from "../common/decorators/public.decorator";
 import { AuthService } from "./services/auth.service";
@@ -38,6 +39,12 @@ export class AuthController {
     };
   }
 
+  /** Sets the refresh-token cookie and shapes the body — shared by `login` and `complete-first-login`, which both end the same way once a real session exists. */
+  private respondWithSession(result: AuthResult, res: Response) {
+    res.cookie(this.cookieName, result.refreshToken, this.cookieOptions);
+    return { accessToken: result.accessToken, user: result.user };
+  }
+
   @Post("login")
   async login(
     @Body() dto: LoginDto,
@@ -45,8 +52,22 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const result = await this.auth.login(dto, req.ip, req.get("user-agent"));
-    res.cookie(this.cookieName, result.refreshToken, this.cookieOptions);
-    return { accessToken: result.accessToken, user: result.user };
+    if ("requiresPasswordChange" in result) {
+      // No cookie, no tokens — zero functional access until the password
+      // is actually changed (DECISIONS.md).
+      return result;
+    }
+    return this.respondWithSession(result, res);
+  }
+
+  @Post("complete-first-login")
+  async completeFirstLogin(
+    @Body() dto: CompleteFirstLoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.auth.completeFirstLogin(dto, req.ip, req.get("user-agent"));
+    return this.respondWithSession(result, res);
   }
 
   @Post("refresh")

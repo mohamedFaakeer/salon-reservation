@@ -68,6 +68,14 @@ export class TokenService {
       issuer: this.issuer,
       audience: this.audience,
     });
+    if (payload.purpose) {
+      // A special-purpose token (currently: the forced-first-login
+      // password-change token) must never double as a real access token —
+      // reject outright here, at the one choke point every route's
+      // JwtAuthGuard calls, rather than relying on it merely decoding to
+      // empty roles/tenantId (DECISIONS.md — defense in depth).
+      throw new Error("Not an access token.");
+    }
     return {
       sub: payload.sub ?? "",
       email: typeof payload.email === "string" ? payload.email : "",
@@ -80,5 +88,37 @@ export class TokenService {
         ? payload.roles.filter((r): r is string => typeof r === "string")
         : [],
     };
+  }
+
+  /**
+   * The forced-first-login "set a new password" challenge (DECISIONS.md) —
+   * issued instead of a real session when `User.mustChangePassword` is
+   * true. Deliberately a different shape from `AccessTokenPayload` (no
+   * roles/tenantId at all) and short-lived (10 minutes): it grants no
+   * access to anything except the one endpoint that redeems it.
+   * `passwordHashFingerprint` binds the token to the exact password it was
+   * issued against, so a token can't be replayed after the password
+   * already changed through some other path in the meantime.
+   */
+  async signPasswordChangeToken(userId: string, passwordHashFingerprint: string): Promise<string> {
+    return new SignJWT({ purpose: "password_change", fp: passwordHashFingerprint })
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .setSubject(userId)
+      .setIssuer(this.issuer)
+      .setAudience(this.audience)
+      .setIssuedAt()
+      .setExpirationTime("10m")
+      .sign(this.secret);
+  }
+
+  async verifyPasswordChangeToken(token: string): Promise<{ userId: string; passwordHashFingerprint: string }> {
+    const { payload } = await jwtVerify(token, this.secret, {
+      issuer: this.issuer,
+      audience: this.audience,
+    });
+    if (payload.purpose !== "password_change" || typeof payload.fp !== "string" || !payload.sub) {
+      throw new Error("Not a password-change token.");
+    }
+    return { userId: payload.sub, passwordHashFingerprint: payload.fp };
   }
 }

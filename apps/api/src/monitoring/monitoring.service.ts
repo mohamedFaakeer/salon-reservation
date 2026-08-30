@@ -144,6 +144,7 @@ export class MonitoringService {
       emailUsage: { sent: number; limit: number };
       smsUsage: { sent: number; limit: number };
       lastStaffLoginAt: Date | null;
+      lockedAccountCount: number;
     }>;
     meta: { total: number; limit: number; offset: number };
   }> {
@@ -160,7 +161,7 @@ export class MonitoringService {
     const monthStart = startOfMonthUtc(new Date());
     const monthKey = new Date().toISOString().slice(0, 7);
 
-    const [bookingRows, revenueRows, quotaRows, lastLoginRows] = await Promise.all([
+    const [bookingRows, revenueRows, quotaRows, lastLoginRows, lockedRows] = await Promise.all([
       this.appointments
         .createQueryBuilder("a")
         .select('a."tenantId"', "tenantId")
@@ -188,12 +189,26 @@ export class MonitoringService {
         .where('utr."tenantId" IN (:...tenantIds)', { tenantIds })
         .groupBy('utr."tenantId"')
         .getRawMany<{ tenantId: string; lastLoginAt: Date | null }>(),
+      // Live, current count — not a rollup of past ACCOUNT_LOCKED events
+      // (those already surface individually in the Security events tab).
+      // A plain COUNT of `status = 'LOCKED'` needs no time window and
+      // self-corrects the moment any of them is reset.
+      this.users
+        .createQueryBuilder("u")
+        .innerJoin("user_tenant_role", "utr", 'utr."userId" = u.id')
+        .select('utr."tenantId"', "tenantId")
+        .addSelect("COUNT(*)::int", "count")
+        .where('utr."tenantId" IN (:...tenantIds)', { tenantIds })
+        .andWhere("u.status = :locked", { locked: "LOCKED" })
+        .groupBy('utr."tenantId"')
+        .getRawMany<{ tenantId: string; count: number }>(),
     ]);
 
     const bookingsByTenant = new Map(bookingRows.map((r) => [r.tenantId, Number(r.count)]));
     const revenueByTenant = new Map(revenueRows.map((r) => [r.tenantId, Number(r.total)]));
     const quotaByTenant = new Map(quotaRows.map((q) => [q.tenantId, q]));
     const lastLoginByTenant = new Map(lastLoginRows.map((r) => [r.tenantId, r.lastLoginAt]));
+    const lockedByTenant = new Map(lockedRows.map((r) => [r.tenantId, Number(r.count)]));
 
     return {
       data: tenantRows.map((t) => {
@@ -207,6 +222,7 @@ export class MonitoringService {
           emailUsage: { sent: quota?.emailSent ?? 0, limit: quota?.emailLimit ?? 0 },
           smsUsage: { sent: quota?.smsSent ?? 0, limit: quota?.smsLimit ?? 0 },
           lastStaffLoginAt: lastLoginByTenant.get(t.id) ?? null,
+          lockedAccountCount: lockedByTenant.get(t.id) ?? 0,
         };
       }),
       meta: { total, limit: query.limit, offset: query.offset },
@@ -281,6 +297,8 @@ export class MonitoringService {
     data: Array<{
       id: string;
       action: string;
+      /** The audited entity's id (e.g. the locked User's id for ACCOUNT_LOCKED) — lets the UI act on the specific account, not just describe it. */
+      entityId: string;
       tenantId: string | null;
       tenantName: string | null;
       createdAt: Date;
@@ -339,6 +357,7 @@ export class MonitoringService {
         return {
           id: row.id,
           action: row.action,
+          entityId: row.entityId,
           tenantId: row.tenantId,
           tenantName,
           createdAt: row.createdAt,
