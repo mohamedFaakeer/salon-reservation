@@ -1,0 +1,49 @@
+name: Keep Render free services warm (business hours only)
+
+# Why this exists, and why it's scoped this tightly (see the go-live costing
+# plan): Render's free web services spin down after 15 minutes idle, and a
+# cold start takes 30-60s — bad in front of a paying merchant. The free-tier
+# fix (Render's Starter plan, ~$7/mo/service) is deferred until the business
+# reaches 4 total clients (a deliberate, budget-driven decision, not an
+# oversight) — until then this workflow pings the API and Admin services
+# often enough that they never sleep, but ONLY during the hours someone is
+# actually likely to be using them.
+#
+# This is deliberately NOT a 24/7 ping. Render's 750 free instance-hours/
+# month are shared across the whole workspace, not per service — pinging
+# all day, every day would burn roughly 3x that budget and get every free
+# service suspended for the rest of the month around day 10, which is a
+# worse outcome than the cold-starts this exists to avoid. Pinging API +
+# Admin every 10 minutes across a ~12-hour window (9 AM-9 PM Colombo time)
+# costs ~720 of the 750 free hours/month, leaving headroom for occasional
+# after-hours access. Web (customer booking) is deliberately NOT pinged
+# here yet — with one client, customer traffic is low and bursty, so it's
+# the lowest-priority slot in the hours budget. Add it to this schedule
+# later (splitting to ~8h/day across all three) if customer-facing
+# cold-starts become an actual complaint.
+#
+# Adjust the cron below if the actual client's real operating hours differ
+# from the 9 AM-9 PM assumption. Cron is always UTC; Colombo is UTC+5:30,
+# so 9:00-21:00 Colombo = 03:30-15:30 UTC, expressed below in three pieces
+# to land on the exact half-hour boundary.
+#
+# DELETE THIS FILE once the business reaches 4 total clients and the API +
+# Admin services move to Render's Starter tier — that's the plan's own
+# stated migration trigger, not a permanent fixture.
+
+on:
+  schedule:
+    - cron: "30,40,50 3 * * *"   # 09:00-09:50 Colombo
+    - cron: "*/10 4-14 * * *"    # 10:00-20:50 Colombo
+    - cron: "0,10,20,30 15 * * *" # 21:00-21:30 Colombo
+  workflow_dispatch: {} # allows a manual "Run workflow" click to test it
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping API health endpoint
+        run: curl -fsS --max-time 20 "https://salon-api-ncok.onrender.com/api/v1/health" || true
+
+      - name: Ping Admin app
+        run: curl -fsS --max-time 20 "https://salon-admin-e7sf.onrender.com/login" || true
