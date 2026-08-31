@@ -1,3 +1,4 @@
+export * from "./branding";
 export * from "./enums";
 export * from "./phone";
 export * from "./tenant-settings";

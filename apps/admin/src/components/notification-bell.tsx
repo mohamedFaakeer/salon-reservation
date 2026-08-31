@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   fetchStaffNotificationStatus,
   fetchStaffNotifications,
@@ -32,12 +33,15 @@ const TYPE_ICON: Record<StaffNotificationRecord["type"], string> = {
 };
 
 /**
- * The notification bell — a fixed-position element layered over content at
- * every breakpoint, deliberately not folded into the sidebar/topbar chrome.
- * The admin app has no persistent desktop top bar today (`AppTopbar` is
- * `lg:hidden`), and restructuring `(app)/layout.tsx` to add one would shift
- * every existing page's layout for a feature that is supposed to be
- * additive (DECISIONS.md).
+ * The notification bell.
+ *
+ * Below `lg` it's still a fixed-position button next to `AppTopbar`'s
+ * hamburger, since there's no persistent chrome there to dock into. At `lg`
+ * and above it portals its trigger into `(app)/layout.tsx`'s reserved
+ * `#desktop-bell-slot` strip — a real in-flow element, not a second fixed
+ * button floating over the page — so it can never end up on top of a page's
+ * own content (it used to sit on top of the Today board's "New booking"
+ * button; DECISIONS.md). One component, one poll/drawer state, either way.
  *
  * Mounted once in `(app)/layout.tsx` — the desk shell (owner/manager/
  * receptionist). Not mounted in the floor kiosk: that surface is phone-first
@@ -49,6 +53,13 @@ export function NotificationBell() {
   const [popupsEnabled, setPopupsEnabled] = useState(true);
   const [popup, setPopup] = useState<StaffNotificationRecord | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // The desktop trigger portals into `(app)/layout.tsx`'s reserved topbar
+  // strip so it's a real in-flow element there, not a second fixed button —
+  // that div doesn't exist during SSR/first paint, hence the effect.
+  const [desktopSlot, setDesktopSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setDesktopSlot(document.getElementById("desktop-bell-slot"));
+  }, []);
 
   const lastSeenId = useRef<string | null>(null);
   const hasLoadedOnce = useRef(false);
@@ -112,16 +123,15 @@ export function NotificationBell() {
       {/*
         Below `lg`, `AppTopbar` already occupies the top-right corner with
         its hamburger button (both `sticky top-0`, same z-30) — the bell
-        sits to its left there instead of on top of it, and only claims the
-        corner outright at `lg` where no topbar exists. `z-[31]` keeps it
-        above that topbar but below the mobile nav scrim (z-[35]), so
-        opening the nav drawer dims the bell along with everything else.
+        sits to its left there instead of on top of it. `lg:hidden` hands the
+        corner over entirely at `lg`, where the desktop trigger below lives
+        in the reserved topbar strip instead of floating over content.
       */}
       <button
         type="button"
         onClick={() => setDrawerOpen(true)}
         aria-label={count > 0 ? `Notifications, ${count} unread` : "Notifications"}
-        className="fixed right-16 top-2 z-[31] flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-md transition-colors hover:bg-slate-50 hover:text-slate-900 lg:right-4 lg:top-4 lg:h-11 lg:w-11"
+        className="fixed right-16 top-2 z-[31] flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-md transition-colors hover:bg-slate-50 hover:text-slate-900 lg:hidden"
       >
         <BellIcon />
         {count > 0 ? (
@@ -134,10 +144,38 @@ export function NotificationBell() {
         ) : null}
       </button>
 
+      {/*
+        Desktop trigger — portaled into `(app)/layout.tsx`'s
+        `#desktop-bell-slot`, a real in-flow child of the reserved topbar
+        strip rather than a second fixed element, so it can never end up on
+        top of a page's own content (DECISIONS.md).
+      */}
+      {desktopSlot
+        ? createPortal(
+            <button
+              type="button"
+              onClick={() => setDrawerOpen(true)}
+              aria-label={count > 0 ? `Notifications, ${count} unread` : "Notifications"}
+              className="relative flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
+            >
+              <BellIcon />
+              {count > 0 ? (
+                <span
+                  aria-hidden="true"
+                  className="tabular absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white"
+                >
+                  {count > 99 ? "99+" : count}
+                </span>
+              ) : null}
+            </button>,
+            desktopSlot,
+          )
+        : null}
+
       {popupsEnabled && popup ? (
         <div
           role="status"
-          className="motion-rise fixed right-4 top-14 z-[31] w-[min(340px,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-4 shadow-xl lg:top-[72px]"
+          className="motion-rise fixed right-4 top-14 z-[31] w-[min(340px,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-4 shadow-xl lg:top-16"
         >
           <div className="flex items-start gap-3">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-50 text-sm text-teal-700">

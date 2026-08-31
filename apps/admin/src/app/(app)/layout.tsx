@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/auth-context";
 import {
@@ -24,6 +24,32 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [modules, setModules] = useState<Record<ModuleKey, boolean> | null>(null);
   const [reportPanels, setReportPanels] = useState<Record<ReportPanelKey, boolean> | null>(null);
   const [navOpen, setNavOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+
+  /**
+   * Auto-collapses the desktop rail 5s after landing on the dashboard, so
+   * the day board is fully visible without the user doing anything — then
+   * gets out of the way. Any manual click on the brand row (see
+   * `handleToggleCollapse`) cancels this so it never fights the user's own
+   * choice later in the session.
+   */
+  const autoCollapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    autoCollapseTimer.current = setTimeout(() => setCollapsed(true), 5_000);
+    return () => {
+      if (autoCollapseTimer.current) {
+        clearTimeout(autoCollapseTimer.current);
+      }
+    };
+  }, []);
+
+  function handleToggleCollapse(): void {
+    if (autoCollapseTimer.current) {
+      clearTimeout(autoCollapseTimer.current);
+      autoCollapseTimer.current = null;
+    }
+    setCollapsed((v) => !v);
+  }
 
   // Body-scroll lock while the mobile/tablet drawer is open.
   useEffect(() => {
@@ -126,17 +152,34 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           onLogout={() => void logout()}
           open={navOpen}
           onRequestClose={() => setNavOpen(false)}
+          collapsed={collapsed}
+          onToggleCollapse={handleToggleCollapse}
         />
-        <main
-          // Removes background content from tab order and the accessibility
-          // tree while the drawer is open — `navOpen` can only be true below
-          // `lg` (the topbar that sets it is `lg:hidden`), so this never
-          // fires at desktop width.
-          inert={navOpen}
-          className="min-w-0 flex-1 p-6 lg:h-screen lg:overflow-y-auto"
-        >
-          {children}
-        </main>
+        <div className="flex min-w-0 flex-1 flex-col lg:h-screen">
+          {/*
+            A real, in-flow strip — not decoration around a still-fixed bell.
+            `<main>` starts below it in normal flow, so no page's own header
+            (the Today board's "New booking" button included) can ever end up
+            underneath the bell again, regardless of that page's own layout.
+            `NotificationBell` portals its desktop trigger button into this
+            div (see notification-bell.tsx) so there is still one shared
+            component/state for the bell, not two.
+          */}
+          <div
+            id="desktop-bell-slot"
+            className="hidden shrink-0 items-center justify-end border-b border-slate-200 bg-white px-4 lg:flex lg:h-14"
+          />
+          <main
+            // Removes background content from tab order and the accessibility
+            // tree while the drawer is open — `navOpen` can only be true below
+            // `lg` (the topbar that sets it is `lg:hidden`), so this never
+            // fires at desktop width.
+            inert={navOpen}
+            className="min-w-0 flex-1 overflow-y-auto p-6"
+          >
+            {children}
+          </main>
+        </div>
       </div>
     </ModulesProvider>
   );

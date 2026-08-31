@@ -63,7 +63,7 @@ const DIRECTION_CONTRACT = `<!--
 -->`;
 
 export const metadata: Metadata = {
-  title: "Claim the chair",
+  title: "ZelyraOne for Customers",
   description:
     "Every time you see is a time you can take. Book a salon appointment in under 60 seconds — no account.",
   themeColor: "#04211F",

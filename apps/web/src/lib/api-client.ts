@@ -81,6 +81,8 @@ export interface SalonProfile {
   /** Powers the "Get Directions" button. Both null until the salon sets a location. */
   latitude: number | null;
   longitude: number | null;
+  /** The salon's own uploaded logo, or null if they haven't set one — the page falls back to the ZelyraOne mark. */
+  logoUrl: string | null;
   services: SalonService[];
   staff: SalonStaff[];
   hours: Array<SalonHoursEntry | null>;

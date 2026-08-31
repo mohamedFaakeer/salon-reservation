@@ -1,5 +1,6 @@
 "use client";
 
+import { DEFAULT_LOGO_DATA_URI } from "@salon/shared";
 import type { InvoiceRecord } from "../lib/api-client";
 import { formatPriceCents } from "../lib/format";
 
@@ -41,11 +42,13 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceRecord }) {
 
       <header className="flex flex-wrap items-start justify-between gap-6 border-b border-slate-200 pb-5">
         <div className="flex items-start gap-3">
-          {salon.logoUrl ? (
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-slate-200 p-1">
-              <img src={salon.logoUrl} alt="" className="h-full w-full object-contain" />
-            </span>
-          ) : null}
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-slate-200 p-1">
+            <img
+              src={salon.logoUrl ?? DEFAULT_LOGO_DATA_URI}
+              alt=""
+              className="h-full w-full object-contain"
+            />
+          </span>
           <div>
             <h2 className="text-lg font-semibold tracking-[-0.01em]">{salon.name}</h2>
             <p className="mt-0.5 text-xs leading-relaxed text-slate-500">

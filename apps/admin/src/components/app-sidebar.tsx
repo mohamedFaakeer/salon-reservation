@@ -393,6 +393,8 @@ export function AppSidebar({
   onLogout,
   open,
   onRequestClose,
+  collapsed,
+  onToggleCollapse,
 }: {
   roles: string[];
   salonName: string | null;
@@ -402,6 +404,14 @@ export function AppSidebar({
   /** Whether the off-canvas drawer is open below `lg`. Ignored at `lg` and above — the rail is always visible there. */
   open: boolean;
   onRequestClose: () => void;
+  /**
+   * Whether the desktop rail is shrunk to an icon-only strip. Every class
+   * driven by this is `lg:`-prefixed on purpose — below `lg` the sidebar is
+   * always the full off-canvas drawer regardless of this flag, since the
+   * auto-collapse timer in `(app)/layout.tsx` isn't aware of viewport width.
+   */
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 }) {
   const pathname = usePathname();
   const { modules } = useModules();
@@ -452,26 +462,41 @@ export function AppSidebar({
   return (
     <aside
       id="app-sidebar-nav"
-      className={`fixed inset-y-0 left-0 z-40 flex w-72 max-w-[85vw] flex-col border-r border-slate-200 bg-white shadow-xl transition-transform duration-[var(--motion-overlay)] ease-[var(--ease-out)] lg:static lg:inset-auto lg:z-auto lg:h-screen lg:w-56 lg:max-w-none lg:translate-x-0 lg:shadow-none ${
+      className={`fixed inset-y-0 left-0 z-40 flex w-72 max-w-[85vw] flex-col border-r border-slate-200 bg-white shadow-xl transition-transform duration-[var(--motion-overlay)] ease-[var(--ease-out)] lg:static lg:inset-auto lg:z-auto lg:h-screen lg:max-w-none lg:translate-x-0 lg:shadow-none lg:transition-[width] lg:duration-[var(--motion-state)] lg:ease-[var(--ease-out)] ${
         open ? "translate-x-0" : "-translate-x-full"
-      }`}
+      } ${collapsed ? "lg:w-[4.5rem]" : "lg:w-56"}`}
     >
-      <div className="flex items-center gap-2.5 border-b border-slate-200 px-4 py-3">
-        {logoUrl ? (
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white p-0.5">
-            <img src={logoUrl} alt="" className="h-full w-full object-contain" />
-          </span>
-        ) : null}
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-slate-900">{salonName ?? "Salon Admin"}</p>
+      {/* Also the collapse/expand toggle — a real <button>, not the brand
+          decoration it looks like, per the product's request to click the
+          logo to expand. */}
+      <button
+        type="button"
+        onClick={onToggleCollapse}
+        title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        className={`flex items-center gap-2.5 border-b border-slate-200 px-4 py-3 text-left transition-colors hover:bg-slate-50 ${collapsed ? "lg:justify-center lg:px-2" : ""}`}
+      >
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white p-0.5">
+          <img src={logoUrl ?? "/branding/zelyra-logo.svg"} alt="" className="h-full w-full object-contain" />
+        </span>
+        <div
+          className={`min-w-0 overflow-hidden transition-[opacity,width] duration-[var(--motion-state)] ease-[var(--ease-out)] ${
+            collapsed ? "lg:w-0 lg:opacity-0" : "lg:w-40 lg:opacity-100"
+          }`}
+        >
+          <p className="truncate text-sm font-semibold text-slate-900">
+            {salonName ?? "ZelyraOne for Business"}
+          </p>
           <p className="truncate text-xs text-slate-500">{roles.join(", ")}</p>
         </div>
-      </div>
+      </button>
 
       <nav aria-label="Main" ref={navRef} className="flex-1 overflow-y-auto py-3">
         {groups.map((group) => (
           <div key={group.label} className="mb-4 last:mb-0">
-            <p className="px-4 pb-1 text-[10px] font-medium uppercase tracking-[0.13em] text-slate-400">
+            <p
+              className={`px-4 pb-1 text-[10px] font-medium uppercase tracking-[0.13em] text-slate-400 ${collapsed ? "lg:hidden" : ""}`}
+            >
               {group.label}
             </p>
             <ul className="flex flex-col">
@@ -484,11 +509,18 @@ export function AppSidebar({
                         target="_blank"
                         rel="noopener noreferrer"
                         data-testid="nav-setup-guide"
-                        className="flex min-h-11 items-center gap-2.5 border-l-2 border-transparent px-4 text-sm text-slate-700 transition-colors hover:bg-slate-50"
+                        title={collapsed ? item.label : undefined}
+                        aria-label={collapsed ? item.label : undefined}
+                        className={`flex min-h-11 items-center gap-2.5 border-l-2 border-transparent px-4 text-sm text-slate-700 transition-colors hover:bg-slate-50 ${collapsed ? "lg:justify-center lg:px-0" : ""}`}
                       >
                         <span className="text-slate-400">{item.icon}</span>
-                        {item.label}
-                        <svg viewBox="0 0 16 16" className="ml-auto h-3 w-3 shrink-0 text-slate-300" aria-hidden="true" focusable="false">
+                        <span className={collapsed ? "lg:hidden" : ""}>{item.label}</span>
+                        <svg
+                          viewBox="0 0 16 16"
+                          className={`ml-auto h-3 w-3 shrink-0 text-slate-300 ${collapsed ? "lg:hidden" : ""}`}
+                          aria-hidden="true"
+                          focusable="false"
+                        >
                           <path d="M6 4h6v6M12 4 4 12" {...stroke} />
                         </svg>
                       </a>
@@ -502,14 +534,16 @@ export function AppSidebar({
                       href={item.href}
                       aria-current={active ? "page" : undefined}
                       data-testid={`nav-${item.href.slice(1)}`}
+                      title={collapsed ? item.label : undefined}
+                      aria-label={collapsed ? item.label : undefined}
                       className={`flex min-h-11 items-center gap-2.5 border-l-2 px-4 text-sm transition-colors ${
                         active
                           ? "border-teal-600 bg-teal-50 font-semibold text-teal-700"
                           : "border-transparent text-slate-700 hover:bg-slate-50"
-                      }`}
+                      } ${collapsed ? "lg:justify-center lg:px-0" : ""}`}
                     >
                       <span className={active ? "text-teal-600" : "text-slate-400"}>{item.icon}</span>
-                      {item.label}
+                      <span className={collapsed ? "lg:hidden" : ""}>{item.label}</span>
                     </Link>
                   </li>
                 );
@@ -519,17 +553,35 @@ export function AppSidebar({
         ))}
       </nav>
 
-      <div className="flex items-center justify-between gap-2 border-t border-slate-200 px-4 py-2">
-        <p data-testid="current-user" className="min-w-0 truncate text-xs text-slate-600">
+      <div
+        className={`flex items-center justify-between gap-2 border-t border-slate-200 px-4 py-2 ${collapsed ? "lg:justify-center lg:px-2" : ""}`}
+      >
+        <p
+          data-testid="current-user"
+          className={`min-w-0 truncate text-xs text-slate-600 ${collapsed ? "lg:hidden" : ""}`}
+        >
           <span className="block truncate font-medium text-slate-900">{userName}</span>
           {roles.join(", ")}
         </p>
         <button
           type="button"
           onClick={onLogout}
-          className="min-h-11 shrink-0 rounded px-2 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+          title="Log out"
+          aria-label={collapsed ? "Log out" : undefined}
+          className={`flex min-h-11 shrink-0 items-center justify-center rounded px-2 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 ${collapsed ? "lg:min-w-11 lg:px-0" : ""}`}
         >
-          Log out
+          <span className={collapsed ? "lg:hidden" : ""}>Log out</span>
+          <svg
+            viewBox="0 0 16 16"
+            className={`hidden h-4 w-4 ${collapsed ? "lg:block" : ""}`}
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path
+              d="M6 2H3.5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1H6M10.5 11l3-3-3-3M13.3 8H6"
+              {...stroke}
+            />
+          </svg>
         </button>
       </div>
     </aside>

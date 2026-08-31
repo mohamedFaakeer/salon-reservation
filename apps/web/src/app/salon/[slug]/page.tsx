@@ -65,6 +65,15 @@ export default async function SalonProfilePage({ params }: { params: Promise<{ s
       <header className="crackle relative overflow-hidden bg-[var(--dye-deep)] px-5 pb-7 pt-6">
         <DyedPhoto src={sceneFor(salon.slug)} alt="" position="center 28%" drift />
         <div className="relative z-10">
+          {/* Falls back to the ZelyraOne mark when a salon hasn't uploaded
+              its own logo — every surface that has a logo slot shows one. */}
+          <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--resist)] p-2 shadow-lg">
+            <img
+              src={salon.logoUrl ?? "/branding/zelyra-logo.svg"}
+              alt=""
+              className="h-full w-full object-contain"
+            />
+          </span>
           <h1 className="display display-wide anim-soak text-[clamp(38px,11vw,48px)] text-[var(--resist)]">
             {salon.name}
           </h1>

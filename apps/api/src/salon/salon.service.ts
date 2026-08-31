@@ -74,6 +74,8 @@ export interface SalonProfile {
   /** Powers the customer site's "Get Directions" link. Both null until an owner sets a location. */
   latitude: number | null;
   longitude: number | null;
+  /** The salon's own uploaded logo, or null if they haven't set one. `apps/web` falls back to the ZelyraOne mark when null. */
+  logoUrl: string | null;
   services: SalonServiceView[];
   staff: Array<{
     id: string;
@@ -178,6 +180,7 @@ export class SalonService {
       phone: branch?.phone ?? null,
       latitude: branch?.latitude ?? null,
       longitude: branch?.longitude ?? null,
+      logoUrl: tenant.settings.logoUrl ?? null,
       services: services.map((s) => toServiceView(s, this.serviceDiscounts)),
       staff: staff.map((s) => ({
         id: s.id,

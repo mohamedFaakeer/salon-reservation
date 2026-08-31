@@ -5,7 +5,7 @@ import { AuthProvider } from "../context/auth-context";
 import { ToastProvider } from "../components/toast";
 
 export const metadata: Metadata = {
-  title: "Salon Admin",
+  title: "ZelyraOne for Business",
   description: "Salon staff — manage your day in seconds",
 };
 

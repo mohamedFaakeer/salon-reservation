@@ -1,3 +1,4 @@
+import { DEFAULT_LOGO_DATA_URI } from "@salon/shared";
 import type { Invoice } from "../entities/invoice.entity";
 
 /**
@@ -83,17 +84,13 @@ function renderHtml(invoice: Invoice): string {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;">
   <tr><td style="padding:24px 24px 0;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-      ${
-        salon.logoUrl
-          ? `<td width="56" style="vertical-align:top;padding-right:14px;">
-               <table role="presentation" width="56" height="56" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:8px;">
-                 <tr><td align="center" valign="middle" style="padding:5px;">
-                   <img src="${escape(salon.logoUrl)}" width="46" height="46" alt="${escape(salon.name)} logo" style="display:block;max-width:46px;max-height:46px;width:auto;height:auto;">
-                 </td></tr>
-               </table>
-             </td>`
-          : ""
-      }
+      <td width="56" style="vertical-align:top;padding-right:14px;">
+        <table role="presentation" width="56" height="56" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:8px;">
+          <tr><td align="center" valign="middle" style="padding:5px;">
+            <img src="${escape(salon.logoUrl ?? DEFAULT_LOGO_DATA_URI)}" width="46" height="46" alt="${escape(salon.name)} logo" style="display:block;max-width:46px;max-height:46px;width:auto;height:auto;">
+          </td></tr>
+        </table>
+      </td>
       <td style="vertical-align:top;">
         <div style="font-size:17px;font-weight:600;color:#0f172a;">${escape(salon.name)}</div>
         <div style="font-size:12px;color:#64748b;line-height:1.6;">
