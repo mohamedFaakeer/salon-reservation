@@ -1,6 +1,5 @@
 "use client";
 
-import { DEFAULT_LOGO_DATA_URI } from "@salon/shared";
 import type { InvoiceRecord } from "../lib/api-client";
 import { formatPriceCents } from "../lib/format";
 
@@ -42,9 +41,21 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceRecord }) {
 
       <header className="flex flex-wrap items-start justify-between gap-6 border-b border-slate-200 pb-5">
         <div className="flex items-start gap-3">
+          {/*
+            The default-logo fallback is the static public asset, deliberately
+            NOT `DEFAULT_LOGO_DATA_URI` from `@salon/shared` — this component
+            runs in the browser, and that package's barrel `export *`s every
+            class-validator DTO. Importing anything from it as a value here
+            forces the bundler to evaluate all of them, and their decorators
+            call `Reflect.getMetadata`, which only exists because `apps/api`
+            polyfills `reflect-metadata` server-side — the browser never has
+            it, so the whole client bundle throws before React can render.
+            This exact mistake took down /today, /schedule and /appointments
+            in production once already; don't reintroduce it.
+          */}
           <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-slate-200 p-1">
             <img
-              src={salon.logoUrl ?? DEFAULT_LOGO_DATA_URI}
+              src={salon.logoUrl ?? "/branding/zelyra-logo.svg"}
               alt=""
               className="h-full w-full object-contain"
             />
