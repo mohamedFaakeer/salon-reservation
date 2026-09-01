@@ -2784,3 +2784,65 @@ constructs an invalid date; the accepted trade-off is that a Feb 29
 birthday doesn't surface in the segment during a run of non-leap years, a
 one-in-1,461-days edge case.
 
+## 60. Quick Sale: selling an item that isn't in the catalog yet (2026-09-01)
+
+Quick Sale could previously only sell a real, already-created `ProductVariant`
+or `ProductBundle`. The user wanted a cashier to ring up something found on
+the shelf but never entered into the catalog (e.g. "Body Butter, 30g"),
+without waiting on someone with catalog-write access.
+
+This runs directly into an existing, deliberate boundary: creating a
+`Product`/`ProductVariant` requires `MANAGE_INVENTORY` (OWNER/MANAGER only);
+checkout only requires `RECORD_PAYMENT` (RECEPTIONIST has this, not
+MANAGE_INVENTORY). Three approaches were considered and put to the user with
+their trade-offs:
+
+1. **The literal ask** — create a real, immediately-searchable
+   `Product`/`ProductVariant` on the spot from Quick Sale itself. Rejected:
+   it means a RECEPTIONIST session functionally creates catalog rows (a real
+   permission-boundary crossing, not just a UI convenience), fabricates a
+   cost basis (`weightedAvgCostCents = 0`) that permanently skews margin
+   reporting for that sale once frozen, and risks a fragmented catalog if
+   the same product name is retyped slightly differently next time.
+2. **Pure industry-standard** — a one-off "custom/open item" (Square,
+   Shopify POS, Vend, Toast all use this exact convention): name + price
+   typed in, sold immediately, zero inventory impact, never saved to the
+   catalog. Simplest and safest, but doesn't get toward "this becomes a
+   real, findable product later," which the user explicitly wanted.
+3. **Hybrid (chosen)** — a genuinely off-catalog line at sale time (no
+   `Product`/`ProductVariant`, no stock impact, no permission change:
+   checkout stays `RECORD_PAYMENT`-only), with a deliberate, later,
+   manager-only action to turn a sold line into a real catalog product.
+
+**Confirmed with the user:**
+- Margin/COGS reporting excludes custom lines entirely (no fabricated 0
+  cost standing in for a real number) — their revenue still counts in plain
+  sales/takings totals, which are built from `RetailSale.totalCents`, not
+  this per-product breakdown.
+- The "turn into a real product" action lives as a persistent "Needs
+  review" queue in the existing Products screen (so an owner can batch
+  through it anytime, present at the sale or not), plus an inline shortcut
+  on the post-sale confirmation when the checkout-taker already holds
+  `MANAGE_INVENTORY`.
+- No price ceiling on custom items for now — matches how the rest of Quick
+  Sale already trusts staff with real prices; revisit only if actually
+  abused.
+
+**Implementation shape:** `RetailSaleLine.variantId`/`bundleId` can now both
+be null (a third line kind, not a new table) — `nameSnapshot`/
+`attributeSnapshot`/`unitPriceCentsSnapshot` are still frozen exactly like
+every other line, `unitCostCentsSnapshot` is `0` (documented as "genuinely
+unknown," not a real cost). `convertedToVariantId` (nullable FK to
+`product_variant`) is set once a manager completes the conversion — a line
+"needs review" exactly when `variantId`, `bundleId` and
+`convertedToVariantId` are all null, so no separate status column exists.
+`POST /retail-sales/custom-lines/:lineId/convert-to-product` reuses
+`ProductService.create`/`createVariant` directly (never duplicates
+catalog-insert logic) and deliberately opens with `quantityOnHand: 0` — it
+adds a catalog entry, not stock; Receive Stock stays the separate, existing
+step for that. `RetailReturnService`'s old `saleLine.variantId === null`
+check had silently doubled as "is this a bundle line" — fixed to check
+`bundleId !== null` specifically, since a custom line is also `variantId
+=== null` but needs its own path (a straight monetary refund, no
+restock/quarantine branch, since there was never any stock to move).
+

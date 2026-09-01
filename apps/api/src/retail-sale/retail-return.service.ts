@@ -79,13 +79,21 @@ export class RetailReturnService {
         if (!saleLine) {
           throw new ApiError({ statusCode: 404, code: "NOT_FOUND", message: "That line isn't part of this sale." });
         }
-        if (saleLine.variantId === null) {
+        // Loose checks (`!= null`) on purpose — some call sites build a
+        // sale-line fixture with the other id simply omitted (`undefined`)
+        // rather than explicitly `null`; both mean "not set" here.
+        if (saleLine.bundleId != null) {
           throw new ApiError({
             statusCode: 409,
             code: "BUNDLE_RETURN_NOT_SUPPORTED",
             message: "Bundle lines can't be returned yet — return the sale's other lines, or contact support.",
           });
         }
+        // A custom (off-catalog) line has no variant/bundle and nothing to
+        // restock or quarantine — its return is a straight monetary refund
+        // (below), so it always takes the disposition-less path regardless
+        // of what `lineDto.disposition` says.
+        const isCustomLine = saleLine.variantId == null;
 
         const alreadyReturned = await this.returnedQuantityFor(manager, saleLine.id);
         const remaining = saleLine.quantity - alreadyReturned;
@@ -107,11 +115,13 @@ export class RetailReturnService {
           }),
         );
 
-        if (lineDto.disposition === RetailReturnDisposition.RESTOCK) {
+        if (!isCustomLine && lineDto.disposition === RetailReturnDisposition.RESTOCK) {
           await this.restock(manager, tenant.id, saleLine, lineDto, returnRow.id, actorUserId);
         }
-        // QUARANTINE: no stock/batch mutation — the RetailReturnLine row above is the whole record. It never
-        // re-enters quantityOnHand, because it isn't sellable.
+        // QUARANTINE, or any custom-line return: no stock/batch mutation —
+        // the RetailReturnLine row above is the whole record. A quarantined
+        // unit never re-enters quantityOnHand because it isn't sellable; a
+        // custom line never had any quantityOnHand to begin with.
       }
 
       if (dto.refundCents && dto.refundCents > 0) {

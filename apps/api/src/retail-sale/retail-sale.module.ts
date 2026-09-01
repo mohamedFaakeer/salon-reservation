@@ -16,6 +16,7 @@ import { TenantModule } from "../tenant/tenant.module";
 import { InventoryModule } from "../inventory/inventory.module";
 import { BundleModule } from "../bundle/bundle.module";
 import { PaymentModule } from "../payment/payment.module";
+import { ProductModule } from "../product/product.module";
 import { RetailSaleController } from "./retail-sale.controller";
 import { RetailReceiptController } from "./retail-receipt.controller";
 import { RetailSaleService } from "./retail-sale.service";
@@ -41,6 +42,7 @@ import { RetailReturnService } from "./retail-return.service";
     InventoryModule,
     BundleModule,
     PaymentModule,
+    ProductModule,
   ],
   controllers: [RetailSaleController, RetailReceiptController],
   providers: [RetailSaleService, RetailReturnService],

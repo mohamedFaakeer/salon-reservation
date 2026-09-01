@@ -2,12 +2,20 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../../context/auth-context";
-import { ApiRequestError, fetchProducts, type ProductRecord } from "../../../lib/api-client";
+import {
+  ApiRequestError,
+  fetchPendingCustomLines,
+  fetchProducts,
+  type PendingCustomLineView,
+  type ProductRecord,
+} from "../../../lib/api-client";
+import { formatPriceCents } from "../../../lib/format";
 import { canManageInventory, canViewInventory } from "../../../lib/permissions";
 import { ModuleGate } from "../../../components/module-gate";
 import { ProductDrawer } from "../../../components/product-drawer";
 import { ProductDetailDrawer } from "../../../components/product-detail-drawer";
 import { ProductImportDrawer } from "../../../components/product-import-drawer";
+import { ConvertCustomLineDrawer } from "../../../components/convert-custom-line-drawer";
 import { LoadingSkeleton } from "../../../components/loading-skeleton";
 import { useToast } from "../../../components/toast";
 
@@ -34,6 +42,11 @@ function ProductsPage() {
   const [showImport, setShowImport] = useState(false);
   const [viewingId, setViewingId] = useState<string | null>(null);
 
+  const [tab, setTab] = useState<"all" | "review">("all");
+  const [pendingLines, setPendingLines] = useState<PendingCustomLineView[]>([]);
+  const [loadingPending, setLoadingPending] = useState(true);
+  const [reviewingLine, setReviewingLine] = useState<PendingCustomLineView | null>(null);
+
   const load = useCallback((query: string, includeInactive: boolean) => {
     setLoading(true);
     setError(null);
@@ -43,7 +56,20 @@ function ProductsPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const loadPending = useCallback(() => {
+    setLoadingPending(true);
+    fetchPendingCustomLines()
+      .then(setPendingLines)
+      .catch(() => setPendingLines([]))
+      .finally(() => setLoadingPending(false));
+  }, []);
+
   useEffect(() => load("", showInactive), [load, showInactive]);
+  // Only OWNER/MANAGER can reach this endpoint at all — no point requesting
+  // it (and getting a 403) for a view-only session that can't act on it anyway.
+  useEffect(() => {
+    if (canManage) loadPending();
+  }, [canManage, loadPending]);
 
   if (!canView) {
     return (
@@ -91,6 +117,83 @@ function ProductsPage() {
         ) : null}
       </div>
 
+      {canManage ? (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setTab("all")}
+            className={`min-h-9 rounded-full border px-4 text-sm font-semibold ${
+              tab === "all" ? "border-teal-600 bg-teal-50 text-teal-700" : "border-slate-300 text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            All products
+          </button>
+          <button
+            type="button"
+            data-testid="products-tab-needs-review"
+            onClick={() => setTab("review")}
+            className={`min-h-9 rounded-full border px-4 text-sm font-semibold ${
+              tab === "review" ? "border-teal-600 bg-teal-50 text-teal-700" : "border-slate-300 text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            Needs review
+            {pendingLines.length > 0 ? (
+              <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                {pendingLines.length}
+              </span>
+            ) : null}
+          </button>
+        </div>
+      ) : null}
+
+      {tab === "review" ? (
+        <>
+          <p className="text-sm text-slate-500">
+            Sold as a custom item from Quick Sale and not yet in the catalog. These sold and charged normally —
+            nothing here is blocked. Revenue already counts in sales totals; margin reports exclude them until
+            completed, since the real cost isn&rsquo;t known yet.
+          </p>
+          {loadingPending ? (
+            <LoadingSkeleton rows={3} />
+          ) : pendingLines.length === 0 ? (
+            <p className="rounded border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
+              Nothing needs review right now.
+            </p>
+          ) : (
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <div className="hidden grid-cols-[1.6fr_0.8fr_1fr_1fr_auto] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:grid">
+                <span>Sold as</span>
+                <span>Price</span>
+                <span>Sold</span>
+                <span>Sold by</span>
+                <span />
+              </div>
+              {pendingLines.map((line) => (
+                <div
+                  key={line.id}
+                  className="grid grid-cols-1 gap-2 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 sm:grid-cols-[1.6fr_0.8fr_1fr_1fr_auto] sm:items-center sm:gap-3"
+                >
+                  <span className="min-w-0 truncate font-medium text-slate-900">
+                    {line.nameSnapshot}
+                    {line.attributeSnapshot ? <span className="text-slate-500"> · {line.attributeSnapshot}</span> : null}
+                  </span>
+                  <span className="tabular text-slate-700">{formatPriceCents(line.unitPriceCentsSnapshot)}</span>
+                  <span className="text-slate-600">{new Date(line.createdAt).toLocaleString()}</span>
+                  <span className="truncate text-slate-600">{line.soldByName ?? "—"}</span>
+                  <button
+                    type="button"
+                    onClick={() => setReviewingLine(line)}
+                    className="min-h-9 shrink-0 rounded border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Add to catalog
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        <>
       <div className="flex flex-wrap items-center gap-3">
         <input
           data-testid="product-search"
@@ -178,6 +281,8 @@ function ProductsPage() {
           ))}
         </div>
       )}
+        </>
+      )}
 
       {showCreate ? (
         <ProductDrawer
@@ -206,6 +311,20 @@ function ProductsPage() {
           onClose={() => setShowImport(false)}
           onImported={() => {
             toast.success("Products imported");
+            load(q, showInactive);
+          }}
+        />
+      ) : null}
+
+      {reviewingLine ? (
+        <ConvertCustomLineDrawer
+          line={reviewingLine}
+          onClose={() => setReviewingLine(null)}
+          onConverted={() => {
+            const name = reviewingLine.nameSnapshot;
+            setReviewingLine(null);
+            toast.success("Added to catalog", `${name} is now a real product.`);
+            loadPending();
             load(q, showInactive);
           }}
         />

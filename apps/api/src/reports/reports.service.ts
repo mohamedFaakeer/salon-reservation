@@ -469,6 +469,14 @@ export class ReportsService {
    * A tenant that has never enabled the `inventory` module simply has no
    * `RetailSale` rows to sum, so this reads as an honest empty panel rather
    * than needing its own separate gate.
+   *
+   * Custom (off-catalog) lines — `variantId` AND `bundleId` both null — are
+   * excluded from this panel entirely, not folded in at a fabricated 0 cost:
+   * a custom line's true cost is genuinely unknown, so counting it here
+   * would silently inflate the reported margin. Their revenue still counts
+   * in this tenant's plain sales/takings totals (built from `RetailSale
+   * .totalCents`/`Payment`, not this per-catalog-product breakdown) — this
+   * exclusion is scoped to product-level margin specifically.
    */
   private async productSalesReport(tenantId: string, range: Range): Promise<ProductSalesReport> {
     const window = utcWindowFor(range);
@@ -489,6 +497,7 @@ export class ReportsService {
       .where('s."tenantId" = :tenantId', { tenantId })
       .andWhere('s."createdAt" >= :startUtc', window)
       .andWhere('s."createdAt" < :endUtc', window)
+      .andWhere('(l."variantId" IS NOT NULL OR l."bundleId" IS NOT NULL)')
       .groupBy('COALESCE(l."variantId", l."bundleId")')
       .addGroupBy('l."nameSnapshot"')
       .addGroupBy('l."skuSnapshot"')
@@ -511,6 +520,7 @@ export class ReportsService {
       .where('s."tenantId" = :tenantId', { tenantId })
       .andWhere('s."createdAt" >= :startUtc', window)
       .andWhere('s."createdAt" < :endUtc', window)
+      .andWhere('(l."variantId" IS NOT NULL OR l."bundleId" IS NOT NULL)')
       .getRawOne<{ revenueCents: number; costCents: number }>();
 
     const totalRevenueCents = Number(totals?.revenueCents ?? 0);

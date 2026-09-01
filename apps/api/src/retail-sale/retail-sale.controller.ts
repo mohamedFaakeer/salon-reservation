@@ -5,7 +5,7 @@ import { ApiError } from "@salon/shared";
 // DTOs must stay VALUE imports: ValidationPipe resolves them via
 // design:paramtypes metadata at runtime; `import type` would erase them.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import { CreateRetailReturnDto, RetailSaleCheckoutDto, RetailSaleQueryDto } from "@salon/shared";
+import { ConvertCustomLineDto, CreateRetailReturnDto, RetailSaleCheckoutDto, RetailSaleQueryDto } from "@salon/shared";
 import { getTenantContext } from "../tenant/tenant-context";
 import { Permissions } from "../common/authorization/permissions.decorator";
 import { Permission } from "../common/authorization/permission.enum";
@@ -64,6 +64,27 @@ export class RetailSaleController {
   get(@Req() req: Request, @Param("id") id: string) {
     const ctx = getTenantContext(req);
     return this.retailSales.get(ctx.tenantId, id);
+  }
+
+  /**
+   * Every custom-sold line tenant-wide that hasn't been turned into a real
+   * catalog product yet — MANAGE_INVENTORY only, the same gate every other
+   * catalog write already uses (checkout itself stays RECORD_PAYMENT-only;
+   * ringing up a custom item never needed this permission).
+   */
+  @Get("custom-lines/pending")
+  @Permissions(Permission.MANAGE_INVENTORY)
+  listPendingCustomLines(@Req() req: Request) {
+    const ctx = getTenantContext(req);
+    return this.retailSales.listPendingCustomLines(ctx.tenantId);
+  }
+
+  /** Turns one sold custom line into a real catalog product — MANAGE_INVENTORY only. */
+  @Post("custom-lines/:lineId/convert-to-product")
+  @Permissions(Permission.MANAGE_INVENTORY)
+  convertCustomLine(@Req() req: Request, @Param("lineId") lineId: string, @Body() dto: ConvertCustomLineDto) {
+    const ctx = getTenantContext(req);
+    return this.retailSales.convertCustomLineToProduct(ctx.tenantId, lineId, dto, ctx.userId);
   }
 
   /**

@@ -2838,14 +2838,20 @@ export interface RetailSaleLineView {
   /** Set (and `variantId` null) when the line was a bundle sold as one unit. */
   bundleId: string | null;
   nameSnapshot: string;
-  /** Null for a bundle line — a bundle has no SKU of its own in Phase B. */
+  /** Null for a bundle line — a bundle has no SKU of its own in Phase B. Also null for a custom line. */
   skuSnapshot: string | null;
+  /** Set only on a custom (off-catalog) line — e.g. "30g". */
+  attributeSnapshot: string | null;
   quantity: number;
   unitPriceCentsSnapshot: number;
   unitCostCentsSnapshot: number;
   lineTotalCents: number;
   /** How many units of this line have already been returned (any disposition) — what's left to return. */
   returnedQuantity: number;
+  /** True for a genuinely off-catalog line (`variantId`/`bundleId` both null). */
+  isCustom: boolean;
+  /** Set once an OWNER/MANAGER has turned this custom line into a real catalog variant. */
+  convertedToVariantId: string | null;
 }
 
 export interface RetailSaleView {
@@ -2879,6 +2885,7 @@ export interface RetailSaleReceiptView {
     bundleId: string | null;
     nameSnapshot: string;
     skuSnapshot: string | null;
+    attributeSnapshot: string | null;
     quantity: number;
     lineTotalCents: number;
   }>;
@@ -2892,7 +2899,13 @@ export function fetchRetailSaleReceipt(id: string): Promise<RetailSaleReceiptVie
 }
 
 export interface RetailSaleCheckoutInput {
-  lines: Array<{ variantId?: string; bundleId?: string; quantity: number }>;
+  lines: Array<{
+    variantId?: string;
+    bundleId?: string;
+    /** Off-catalog "custom item" — no Product/ProductVariant, no stock impact. */
+    custom?: { name: string; attribute?: string; unitPriceCents: number };
+    quantity: number;
+  }>;
   customer?: { firstName: string; lastName: string; phone: string; email?: string };
   paymentMethod: PaymentMethod;
 }
@@ -2902,6 +2915,41 @@ export function checkoutRetailSale(input: RetailSaleCheckoutInput, idempotencyKe
     method: "POST",
     body: JSON.stringify(input),
     idempotencyKey,
+  });
+}
+
+/** One row in the "needs review" queue — a custom-sold line not yet turned into a real catalog product. */
+export interface PendingCustomLineView {
+  id: string;
+  saleId: string;
+  nameSnapshot: string;
+  attributeSnapshot: string | null;
+  quantity: number;
+  unitPriceCentsSnapshot: number;
+  soldByName: string | null;
+  customerName: string;
+  createdAt: string;
+}
+
+export function fetchPendingCustomLines(): Promise<PendingCustomLineView[]> {
+  return request<PendingCustomLineView[]>("/retail-sales/custom-lines/pending");
+}
+
+export interface ConvertCustomLineInput {
+  productId?: string;
+  productName?: string;
+  category?: string;
+  brand?: string;
+  sku: string;
+  barcode?: string;
+  attributes?: Record<string, string>;
+  priceCents?: number;
+}
+
+export function convertCustomLineToProduct(lineId: string, input: ConvertCustomLineInput): Promise<ProductVariantRecord> {
+  return request<ProductVariantRecord>(`/retail-sales/custom-lines/${lineId}/convert-to-product`, {
+    method: "POST",
+    body: JSON.stringify(input),
   });
 }
 

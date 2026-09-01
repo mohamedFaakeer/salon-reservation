@@ -5,14 +5,23 @@ export interface RetailSaleLineView {
   variantId: string | null;
   bundleId: string | null;
   nameSnapshot: string;
-  /** Null for a bundle line — a bundle has no SKU of its own in Phase B. */
+  /** Null for a bundle line — a bundle has no SKU of its own in Phase B. Also null for a custom line. */
   skuSnapshot: string | null;
+  /** Set only on a custom (off-catalog) line — e.g. "30g". */
+  attributeSnapshot: string | null;
   quantity: number;
   unitPriceCentsSnapshot: number;
   unitCostCentsSnapshot: number;
   lineTotalCents: number;
   /** How many units of this line have already been returned (any disposition) — what's left to return. */
   returnedQuantity: number;
+  /**
+   * True for a genuinely off-catalog line (`variantId`/`bundleId` both
+   * null) — the UI badges these distinctly from real catalog lines.
+   */
+  isCustom: boolean;
+  /** Set once an OWNER/MANAGER has turned this custom line into a real catalog variant. Always null for a non-custom line. */
+  convertedToVariantId: string | null;
 }
 
 export interface RetailSaleView {
@@ -47,9 +56,23 @@ export interface RetailSaleReceiptView {
     bundleId: string | null;
     nameSnapshot: string;
     skuSnapshot: string | null;
+    attributeSnapshot: string | null;
     quantity: number;
     lineTotalCents: number;
   }>;
   subtotalCents: number;
   totalCents: number;
+}
+
+/** One row in the "needs review" queue — GET /retail-sales/custom-lines/pending. */
+export interface PendingCustomLineView {
+  id: string;
+  saleId: string;
+  nameSnapshot: string;
+  attributeSnapshot: string | null;
+  quantity: number;
+  unitPriceCentsSnapshot: number;
+  soldByName: string | null;
+  customerName: string;
+  createdAt: Date;
 }

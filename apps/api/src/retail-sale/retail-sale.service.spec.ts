@@ -17,6 +17,7 @@ import { StockMutationService } from "../inventory/stock-mutation.service";
 import type { CustomerService } from "../customer/customer.service";
 import type { BundleService } from "../bundle/bundle.service";
 import type { AuditService } from "../audit/audit.service";
+import type { ProductService } from "../product/product.service";
 
 function mockRepo<T extends ObjectLiteral>() {
   return {
@@ -63,6 +64,7 @@ describe("RetailSaleService", () => {
   let stockMutation: StockMutationService;
   let bundles: BundleService;
   let audit: AuditService;
+  let productService: ProductService;
   let service: RetailSaleService;
   let branchesRepo: Repository<Branch>;
 
@@ -201,8 +203,26 @@ describe("RetailSaleService", () => {
 
     audit = { record: vi.fn() } as unknown as AuditService;
     bundles = { getSellableBundleWithComponents: vi.fn() } as unknown as BundleService;
+    // Only exercised by convert-to-product tests below — checkout itself
+    // never touches ProductService for a variant/bundle line, and a custom
+    // line deliberately doesn't either (that's the whole point of it).
+    productService = {
+      create: vi.fn(async () => ({ id: "product-new" }) as Product),
+      createVariant: vi.fn(async () => ({ id: "variant-new", sku: "NEW-SKU" }) as ProductVariant),
+      findOwned: vi.fn(async () => ({ id: "product-1", name: "Sunsilk Shampoo" }) as Product),
+    } as unknown as ProductService;
 
-    service = new RetailSaleService(dataSource, productsRepo, salesRepo, branchesRepo, customers, stockMutation, bundles, audit);
+    service = new RetailSaleService(
+      dataSource,
+      productsRepo,
+      salesRepo,
+      branchesRepo,
+      customers,
+      stockMutation,
+      bundles,
+      audit,
+      productService,
+    );
   });
 
   function checkoutDto(overrides: Partial<{ lines: Array<{ variantId: string; quantity: number }> }> = {}) {
@@ -400,6 +420,92 @@ describe("RetailSaleService", () => {
       await expect(
         service.checkout(fakeTenant(), { lines: [{ bundleId: "bundle-1", quantity: 1 }], paymentMethod: PaymentMethod.CASH }, "user-1", "idem-b6"),
       ).rejects.toMatchObject({ code: "PRODUCT_BUNDLE_NOT_FOUND" });
+    });
+  });
+
+  describe("custom (off-catalog) lines", () => {
+    it("rejects a line with none of variantId/bundleId/custom", async () => {
+      await expect(
+        service.checkout(fakeTenant(), { lines: [{ quantity: 1 }], paymentMethod: PaymentMethod.CASH }, "user-1", "idem-c0"),
+      ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    });
+
+    it("rejects a line with both variantId and custom", async () => {
+      await expect(
+        service.checkout(
+          fakeTenant(),
+          {
+            lines: [{ variantId: "variant-1", custom: { name: "Body Butter", unitPriceCents: 1300 }, quantity: 1 }],
+            paymentMethod: PaymentMethod.CASH,
+          },
+          "user-1",
+          "idem-c1",
+        ),
+      ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    });
+
+    it("sells a custom line priced from the DTO, with no stock lock or draw at all", async () => {
+      const view = await service.checkout(
+        fakeTenant(),
+        {
+          lines: [{ custom: { name: "Body Butter", attribute: "30g", unitPriceCents: 1300 }, quantity: 2 }],
+          paymentMethod: PaymentMethod.CASH,
+        },
+        "user-1",
+        "idem-c2",
+      );
+
+      expect(view.totalCents).toBe(2600);
+      expect(view.lines).toHaveLength(1);
+      expect(view.lines[0]).toMatchObject({
+        variantId: null,
+        bundleId: null,
+        nameSnapshot: "Body Butter",
+        attributeSnapshot: "30g",
+        skuSnapshot: null,
+        unitPriceCentsSnapshot: 1300,
+        unitCostCentsSnapshot: 0,
+        lineTotalCents: 2600,
+        isCustom: true,
+        convertedToVariantId: null,
+      });
+      expect(stockMutation.lockVariant).not.toHaveBeenCalled();
+      expect(stockMutation.applyMovement).not.toHaveBeenCalled();
+    });
+
+    it("mixes a custom line with a real variant line in one cart and totals both", async () => {
+      const view = await service.checkout(
+        fakeTenant(),
+        {
+          lines: [
+            { variantId: "variant-1", quantity: 1 },
+            { custom: { name: "Gift Wrap", unitPriceCents: 200 }, quantity: 1 },
+          ],
+          paymentMethod: PaymentMethod.CASH,
+        },
+        "user-1",
+        "idem-c3",
+      );
+
+      expect(view.totalCents).toBe(1500 + 200);
+      expect(view.lines).toHaveLength(2);
+      expect(view.lines.filter((l) => l.isCustom)).toHaveLength(1);
+      expect(stockMutation.lockVariant).toHaveBeenCalledTimes(1);
+      expect(stockMutation.lockVariant).toHaveBeenCalledWith(expect.anything(), "tenant-1", "variant-1");
+    });
+
+    it("records hasCustomLine on the RETAIL_SALE_COMPLETED audit entry", async () => {
+      await service.checkout(
+        fakeTenant(),
+        { lines: [{ custom: { name: "Gift Wrap", unitPriceCents: 200 }, quantity: 1 }], paymentMethod: PaymentMethod.CASH },
+        "user-1",
+        "idem-c4",
+      );
+
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "RETAIL_SALE_COMPLETED", metadata: expect.objectContaining({ hasCustomLine: true }) }),
+        expect.anything(),
+      );
     });
   });
 

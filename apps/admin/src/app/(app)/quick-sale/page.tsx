@@ -12,6 +12,7 @@ import {
   type CustomerRecord,
   type PaymentMethod,
   type ProductVariantRecord,
+  type RetailSaleView,
 } from "../../../lib/api-client";
 import { canRecordPayment, canManageInventory } from "../../../lib/permissions";
 import { formatPriceCents } from "../../../lib/format";
@@ -21,10 +22,15 @@ import { DrawerShell } from "../../../components/drawer-shell";
 import { BusyLabel, Spinner } from "../../../components/spinner";
 import { useToast } from "../../../components/toast";
 import { BarcodeScannerModal } from "../../../components/barcode-scanner-modal";
+import { ConvertCustomLineDrawer } from "../../../components/convert-custom-line-drawer";
 
 type CartLine =
   | { kind: "variant"; key: string; variant: ProductVariantRecord; quantity: number }
-  | { kind: "bundle"; key: string; bundle: BundleView; quantity: number };
+  | { kind: "bundle"; key: string; bundle: BundleView; quantity: number }
+  | { kind: "custom"; key: string; name: string; attribute: string; unitPriceCents: number; quantity: number };
+
+/** A custom item has no stock ceiling — there's nothing in the catalog to run out of. */
+const CUSTOM_LINE_MAX_QTY = 999;
 
 interface WalkInCustomer {
   firstName: string;
@@ -53,15 +59,26 @@ function variantKey(id: string): string {
 function bundleKey(id: string): string {
   return `b:${id}`;
 }
+let customLineCounter = 0;
+function nextCustomKey(): string {
+  customLineCounter += 1;
+  return `c:${Date.now()}-${customLineCounter}`;
+}
 
 function lineName(line: CartLine): string {
-  return line.kind === "variant" ? (line.variant.product?.name ?? line.variant.sku) : line.bundle.name;
+  if (line.kind === "variant") return line.variant.product?.name ?? line.variant.sku;
+  if (line.kind === "bundle") return line.bundle.name;
+  return line.name;
 }
 function linePriceCents(line: CartLine): number {
-  return line.kind === "variant" ? line.variant.priceCents : line.bundle.priceCents;
+  if (line.kind === "variant") return line.variant.priceCents;
+  if (line.kind === "bundle") return line.bundle.priceCents;
+  return line.unitPriceCents;
 }
 function lineMaxQty(line: CartLine): number {
-  return line.kind === "variant" ? line.variant.quantityOnHand : line.bundle.availableCount;
+  if (line.kind === "variant") return line.variant.quantityOnHand;
+  if (line.kind === "bundle") return line.bundle.availableCount;
+  return CUSTOM_LINE_MAX_QTY;
 }
 
 export default function QuickSalePageGated() {
@@ -86,6 +103,10 @@ function QuickSalePage() {
   const [showAttachCustomer, setShowAttachCustomer] = useState(false);
   const [showCharge, setShowCharge] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [showCustomItem, setShowCustomItem] = useState(false);
+  const [completedSale, setCompletedSale] = useState<RetailSaleView | null>(null);
+  const [reviewingLine, setReviewingLine] = useState<RetailSaleView["lines"][number] | null>(null);
+  const canManageCatalog = canManageInventory(user?.roles ?? []);
 
   useEffect(() => {
     const handle = setTimeout(() => {
@@ -134,6 +155,15 @@ function QuickSalePage() {
       const existing = next.get(key);
       const nextQty = Math.min((existing?.quantity ?? 0) + 1, bundle.availableCount);
       next.set(key, { kind: "bundle", key, bundle, quantity: nextQty });
+      return next;
+    });
+  }
+
+  function addCustomToCart(input: { name: string; attribute: string; unitPriceCents: number; quantity: number }): void {
+    const key = nextCustomKey();
+    setCart((prev) => {
+      const next = new Map(prev);
+      next.set(key, { kind: "custom", key, ...input });
       return next;
     });
   }
@@ -257,8 +287,19 @@ function QuickSalePage() {
               <path d="M4 8h8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
             </svg>
           </button>
+          <button
+            type="button"
+            data-testid="quick-sale-open-custom-item"
+            onClick={() => setShowCustomItem(true)}
+            className="min-h-[52px] shrink-0 whitespace-nowrap rounded-[10px] bg-teal-600 px-4 text-sm font-semibold text-white hover:bg-teal-700"
+          >
+            + Custom item
+          </button>
         </div>
-        <p className="text-[11px] text-slate-400">A USB or Bluetooth scanner types straight into this field, or tap the camera icon.</p>
+        <p className="text-[11px] text-slate-400">
+          A USB or Bluetooth scanner types straight into this field, or tap the camera icon. Not in the catalog yet?
+          Use Custom item — it sells right away and can be added to the catalog properly afterward.
+        </p>
 
         {loadingResults && noResults ? (
           <p className="text-sm text-slate-500">Loading products…</p>
@@ -377,9 +418,15 @@ function QuickSalePage() {
                         KIT
                       </span>
                     ) : null}
+                    {line.kind === "custom" ? (
+                      <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 align-middle text-[9px] font-bold tracking-wide text-amber-700">
+                        CUSTOM
+                      </span>
+                    ) : null}
                   </p>
                   <p className="truncate text-[11px] text-slate-400">
                     {line.kind === "variant" ? `${line.variant.sku} · ` : ""}
+                    {line.kind === "custom" && line.attribute ? `${line.attribute} · ` : ""}
                     {formatPriceCents(linePriceCents(line))} ea
                   </p>
                 </div>
@@ -469,20 +516,31 @@ function QuickSalePage() {
           totalCents={subtotalCents}
           customer={customer}
           onClose={() => setShowCharge(false)}
-          onCharged={(saleTotalCents) => {
+          onCharged={(sale) => {
             setCart(new Map());
             setCustomer(null);
             setShowCharge(false);
-            toast.success("Sale complete", `${formatPriceCents(saleTotalCents)} charged.`);
+            toast.success("Sale complete", `${formatPriceCents(sale.totalCents)} charged.`);
+            // Only worth surfacing the "add to catalog" shortcut when the
+            // person who just checked out can actually act on it — a
+            // RECEPTIONIST-only session still rings up custom items fine,
+            // it just doesn't see this (they show up in Products → Needs
+            // review for an owner/manager instead).
+            if (canManageCatalog && sale.lines.some((l) => l.isCustom)) {
+              setCompletedSale(sale);
+            }
           }}
           checkout={(paymentMethod) =>
             checkoutRetailSale(
               {
-                lines: lines.map((l) =>
-                  l.kind === "variant"
-                    ? { variantId: l.variant.id, quantity: l.quantity }
-                    : { bundleId: l.bundle.id, quantity: l.quantity },
-                ),
+                lines: lines.map((l) => {
+                  if (l.kind === "variant") return { variantId: l.variant.id, quantity: l.quantity };
+                  if (l.kind === "bundle") return { bundleId: l.bundle.id, quantity: l.quantity };
+                  return {
+                    custom: { name: l.name, attribute: l.attribute || undefined, unitPriceCents: l.unitPriceCents },
+                    quantity: l.quantity,
+                  };
+                }),
                 customer: customer
                   ? {
                       firstName: customer.firstName,
@@ -501,6 +559,66 @@ function QuickSalePage() {
 
       {showScanner ? (
         <BarcodeScannerModal onClose={() => setShowScanner(false)} onDecoded={(code) => void handleCameraDecoded(code)} />
+      ) : null}
+
+      {showCustomItem ? (
+        <CustomItemDrawer
+          onClose={() => setShowCustomItem(false)}
+          onAdd={(input) => {
+            addCustomToCart(input);
+            setShowCustomItem(false);
+          }}
+        />
+      ) : null}
+
+      {completedSale ? (
+        <DrawerShell title="Sale complete" onClose={() => setCompletedSale(null)}>
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-slate-600">
+              {completedSale.lines.filter((l) => l.isCustom).length === 1 ? "1 custom item was" : "Some custom items were"}{" "}
+              sold — add it to the catalog now, or find it later in Products → Needs review.
+            </p>
+            {completedSale.lines
+              .filter((l) => l.isCustom)
+              .map((l) => (
+                <div key={l.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-900">
+                      {l.nameSnapshot}
+                      {l.attributeSnapshot ? ` · ${l.attributeSnapshot}` : ""}
+                    </p>
+                    <p className="text-xs text-slate-500 tabular">{formatPriceCents(l.unitPriceCentsSnapshot)} each</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReviewingLine(l)}
+                    className="min-h-11 shrink-0 rounded border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Add to catalog
+                  </button>
+                </div>
+              ))}
+            <button
+              type="button"
+              onClick={() => setCompletedSale(null)}
+              className="min-h-11 rounded border border-slate-300 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Not now
+            </button>
+          </div>
+        </DrawerShell>
+      ) : null}
+
+      {reviewingLine ? (
+        <ConvertCustomLineDrawer
+          line={reviewingLine}
+          onClose={() => setReviewingLine(null)}
+          onConverted={() => {
+            setReviewingLine(null);
+            setCompletedSale(null);
+            toast.success("Added to catalog", `${reviewingLine.nameSnapshot} is now a real product.`);
+          }}
+        />
       ) : null}
     </div>
   );
@@ -698,8 +816,8 @@ function ChargeDrawer({
   totalCents: number;
   customer: WalkInCustomer | null;
   onClose: () => void;
-  onCharged: (totalCents: number) => void;
-  checkout: (method: PaymentMethod) => Promise<{ totalCents: number }>;
+  onCharged: (sale: RetailSaleView) => void;
+  checkout: (method: PaymentMethod) => Promise<RetailSaleView>;
 }) {
   const [method, setMethod] = useState<PaymentMethod>("CASH");
   const [submitting, setSubmitting] = useState(false);
@@ -710,7 +828,7 @@ function ChargeDrawer({
     setError(null);
     try {
       const sale = await checkout(method);
-      onCharged(sale.totalCents);
+      onCharged(sale);
     } catch (err) {
       setError(err instanceof ApiRequestError ? errorCopy(err).title : "Couldn't complete this sale.");
     } finally {
@@ -774,6 +892,108 @@ function ChargeDrawer({
             </BusyLabel>
           </button>
         </div>
+      </div>
+    </DrawerShell>
+  );
+}
+
+/**
+ * Sells an item that isn't in the catalog yet — genuinely off-catalog (no
+ * Product/ProductVariant, no stock impact), the same "custom/open item"
+ * convention Square/Shopify/Vend use. An OWNER/MANAGER can turn it into a
+ * real catalog product afterward (post-sale shortcut here, or Products →
+ * Needs review anytime) — never automatic, and never required before it
+ * can be sold.
+ */
+function CustomItemDrawer({
+  onClose,
+  onAdd,
+}: {
+  onClose: () => void;
+  onAdd: (input: { name: string; attribute: string; unitPriceCents: number; quantity: number }) => void;
+}) {
+  const [name, setName] = useState("");
+  const [attribute, setAttribute] = useState("");
+  const [price, setPrice] = useState("");
+  const [quantity, setQuantity] = useState("1");
+
+  const priceCents = Math.round(Number(price) * 100);
+  const qty = Math.round(Number(quantity));
+  const valid = name.trim().length > 0 && Number(price) > 0 && !Number.isNaN(priceCents) && qty >= 1;
+
+  return (
+    <DrawerShell title="Custom item" onClose={onClose}>
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-slate-500">
+          Not in the catalog yet — sells right away, no stock or catalog record is created. An owner or manager can
+          add it to the catalog properly afterward.
+        </p>
+
+        <div>
+          <label htmlFor="custom-item-name" className="mb-1 block text-xs font-medium text-slate-600">
+            Name
+          </label>
+          <input
+            id="custom-item-name"
+            data-testid="custom-item-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Body Butter"
+            className="min-h-11 w-full rounded border border-slate-300 px-3 text-sm"
+          />
+        </div>
+        <div>
+          <label htmlFor="custom-item-attribute" className="mb-1 block text-xs font-medium text-slate-600">
+            Attribute <span className="font-normal text-slate-400">(optional)</span>
+          </label>
+          <input
+            id="custom-item-attribute"
+            data-testid="custom-item-attribute"
+            value={attribute}
+            onChange={(e) => setAttribute(e.target.value)}
+            placeholder="e.g. 30g, Green"
+            className="min-h-11 w-full rounded border border-slate-300 px-3 text-sm"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label htmlFor="custom-item-price" className="mb-1 block text-xs font-medium text-slate-600">
+              Selling price (Rs.)
+            </label>
+            <input
+              id="custom-item-price"
+              data-testid="custom-item-price"
+              type="number"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              className="min-h-11 w-full rounded border border-slate-300 px-3 text-sm tabular"
+            />
+          </div>
+          <div>
+            <label htmlFor="custom-item-qty" className="mb-1 block text-xs font-medium text-slate-600">
+              Quantity
+            </label>
+            <input
+              id="custom-item-qty"
+              data-testid="custom-item-qty"
+              type="number"
+              min={1}
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              className="min-h-11 w-full rounded border border-slate-300 px-3 text-sm tabular"
+            />
+          </div>
+        </div>
+
+        <button
+          type="button"
+          data-testid="custom-item-add"
+          disabled={!valid}
+          onClick={() => onAdd({ name: name.trim(), attribute: attribute.trim(), unitPriceCents: priceCents, quantity: qty })}
+          className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+        >
+          Add to cart
+        </button>
       </div>
     </DrawerShell>
   );
