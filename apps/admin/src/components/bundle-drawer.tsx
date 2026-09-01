@@ -18,6 +18,7 @@ import { DrawerShell } from "./drawer-shell";
 import { BusyLabel } from "./spinner";
 import { errorCopy } from "../lib/error-copy";
 import { formatPriceCents } from "../lib/format";
+import { AttributeTags } from "./variant-badges";
 
 /** A component picked before the bundle exists yet — same shape as `BundleComponentView`, minus a real `id`. */
 interface DraftComponent {
@@ -467,6 +468,7 @@ function ComponentPicker({
         <div key={v.id} className="flex items-center gap-2.5 rounded-lg border border-slate-200 px-3 py-2">
           <div className="min-w-0 flex-1">
             <p className="truncate text-[13px] font-semibold text-slate-900">{v.product?.name ?? v.sku}</p>
+            <AttributeTags attributes={v.attributes} className="mt-0.5" />
             <p className="truncate text-[11px] text-slate-500">
               {v.sku} · {formatPriceCents(v.priceCents)} · {v.quantityOnHand} on hand
             </p>

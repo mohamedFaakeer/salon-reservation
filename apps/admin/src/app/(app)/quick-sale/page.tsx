@@ -23,6 +23,7 @@ import { BusyLabel, Spinner } from "../../../components/spinner";
 import { useToast } from "../../../components/toast";
 import { BarcodeScannerModal } from "../../../components/barcode-scanner-modal";
 import { ConvertCustomLineDrawer } from "../../../components/convert-custom-line-drawer";
+import { AttributeTags, ExpiryBadge, SerialBadge } from "../../../components/variant-badges";
 
 type CartLine =
   | { kind: "variant"; key: string; variant: ProductVariantRecord; quantity: number }
@@ -357,8 +358,12 @@ function QuickSalePage() {
                   data-testid={`quick-sale-product-${variant.sku}`}
                   disabled={outOfStock}
                   onClick={() => addVariantToCart(variant)}
-                  className="flex min-h-[112px] flex-col items-start justify-between rounded-[10px] border border-slate-200 bg-white p-3.5 text-left hover:border-teal-600 hover:shadow-sm disabled:opacity-55 disabled:hover:border-slate-200 disabled:hover:shadow-none"
+                  className="relative flex min-h-[112px] flex-col items-start justify-between rounded-[10px] border border-slate-200 bg-white p-3.5 text-left hover:border-teal-600 hover:shadow-sm disabled:opacity-55 disabled:hover:border-slate-200 disabled:hover:shadow-none"
                 >
+                  <span className="absolute right-2.5 top-2.5 flex flex-col items-end gap-1">
+                    <ExpiryBadge variant={variant} />
+                    <SerialBadge variant={variant} trackSerial={variant.product?.trackSerial ?? false} />
+                  </span>
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-100 bg-slate-50">
                     {image ? (
                       <img src={image} alt="" className="h-full w-full object-contain" />
@@ -369,6 +374,7 @@ function QuickSalePage() {
                   <span className="mt-2.5 text-[13px] font-semibold leading-tight text-slate-900">
                     {variant.product?.name ?? variant.sku}
                   </span>
+                  <AttributeTags attributes={variant.attributes} className="mt-1" />
                   <span className="text-[11px] text-slate-400">{variant.sku}</span>
                   {outOfStock ? (
                     <span className="mt-2 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">
@@ -423,7 +429,13 @@ function QuickSalePage() {
                         CUSTOM
                       </span>
                     ) : null}
+                    {line.kind === "variant" ? (
+                      <span className="ml-1.5 inline-block align-middle">
+                        <ExpiryBadge variant={line.variant} />
+                      </span>
+                    ) : null}
                   </p>
+                  {line.kind === "variant" ? <AttributeTags attributes={line.variant.attributes} className="mt-0.5" /> : null}
                   <p className="truncate text-[11px] text-slate-400">
                     {line.kind === "variant" ? `${line.variant.sku} · ` : ""}
                     {line.kind === "custom" && line.attribute ? `${line.attribute} · ` : ""}
@@ -515,6 +527,9 @@ function QuickSalePage() {
         <ChargeDrawer
           totalCents={subtotalCents}
           customer={customer}
+          expiredLineNames={lines
+            .filter((l) => l.kind === "variant" && l.variant.hasExpiredBatch)
+            .map((l) => (l.kind === "variant" ? (l.variant.product?.name ?? l.variant.sku) : ""))}
           onClose={() => setShowCharge(false)}
           onCharged={(sale) => {
             setCart(new Map());
@@ -809,12 +824,15 @@ function AttachCustomerDrawer({
 function ChargeDrawer({
   totalCents,
   customer,
+  expiredLineNames,
   onClose,
   onCharged,
   checkout,
 }: {
   totalCents: number;
   customer: WalkInCustomer | null;
+  /** Names of cart lines that would draw from an already-expired batch — warn, don't block: the "Confirm payment" button below is never disabled for this. */
+  expiredLineNames: string[];
   onClose: () => void;
   onCharged: (sale: RetailSaleView) => void;
   checkout: (method: PaymentMethod) => Promise<RetailSaleView>;
@@ -852,6 +870,16 @@ function ChargeDrawer({
             {customer ? `${customer.firstName} ${customer.lastName}`.trim() : "Walk-in customer"}
           </p>
         </div>
+
+        {expiredLineNames.length > 0 ? (
+          <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-800">
+            <span aria-hidden="true">⚠</span>
+            <span>
+              <strong>{expiredLineNames.join(", ")}</strong> would sell from a batch that's already expired. You can
+              still complete this sale.
+            </span>
+          </p>
+        ) : null}
 
         <fieldset className="flex flex-col gap-2">
           <legend className="text-sm font-medium text-slate-700">How is this being paid?</legend>

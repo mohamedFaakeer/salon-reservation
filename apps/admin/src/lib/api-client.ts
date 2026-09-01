@@ -2570,6 +2570,8 @@ export interface ProductRecord {
   active: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Present only from `GET /products` (the list) — every variant regardless of active/discontinued. */
+  variantCount?: number;
 }
 
 export interface ProductVariantRecord {
@@ -2592,6 +2594,12 @@ export interface ProductVariantRecord {
   salesVelocityPerDay?: number | null;
   daysOfStockLeft?: number | null;
   reorderSoon?: boolean;
+  /** Earliest active batch's expiry, or null when untracked/none set. A warning signal only — never affects whether the variant is sellable. */
+  nearestExpiryDate?: string | null;
+  hasExpiredBatch?: boolean;
+  expiringSoon?: boolean;
+  /** The one active batch's serial, only set when quantityOnHand === 1. */
+  soleSerialNumber?: string | null;
 }
 
 export interface StockBatchRecord {

@@ -23,6 +23,7 @@ import { StockBatch } from "../entities/stock-batch.entity";
 import { StockMovement } from "../entities/stock-movement.entity";
 import { isUniqueViolation } from "../common/postgres-errors.util";
 import { detectImage } from "../common/image.util";
+import { colomboNow, daysBetween } from "../availability/time.util";
 // CloudinaryService/AuditService/StockMutationService must stay VALUE
 // imports: NestJS resolves constructor injection via design:paramtypes
 // metadata at runtime; `import type` would erase them and break DI.
@@ -33,8 +34,13 @@ import { AuditService } from "../audit/audit.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { StockMutationService } from "../inventory/stock-mutation.service";
 
+export interface ProductWithVariantCount extends Product {
+  /** Every variant regardless of active/discontinued — the same "all fetched variants" count `get()` already implies via its own `variants` array. */
+  variantCount: number;
+}
+
 export interface ProductListResult {
-  data: Product[];
+  data: ProductWithVariantCount[];
   meta: { total: number; limit: number; offset: number };
 }
 
@@ -51,6 +57,14 @@ export interface VariantWithReorderSignal extends ProductVariant {
   daysOfStockLeft: number | null;
   /** True if under the reorder point, or projected to run out within REORDER_SOON_DAYS. */
   reorderSoon: boolean;
+  /** Earliest `expiresAt` among this variant's active batches; null when untracked or none set. */
+  nearestExpiryDate: string | null;
+  /** True when `nearestExpiryDate` is already in the past — expiry only ever affected draw order before this, never sale eligibility (that stays true: this is a warning signal, not a block). */
+  hasExpiredBatch: boolean;
+  /** True when `nearestExpiryDate` falls within EXPIRY_SOON_DAYS and isn't already expired. */
+  expiringSoon: boolean;
+  /** The one active batch's serial number, only when `quantityOnHand === 1`; null otherwise (including "several serialised units in stock" — see multiple batches, not one value). */
+  soleSerialNumber: string | null;
 }
 
 export interface VariantListResult {
@@ -62,6 +76,8 @@ export interface VariantListResult {
 const VELOCITY_WINDOW_DAYS = 30;
 /** "Soon" as in an owner would want to know this week, not this quarter. */
 const REORDER_SOON_DAYS = 7;
+/** Shelf-life warning window — longer than REORDER_SOON_DAYS on purpose: restock lead time and product shelf life are different clocks. Confirmed with the user. */
+const EXPIRY_SOON_DAYS = 30;
 
 /**
  * A little more generous than a logo's (CLAUDE.md §35.2 area): product
@@ -145,19 +161,40 @@ export class ProductService {
       tenantId,
       ...(query.includeInactive ? {} : { active: true }),
     };
-    const [data, total] = await this.products.findAndCount({
+    const [products, total] = await this.products.findAndCount({
       where: q ? [{ ...where, name: ILike(`%${q}%`) }, { ...where, brand: ILike(`%${q}%`) }] : where,
       order: { name: "ASC" },
       take: query.limit,
       skip: query.offset,
     });
+    const counts = await this.variantCountsFor(products.map((p) => p.id));
+    const data = products.map((p) => ({ ...p, variantCount: counts.get(p.id) ?? 0 }));
     return { data, meta: { total, limit: query.limit, offset: query.offset } };
   }
 
-  async get(tenantId: string, id: string): Promise<{ product: Product; variants: ProductVariant[] }> {
+  /** One grouped count query for the whole page of products, not one query per row. */
+  private async variantCountsFor(productIds: string[]): Promise<Map<string, number>> {
+    if (productIds.length === 0) {
+      return new Map();
+    }
+    const rows = await this.variants
+      .createQueryBuilder("v")
+      .select('v."productId"', "productId")
+      .addSelect("COUNT(*)::int", "count")
+      .where('v."productId" IN (:...productIds)', { productIds })
+      .groupBy('v."productId"')
+      .getRawMany<{ productId: string; count: number }>();
+    return new Map(rows.map((r) => [r.productId, Number(r.count)]));
+  }
+
+  async get(tenantId: string, id: string): Promise<{ product: Product; variants: VariantWithReorderSignal[] }> {
     const product = await this.findOwned(tenantId, id);
     const variants = await this.variants.find({ where: { tenantId, productId: id }, order: { sku: "ASC" } });
-    return { product, variants };
+    const variantIds = variants.map((v) => v.id);
+    const velocity = await this.salesVelocityFor(tenantId, variantIds);
+    const batchSignals = await this.batchSignalsFor(tenantId, variantIds);
+    const withSignals = variants.map((v) => this.attachReorderSignal(v, velocity.get(v.id) ?? 0, batchSignals.get(v.id) ?? null));
+    return { product, variants: withSignals };
   }
 
   async findOwned(tenantId: string, id: string): Promise<Product> {
@@ -367,8 +404,10 @@ export class ProductService {
     }
 
     const [rows, total] = await qb.getManyAndCount();
-    const velocity = await this.salesVelocityFor(tenantId, rows.map((v) => v.id));
-    const data = rows.map((v) => this.attachReorderSignal(v, velocity.get(v.id) ?? 0));
+    const variantIds = rows.map((v) => v.id);
+    const velocity = await this.salesVelocityFor(tenantId, variantIds);
+    const batchSignals = await this.batchSignalsFor(tenantId, variantIds);
+    const data = rows.map((v) => this.attachReorderSignal(v, velocity.get(v.id) ?? 0, batchSignals.get(v.id) ?? null));
 
     return { data, meta: { total, limit: query.limit, offset: query.offset } };
   }
@@ -398,15 +437,69 @@ export class ProductService {
     return new Map(rows.map((r) => [r.variantId, Number(r.unitsSold) / VELOCITY_WINDOW_DAYS]));
   }
 
-  private attachReorderSignal(variant: ProductVariant, velocityPerDay: number): VariantWithReorderSignal {
+  /**
+   * Earliest active batch expiry per variant — one grouped aggregate, same
+   * shape as `salesVelocityFor` above, not one query per row. Only `ACTIVE`
+   * batches count: a depleted/quarantined/written-off batch isn't sitting on
+   * a shelf about to expire, it's already gone. This never affects whether a
+   * batch is *sellable* (that stays draw-order-only, per `allocateFifo`) —
+   * it's purely the read-side signal Quick Sale and the Stock page warn from.
+   *
+   * `soleSerialNumber` is `MIN(serialNumber)` — meaningless on its own for a
+   * variant with several active batches, so the caller only reads it when
+   * `quantityOnHand === 1` (a serialised product opens/receives exactly one
+   * unit per batch by design, so "1 on hand" and "exactly one active batch"
+   * are the same fact). `MIN`/`MIN` over nulls resolves to null exactly when
+   * nothing is tracked, with no separate `WHERE ... IS NOT NULL` needed.
+   */
+  private async batchSignalsFor(
+    tenantId: string,
+    variantIds: string[],
+  ): Promise<Map<string, { nearestExpiryDate: string | null; soleSerialNumber: string | null }>> {
+    if (variantIds.length === 0) {
+      return new Map();
+    }
+    const rows = await this.batches
+      .createQueryBuilder("b")
+      .select('b."variantId"', "variantId")
+      .addSelect('MIN(b."expiresAt")', "nearestExpiryDate")
+      .addSelect('MIN(b."serialNumber")', "soleSerialNumber")
+      .where('b."tenantId" = :tenantId', { tenantId })
+      .andWhere("b.status = :status", { status: StockBatchStatus.ACTIVE })
+      .andWhere('b."variantId" IN (:...variantIds)', { variantIds })
+      .groupBy('b."variantId"')
+      .getRawMany<{ variantId: string; nearestExpiryDate: string | null; soleSerialNumber: string | null }>();
+
+    return new Map(rows.map((r) => [r.variantId, { nearestExpiryDate: r.nearestExpiryDate, soleSerialNumber: r.soleSerialNumber }]));
+  }
+
+  private attachReorderSignal(
+    variant: ProductVariant,
+    velocityPerDay: number,
+    batchSignals: { nearestExpiryDate: string | null; soleSerialNumber: string | null } | null,
+  ): VariantWithReorderSignal {
     const daysOfStockLeft = velocityPerDay > 0 ? variant.quantityOnHand / velocityPerDay : null;
     const belowReorderPoint = variant.reorderPoint !== null && variant.quantityOnHand <= variant.reorderPoint;
     const runningOutSoon = daysOfStockLeft !== null && daysOfStockLeft <= REORDER_SOON_DAYS;
+
+    const nearestExpiryDate = batchSignals?.nearestExpiryDate ?? null;
+    const today = colomboNow(new Date()).date;
+    const hasExpiredBatch = nearestExpiryDate !== null && nearestExpiryDate < today;
+    const daysToExpiry = nearestExpiryDate !== null ? daysBetween(today, nearestExpiryDate) : null;
+    const expiringSoon = !hasExpiredBatch && daysToExpiry !== null && daysToExpiry <= EXPIRY_SOON_DAYS;
+
+    // Only meaningful with exactly one unit on hand — see the doc comment on `batchSignalsFor`.
+    const soleSerialNumber = variant.quantityOnHand === 1 ? (batchSignals?.soleSerialNumber ?? null) : null;
+
     return {
       ...variant,
       salesVelocityPerDay: velocityPerDay > 0 ? Math.round(velocityPerDay * 100) / 100 : null,
       daysOfStockLeft: daysOfStockLeft !== null ? Math.round(daysOfStockLeft * 10) / 10 : null,
       reorderSoon: belowReorderPoint || runningOutSoon,
+      nearestExpiryDate,
+      hasExpiredBatch,
+      expiringSoon,
+      soleSerialNumber,
     };
   }
 

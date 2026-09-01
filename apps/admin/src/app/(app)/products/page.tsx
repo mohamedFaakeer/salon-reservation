@@ -233,8 +233,9 @@ function ProductsPage() {
         </p>
       ) : (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-          <div className="hidden grid-cols-[1.6fr_0.9fr_1fr_0.8fr] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:grid">
+          <div className="hidden grid-cols-[1.6fr_0.8fr_0.9fr_1fr_0.8fr] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:grid">
             <span>Name</span>
+            <span>Variants</span>
             <span>Category</span>
             <span>Brand</span>
             <span>Status</span>
@@ -252,7 +253,7 @@ function ProductsPage() {
                   setViewingId(product.id);
                 }
               }}
-              className="grid cursor-pointer grid-cols-1 gap-2 border-b border-slate-100 px-4 py-3 text-sm outline-none last:border-b-0 hover:bg-slate-50 focus-visible:bg-slate-50 sm:grid-cols-[1.6fr_0.9fr_1fr_0.8fr] sm:items-center sm:gap-3"
+              className="grid cursor-pointer grid-cols-1 gap-2 border-b border-slate-100 px-4 py-3 text-sm outline-none last:border-b-0 hover:bg-slate-50 focus-visible:bg-slate-50 sm:grid-cols-[1.6fr_0.8fr_0.9fr_1fr_0.8fr] sm:items-center sm:gap-3"
             >
               <span className="flex min-w-0 items-center gap-2.5">
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-white">
@@ -267,6 +268,9 @@ function ProductsPage() {
                   )}
                 </span>
                 <span className="truncate font-medium text-slate-900">{product.name}</span>
+              </span>
+              <span className={`tabular ${product.variantCount ? "text-slate-600" : "text-slate-400"}`}>
+                {product.variantCount ?? 0} {product.variantCount === 1 ? "variant" : "variants"}
               </span>
               <span className="text-slate-600">{product.category ?? "—"}</span>
               <span className="text-slate-600">{product.brand ?? "—"}</span>

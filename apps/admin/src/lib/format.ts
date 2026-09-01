@@ -113,6 +113,22 @@ export function formatCalendarDate(date: string): string {
   });
 }
 
+/**
+ * "Aug 5" — a plain `YYYY-MM-DD` date with no year, for a small badge where
+ * space is tight (an expiry warning on a product card) and the year is
+ * always the current or next one, so it adds noise without adding
+ * information. Anchored to UTC like `formatCalendarDate`, for the same
+ * reason: a date-only string must never drift a day depending on the
+ * browser's timezone.
+ */
+export function formatCompactDate(date: string): string {
+  return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-LK", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 /** "18–22 Aug" / "2 Sep" — compact ranges for leave and closure rows. */
 export function formatDateRange(startDate: string, endDate: string): string {
   const start = new Date(`${startDate}T00:00:00Z`);

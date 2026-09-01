@@ -5,6 +5,7 @@ import {
   ApiRequestError,
   createVariant,
   fetchProduct,
+  fetchVariantBatches,
   removeProductImage,
   removeVariantImage,
   updateVariant,
@@ -12,16 +13,18 @@ import {
   uploadVariantImage,
   type ProductRecord,
   type ProductVariantRecord,
+  type StockBatchRecord,
 } from "../lib/api-client";
 import { useAuth } from "../context/auth-context";
 import { canManageInventory } from "../lib/permissions";
-import { formatPriceCents } from "../lib/format";
+import { formatPriceCents, formatDate } from "../lib/format";
 import { DrawerShell } from "./drawer-shell";
 import { ImageUploadField } from "./image-upload-field";
 import { ProductDrawer } from "./product-drawer";
 import { BusyLabel } from "./spinner";
 import { LoadingSkeleton } from "./loading-skeleton";
 import { useToast } from "./toast";
+import { AttributeTags, ExpiryBadge, SerialBadge, classifyExpiryDate } from "./variant-badges";
 
 function Swatch({ imageUrl, size = 40 }: { imageUrl: string | null; size?: number }) {
   return (
@@ -165,6 +168,7 @@ export function ProductDetailDrawer({ productId, onClose }: { productId: string;
                   <VariantRow
                     key={variant.id}
                     productId={product.id}
+                    product={product}
                     variant={variant}
                     canManage={canManage}
                     onChanged={replaceVariant}
@@ -203,11 +207,13 @@ export function ProductDetailDrawer({ productId, onClose }: { productId: string;
 
 function VariantRow({
   productId,
+  product,
   variant,
   canManage,
   onChanged,
 }: {
   productId: string;
+  product: ProductRecord;
   variant: ProductVariantRecord;
   /** Read-only viewers (RECEPTIONIST, via canViewInventory) can still expand a row to see its detail, but the edit form itself only renders for someone who can actually save it. */
   canManage: boolean;
@@ -256,6 +262,11 @@ function VariantRow({
       <span className="min-w-0 flex-1">
         <span className="block truncate font-mono text-[12px] font-semibold text-slate-900">{variant.sku}</span>
         <span className="block truncate text-[11px] text-slate-400">{variant.barcode ?? "No barcode"}</span>
+        <span className="mt-1 flex flex-wrap items-center gap-1">
+          <AttributeTags attributes={variant.attributes} />
+          <ExpiryBadge variant={variant} />
+          <SerialBadge variant={variant} trackSerial={product.trackSerial} />
+        </span>
       </span>
       <span className="shrink-0 text-right">
         <span className="block tabular text-sm font-semibold text-slate-900">{formatPriceCents(variant.priceCents)}</span>
@@ -309,6 +320,8 @@ function VariantRow({
               {error}
             </p>
           ) : null}
+
+          {product.tracksExpiry || product.trackSerial ? <BatchList variantId={variant.id} /> : null}
 
           <ImageUploadField
             label="Variant photo"
@@ -399,6 +412,76 @@ function VariantRow({
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+const BATCH_STATUS_STYLE: Record<string, string> = {
+  expired: "border-red-200 bg-red-50",
+  soon: "border-amber-200 bg-amber-50",
+  ok: "border-slate-200",
+  none: "border-slate-200",
+};
+
+/**
+ * Every batch behind a tracked variant's `quantityOnHand` — lot/expiry/
+ * serial/quantity remaining. This never existed anywhere before: a serial
+ * or expiry, once entered via Receive Stock, only ever surfaced again as
+ * unlabeled option text buried in the Adjust Stock drawer's batch picker.
+ * Reuses the same `GET /product-variants/:id/batches` that picker already
+ * calls — no new endpoint.
+ */
+function BatchList({ variantId }: { variantId: string }) {
+  const [batches, setBatches] = useState<StockBatchRecord[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchVariantBatches(variantId)
+      .then((rows) => {
+        if (!cancelled) setBatches(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setBatches([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [variantId]);
+
+  if (batches === null) {
+    return <LoadingSkeleton rows={2} />;
+  }
+  if (batches.length === 0) {
+    return (
+      <p className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+        No batches on file for this variant yet.
+      </p>
+    );
+  }
+
+  return (
+    <div>
+      <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+        Batches ({batches.length})
+      </p>
+      <div className="flex flex-col gap-1.5">
+        {batches.map((batch) => {
+          const status = classifyExpiryDate(batch.expiresAt);
+          return (
+            <div
+              key={batch.id}
+              className={`flex items-center justify-between gap-2 rounded border px-2.5 py-2 text-xs ${BATCH_STATUS_STYLE[status]}`}
+            >
+              <span className="min-w-0 truncate">
+                {batch.serialNumber
+                  ? `Serial ${batch.serialNumber}`
+                  : `Lot ${batch.lotCode ?? "—"}${batch.expiresAt ? ` · ${status === "expired" ? "expired" : "expires"} ${formatDate(batch.expiresAt)}` : ""}`}
+              </span>
+              <span className="shrink-0 font-semibold tabular text-slate-700">{batch.quantityRemaining} left</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

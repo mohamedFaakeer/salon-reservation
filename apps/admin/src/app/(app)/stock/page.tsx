@@ -4,12 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../../context/auth-context";
 import { ApiRequestError, fetchVariants, type ProductVariantRecord } from "../../../lib/api-client";
 import { canManageInventory, canViewInventory } from "../../../lib/permissions";
-import { formatPriceCents } from "../../../lib/format";
+import { formatPriceCents, formatCompactDate } from "../../../lib/format";
 import { ModuleGate } from "../../../components/module-gate";
 import { StockReceiveDrawer } from "../../../components/stock-receive-drawer";
 import { StockAdjustDrawer } from "../../../components/stock-adjust-drawer";
 import { LoadingSkeleton } from "../../../components/loading-skeleton";
 import { useToast } from "../../../components/toast";
+import { AttributeTags, SerialBadge } from "../../../components/variant-badges";
 
 export default function StockPageGated() {
   return (
@@ -130,26 +131,30 @@ function StockPage() {
         </p>
       ) : (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-          <div className="hidden grid-cols-[1.3fr_1fr_0.7fr_0.7fr_0.7fr_1fr] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:grid">
+          <div className="hidden grid-cols-[1.3fr_1fr_0.7fr_0.8fr_0.7fr_0.7fr_1fr] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:grid">
             <span>Product</span>
             <span>Variant</span>
             <span>On hand</span>
+            <span>Expiry</span>
             <span>Reorder at</span>
             <span>Avg cost</span>
             <span>Reorder signal</span>
           </div>
           {variants.map((variant) => {
             const isLow = variant.reorderPoint !== null && variant.quantityOnHand <= variant.reorderPoint;
+            const tracksExpiry = variant.product?.tracksExpiry ?? false;
+            const trackSerial = variant.product?.trackSerial ?? false;
             return (
               <div
                 key={variant.id}
                 data-testid={`stock-row-${variant.sku}`}
-                className="grid grid-cols-1 gap-2 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 sm:grid-cols-[1.3fr_1fr_0.7fr_0.7fr_0.7fr_1fr] sm:items-center sm:gap-3"
+                className="grid grid-cols-1 gap-2 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 sm:grid-cols-[1.3fr_1fr_0.7fr_0.8fr_0.7fr_0.7fr_1fr] sm:items-center sm:gap-3"
               >
                 <span className="truncate font-medium text-slate-900">{variant.product?.name ?? "—"}</span>
                 <span className="min-w-0">
                   <span className="block truncate font-mono text-[12px] font-semibold text-slate-900">{variant.sku}</span>
                   <span className="block truncate text-xs text-slate-400">{variant.barcode ?? "No barcode"}</span>
+                  <AttributeTags attributes={variant.attributes} className="mt-1" />
                 </span>
                 <span>
                   <span
@@ -157,6 +162,21 @@ function StockPage() {
                   >
                     {variant.quantityOnHand} units
                   </span>
+                </span>
+                <span className="min-w-0">
+                  {trackSerial ? (
+                    <SerialBadge variant={variant} trackSerial />
+                  ) : !tracksExpiry ? (
+                    <span className="text-xs text-slate-400">—</span>
+                  ) : variant.hasExpiredBatch && variant.nearestExpiryDate ? (
+                    <span className="text-xs font-semibold text-red-700">Expired {formatCompactDate(variant.nearestExpiryDate)}</span>
+                  ) : variant.nearestExpiryDate ? (
+                    <span className={`text-xs font-semibold ${variant.expiringSoon ? "text-amber-700" : "text-slate-600"}`}>
+                      Expires {formatCompactDate(variant.nearestExpiryDate)}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-slate-400">—</span>
+                  )}
                 </span>
                 <span className="tabular text-slate-600">{variant.reorderPoint ?? "—"}</span>
                 <span className="tabular text-slate-600">{formatPriceCents(variant.weightedAvgCostCents)}</span>

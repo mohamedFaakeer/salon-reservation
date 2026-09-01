@@ -34,6 +34,7 @@ describe("ProductService", () => {
   let products: Repository<Product>;
   let variants: Repository<ProductVariant>;
   let batches: Repository<StockBatch>;
+  let batchesGetRawMany: ReturnType<typeof vi.fn>;
   let movements: Repository<StockMovement>;
   let movementsGetRawMany: ReturnType<typeof vi.fn>;
   let cloudinary: CloudinaryService;
@@ -45,7 +46,19 @@ describe("ProductService", () => {
   beforeEach(() => {
     products = mockRepo<Product>();
     variants = mockRepo<ProductVariant>();
-    batches = mockRepo<StockBatch>();
+    batchesGetRawMany = vi.fn(async () => [] as Array<{ variantId: string; nearestExpiryDate: string }>);
+    const batchesQueryBuilder = {
+      select: vi.fn().mockReturnThis(),
+      addSelect: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      andWhere: vi.fn().mockReturnThis(),
+      groupBy: vi.fn().mockReturnThis(),
+      getRawMany: batchesGetRawMany,
+    };
+    batches = {
+      ...mockRepo<StockBatch>(),
+      createQueryBuilder: vi.fn(() => batchesQueryBuilder),
+    } as unknown as Repository<StockBatch>;
     movementsGetRawMany = vi.fn(async () => [] as Array<{ variantId: string; unitsSold: number }>);
     const movementsQueryBuilder = {
       select: vi.fn().mockReturnThis(),
@@ -296,6 +309,108 @@ describe("ProductService", () => {
       const result = await service.lookupVariants("tenant-1", { limit: 50, offset: 0 });
       expect(result.data[0].daysOfStockLeft).toBeNull();
       expect(result.data[0].reorderSoon).toBe(false);
+    });
+
+    function isoDaysFromNow(days: number): string {
+      return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+    }
+
+    it("flags hasExpiredBatch when the nearest active batch already expired — never blocks the variant from appearing", async () => {
+      stubVariantQuery([{ id: "v1", quantityOnHand: 4, reorderPoint: null } as ProductVariant]);
+      batchesGetRawMany.mockResolvedValueOnce([{ variantId: "v1", nearestExpiryDate: isoDaysFromNow(-3) }]);
+
+      const result = await service.lookupVariants("tenant-1", { limit: 50, offset: 0 });
+      expect(result.data[0].hasExpiredBatch).toBe(true);
+      expect(result.data[0].expiringSoon).toBe(false);
+      expect(result.data).toHaveLength(1); // still returned — a warning signal, never a filter
+    });
+
+    it("flags expiringSoon (not hasExpiredBatch) for a batch within the 30-day window", async () => {
+      stubVariantQuery([{ id: "v1", quantityOnHand: 4, reorderPoint: null } as ProductVariant]);
+      batchesGetRawMany.mockResolvedValueOnce([{ variantId: "v1", nearestExpiryDate: isoDaysFromNow(10) }]);
+
+      const result = await service.lookupVariants("tenant-1", { limit: 50, offset: 0 });
+      expect(result.data[0].hasExpiredBatch).toBe(false);
+      expect(result.data[0].expiringSoon).toBe(true);
+    });
+
+    it("flags neither for a batch expiring well beyond 30 days out, or when nothing tracks expiry", async () => {
+      stubVariantQuery([{ id: "v1", quantityOnHand: 4, reorderPoint: null } as ProductVariant]);
+      batchesGetRawMany.mockResolvedValueOnce([{ variantId: "v1", nearestExpiryDate: isoDaysFromNow(90) }]);
+
+      const result = await service.lookupVariants("tenant-1", { limit: 50, offset: 0 });
+      expect(result.data[0].hasExpiredBatch).toBe(false);
+      expect(result.data[0].expiringSoon).toBe(false);
+      expect(result.data[0].nearestExpiryDate).toBe(isoDaysFromNow(90));
+    });
+
+    it("surfaces the sole serial only when exactly one unit is on hand", async () => {
+      stubVariantQuery([{ id: "v1", quantityOnHand: 1, reorderPoint: null } as ProductVariant]);
+      batchesGetRawMany.mockResolvedValueOnce([{ variantId: "v1", nearestExpiryDate: null, soleSerialNumber: "SN-88213" }]);
+
+      const result = await service.lookupVariants("tenant-1", { limit: 50, offset: 0 });
+      expect(result.data[0].soleSerialNumber).toBe("SN-88213");
+    });
+
+    it("hides the serial once more than one unit is on hand, even if the query returns one", async () => {
+      stubVariantQuery([{ id: "v1", quantityOnHand: 3, reorderPoint: null } as ProductVariant]);
+      batchesGetRawMany.mockResolvedValueOnce([{ variantId: "v1", nearestExpiryDate: null, soleSerialNumber: "SN-88213" }]);
+
+      const result = await service.lookupVariants("tenant-1", { limit: 50, offset: 0 });
+      expect(result.data[0].soleSerialNumber).toBeNull();
+    });
+
+    it("returns a null nearestExpiryDate for a variant with no tracked-expiry batches at all", async () => {
+      stubVariantQuery([{ id: "v1", quantityOnHand: 4, reorderPoint: null } as ProductVariant]);
+      const result = await service.lookupVariants("tenant-1", { limit: 50, offset: 0 });
+      expect(result.data[0].nearestExpiryDate).toBeNull();
+      expect(result.data[0].hasExpiredBatch).toBe(false);
+      expect(result.data[0].expiringSoon).toBe(false);
+    });
+  });
+
+  describe("list — variant counts", () => {
+    it("attaches a variantCount per product from a single grouped query, defaulting to 0", async () => {
+      vi.mocked(products.findAndCount).mockResolvedValueOnce([
+        [{ id: "p1" } as Product, { id: "p2" } as Product],
+        2,
+      ]);
+      const variantsQb = {
+        select: vi.fn().mockReturnThis(),
+        addSelect: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        groupBy: vi.fn().mockReturnThis(),
+        getRawMany: vi.fn(async () => [{ productId: "p1", count: 3 }]),
+      };
+      service = new ProductService(
+        dataSource,
+        products,
+        { ...variants, createQueryBuilder: vi.fn(() => variantsQb) } as unknown as Repository<ProductVariant>,
+        batches,
+        movements,
+        cloudinary,
+        audit,
+        stockMutation,
+      );
+
+      const result = await service.list("tenant-1", { limit: 50, offset: 0, includeInactive: false });
+      expect(result.data.find((p) => p.id === "p1")?.variantCount).toBe(3);
+      expect(result.data.find((p) => p.id === "p2")?.variantCount).toBe(0);
+    });
+  });
+
+  describe("get — nested variants carry the same signals as lookupVariants", () => {
+    it("attaches attributes untouched and the expiry/serial signals onto each nested variant", async () => {
+      vi.mocked(products.findOne).mockResolvedValueOnce({ id: "p1", name: "Body Butter" } as Product);
+      vi.mocked(variants.find).mockResolvedValueOnce([
+        { id: "v1", quantityOnHand: 1, attributes: { size: "30g" }, reorderPoint: null } as ProductVariant,
+      ]);
+      batchesGetRawMany.mockResolvedValueOnce([{ variantId: "v1", nearestExpiryDate: null, soleSerialNumber: "SN-1" }]);
+
+      const result = await service.get("tenant-1", "p1");
+      expect(result.variants[0].attributes).toEqual({ size: "30g" });
+      expect(result.variants[0].soleSerialNumber).toBe("SN-1");
+      expect(result.variants[0].hasExpiredBatch).toBe(false);
     });
   });
 
