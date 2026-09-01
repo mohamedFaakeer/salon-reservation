@@ -1,6 +1,8 @@
 import { Comparison } from "../components/comparison";
+import { ContactSection } from "../components/contact-section";
 import { DemoBooking } from "../components/demo-booking";
 import { Faq } from "../components/faq";
+import { FloatingWhatsapp } from "../components/floating-whatsapp";
 import { FoundingBanner } from "../components/founding-banner";
 import { Hero } from "../components/hero";
 import { HowItWorks } from "../components/how-it-works";
@@ -135,7 +137,9 @@ export default function LandingPage() {
       />
       <Faq id="customers-faq" heading="Questions customers ask before their first booking." items={CUSTOMER_FAQ} />
       <DemoBooking />
+      <ContactSection id="contact" />
       <SiteFooter />
+      <FloatingWhatsapp />
     </>
   );
 }

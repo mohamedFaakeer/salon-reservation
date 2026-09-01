@@ -51,11 +51,19 @@ export function SiteFooter() {
                   FAQ
                 </a>
               </li>
+              <li>
+                <a href="#contact" className="text-[var(--footer-ink)] hover:text-white">
+                  Contact
+                </a>
+              </li>
             </ul>
           </div>
         </div>
+        {/* "Colombo, Sri Lanka" moved to the Contact section's details card,
+            which now carries it alongside the phone numbers and WhatsApp
+            link — this line is the legal copyright notice only. */}
         <div className="mt-12 flex flex-wrap justify-between gap-2.5 border-t border-[var(--footer-border)] pt-6 text-[13px] text-[var(--footer-ink)]">
-          <span>&copy; {new Date().getFullYear()} ZelyraOne &middot; Colombo, Sri Lanka</span>
+          <span>&copy; {new Date().getFullYear()} ZelyraOne. All rights reserved.</span>
           <span>business.zelyraone.lk &middot; book.zelyraone.lk</span>
         </div>
       </div>

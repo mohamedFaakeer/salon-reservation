@@ -151,6 +151,19 @@ Three deliberate additions on top of that baseline:
   than a fake widget; set to a real Calendly event slug, it embeds the real
   scheduling iframe. (Switched from the originally-planned Cal.com when the
   user set up a Calendly link instead.)
+- The contact section (`ContactSection`) is a second, lower-commitment
+  conversion path next to `DemoBooking` — a quick question doesn't need a
+  30-minute call booked. Submits via Web3Forms (`NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY`),
+  a client-side-only form-to-email service, since this app has no server to
+  send mail from (`next.config.ts`'s static-export decision). Unset, it
+  shows the same honest "not connected yet" fallback as `DemoBooking`,
+  rather than a form that silently can't submit. A visually-hidden honeypot
+  field catches basic bot spam without adding friction for real visitors.
+  Web3Forms binds a submission's destination email to whichever address
+  generated the access key, so the key must be created against
+  faakeermohamed@gmail.com. The floating WhatsApp button
+  (`FloatingWhatsapp`) and the Contact Details card's WhatsApp row share one
+  `WHATSAPP_URL` constant rather than repeating the number.
 
 ## Provenance record
 
