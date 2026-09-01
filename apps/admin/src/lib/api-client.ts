@@ -2704,15 +2704,30 @@ export function updateVariant(
 
 /** `GET /product-variants` — the lookup both the Stock list and the Quick Sale search hit. */
 export function fetchVariants(
-  params: { q?: string; barcode?: string; lowStockOnly?: boolean; limit?: number; offset?: number } = {},
+  params: {
+    q?: string;
+    barcode?: string;
+    lowStockOnly?: boolean;
+    category?: string;
+    brand?: string;
+    limit?: number;
+    offset?: number;
+  } = {},
 ): Promise<VariantListResult> {
   const qs = new URLSearchParams();
   if (params.q) qs.set("q", params.q);
   if (params.barcode) qs.set("barcode", params.barcode);
   if (params.lowStockOnly) qs.set("lowStockOnly", "true");
+  if (params.category) qs.set("category", params.category);
+  if (params.brand) qs.set("brand", params.brand);
   if (params.limit) qs.set("limit", String(params.limit));
   if (params.offset) qs.set("offset", String(params.offset));
   return request<VariantListResult>(`/product-variants?${qs.toString()}`);
+}
+
+/** Distinct category/brand values for Quick Sale's filter row — only ones with at least one sellable product. */
+export function fetchProductFacets(): Promise<{ categories: string[]; brands: string[] }> {
+  return request<{ categories: string[]; brands: string[] }>("/products/facets");
 }
 
 export function fetchVariantBatches(variantId: string): Promise<StockBatchRecord[]> {

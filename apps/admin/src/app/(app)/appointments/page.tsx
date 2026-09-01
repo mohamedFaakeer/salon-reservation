@@ -18,7 +18,7 @@ import { Pager } from "../../../components/pager";
 import { StatusBadge } from "../../../components/status-badge";
 import { AppointmentDetailDrawer } from "../../../components/appointment-detail-drawer";
 import { InquiriesPanel } from "../../../components/inquiries-panel";
-import { formatDate, formatPriceCents, formatTime } from "../../../lib/format";
+import { formatDate, formatPriceCents, formatTime, todayLocalDate } from "../../../lib/format";
 
 const PAGE_SIZE = 25;
 const STATUS_OPTIONS = [
@@ -48,7 +48,10 @@ export default function AppointmentsPage() {
   const [tab, setTab] = useState<Tab>("BOOKINGS");
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
-  const [date, setDate] = useState("");
+  // Defaults to today, not unbounded — opening this page used to load every
+  // appointment ever made, 25 at a time. The date input stays fully editable
+  // for anyone who wants a different (or every) day.
+  const [date, setDate] = useState(() => todayLocalDate());
   const [status, setStatus] = useState("");
   const [staffId, setStaffId] = useState("");
   const [offset, setOffset] = useState(0);
@@ -124,7 +127,7 @@ export default function AppointmentsPage() {
         <h1 className="text-xl font-semibold text-slate-900">Appointments</h1>
         <p className="mt-0.5 text-sm text-slate-500">
           {tab === "BOOKINGS"
-            ? "Every booking, filterable by day, status and staff."
+            ? "Today's bookings by default — filterable by day, status and staff."
             : "Questions people asked that have not become bookings."}
         </p>
       </div>
@@ -219,13 +222,16 @@ export default function AppointmentsPage() {
             </option>
           ))}
         </select>
-        {query || date || status || staffId ? (
+        {query || date !== todayLocalDate() || status || staffId ? (
           <button
             type="button"
             data-testid="appointment-clear-filters"
             onClick={() => {
               setQuery("");
-              setDate("");
+              // Back to the default view (today), not back to unbounded —
+              // "Clear" undoes a filter, it doesn't reintroduce loading every
+              // appointment ever made.
+              setDate(todayLocalDate());
               setStatus("");
               setStaffId("");
               resetOffset();
@@ -250,9 +256,9 @@ export default function AppointmentsPage() {
           title={
             debounced
               ? `Nothing matches "${debounced}".`
-              : date || status || staffId
+              : date !== todayLocalDate() || status || staffId
                 ? "No appointments match those filters."
-                : "No appointments yet — they appear here the moment someone books."
+                : "Nothing booked today yet."
           }
         />
       ) : (

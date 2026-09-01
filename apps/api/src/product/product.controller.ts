@@ -66,6 +66,18 @@ export class ProductController {
     return this.productService.list(ctx.tenantId, query);
   }
 
+  /**
+   * Distinct category/brand values for Quick Sale's filter pills. Registered
+   * ahead of `:id` — a literal `facets` segment would otherwise be parsed as
+   * a product id by the route below.
+   */
+  @Get("facets")
+  @Permissions(Permission.MANAGE_INVENTORY, Permission.RECORD_PAYMENT)
+  facets(@Req() req: Request) {
+    const ctx = getTenantContext(req);
+    return this.productService.facets(ctx.tenantId);
+  }
+
   @Get(":id")
   @Permissions(Permission.MANAGE_INVENTORY, Permission.RECORD_PAYMENT)
   get(@Req() req: Request, @Param("id") id: string) {

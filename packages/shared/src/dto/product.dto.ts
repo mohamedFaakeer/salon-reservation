@@ -208,6 +208,17 @@ export class VariantLookupQueryDto {
   @Type(() => Boolean)
   lowStockOnly?: boolean;
 
+  /** Quick Sale's filter pills — exact match against the product's own free-text field, additive to `q`. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  category?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  brand?: string;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()

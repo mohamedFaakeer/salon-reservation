@@ -11,7 +11,7 @@ import {
 } from "../../../lib/api-client";
 import { errorCopy } from "../../../lib/error-copy";
 import { attendanceStatusStyle, formatTime, todayLocalDate } from "../../../lib/format";
-import { canApproveAttendanceEdit } from "../../../lib/permissions";
+import { canApproveAttendanceEdit, canViewAttendance } from "../../../lib/permissions";
 import { useToast } from "../../../components/toast";
 import { TableSkeleton } from "../../../components/loading-skeleton";
 import { EmptyState } from "../../../components/empty-state";
@@ -87,6 +87,14 @@ function AttendancePage() {
             onChange={(e) => setDate(e.target.value)}
             className="min-h-10 rounded border border-slate-300 px-2.5 text-sm"
           />
+          {user && canViewAttendance(user.roles) ? (
+            <Link
+              href="/attendance/report"
+              className="flex min-h-10 items-center rounded border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              View report
+            </Link>
+          ) : null}
           {user && canApproveAttendanceEdit(user.roles) ? (
             <Link
               href="/attendance/requests"

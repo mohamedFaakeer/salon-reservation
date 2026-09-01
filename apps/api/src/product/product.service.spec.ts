@@ -32,6 +32,7 @@ function pngBuffer(width: number, height: number): Buffer {
 
 describe("ProductService", () => {
   let products: Repository<Product>;
+  let productsGetRawMany: ReturnType<typeof vi.fn>;
   let variants: Repository<ProductVariant>;
   let batches: Repository<StockBatch>;
   let batchesGetRawMany: ReturnType<typeof vi.fn>;
@@ -44,7 +45,18 @@ describe("ProductService", () => {
   let service: ProductService;
 
   beforeEach(() => {
-    products = mockRepo<Product>();
+    productsGetRawMany = vi.fn(async () => [] as Array<{ value: string }>);
+    const productsQueryBuilder = {
+      select: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      andWhere: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockReturnThis(),
+      getRawMany: productsGetRawMany,
+    };
+    products = {
+      ...mockRepo<Product>(),
+      createQueryBuilder: vi.fn(() => productsQueryBuilder),
+    } as unknown as Repository<Product>;
     variants = mockRepo<ProductVariant>();
     batchesGetRawMany = vi.fn(async () => [] as Array<{ variantId: string; nearestExpiryDate: string }>);
     const batchesQueryBuilder = {
@@ -366,6 +378,48 @@ describe("ProductService", () => {
       expect(result.data[0].nearestExpiryDate).toBeNull();
       expect(result.data[0].hasExpiredBatch).toBe(false);
       expect(result.data[0].expiringSoon).toBe(false);
+    });
+
+    it("filters by category when Quick Sale's filter pill sends one, additive to q", async () => {
+      stubVariantQuery([]);
+      await service.lookupVariants("tenant-1", { q: "shampoo", category: "Hair Care", limit: 50, offset: 0 });
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith("product.category = :category", { category: "Hair Care" });
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith(expect.stringContaining("ILIKE"), { q: "%shampoo%" });
+    });
+
+    it("filters by brand when Quick Sale's filter pill sends one", async () => {
+      stubVariantQuery([]);
+      await service.lookupVariants("tenant-1", { brand: "Sunsilk", limit: 50, offset: 0 });
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith("product.brand = :brand", { brand: "Sunsilk" });
+    });
+
+    it("applies neither category nor brand narrowing when the filter is 'All items' (both omitted)", async () => {
+      stubVariantQuery([]);
+      await service.lookupVariants("tenant-1", { limit: 50, offset: 0 });
+      expect(queryBuilder.andWhere).not.toHaveBeenCalledWith(expect.stringContaining("product.category ="), expect.anything());
+      expect(queryBuilder.andWhere).not.toHaveBeenCalledWith(expect.stringContaining("product.brand ="), expect.anything());
+    });
+  });
+
+  describe("facets", () => {
+    it("returns the tenant's distinct sellable categories and brands", async () => {
+      productsGetRawMany
+        .mockResolvedValueOnce([{ value: "Hair Care" }, { value: "Skin Care" }])
+        .mockResolvedValueOnce([{ value: "Sunsilk" }]);
+
+      const result = await service.facets("tenant-1");
+      expect(result).toEqual({ categories: ["Hair Care", "Skin Care"], brands: ["Sunsilk"] });
+    });
+
+    it("only counts active products — never offers a pill that matches nothing sellable", async () => {
+      await service.facets("tenant-1");
+      const qb = vi.mocked(products.createQueryBuilder).mock.results[0].value as { andWhere: ReturnType<typeof vi.fn> };
+      expect(qb.andWhere).toHaveBeenCalledWith("p.active = true");
+    });
+
+    it("returns two empty arrays for a tenant with nothing categorised yet", async () => {
+      const result = await service.facets("tenant-1");
+      expect(result).toEqual({ categories: [], brands: [] });
     });
   });
 

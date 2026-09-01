@@ -172,6 +172,37 @@ export class ProductService {
     return { data, meta: { total, limit: query.limit, offset: query.offset } };
   }
 
+  /**
+   * Distinct category/brand values across the tenant's sellable catalog —
+   * same "active product" condition `lookupVariants` already applies, so a
+   * pill this returns is never a dead end that matches nothing in the grid a
+   * cashier can actually browse. Free text, so no fixed list to fall back to
+   * — a brand-new tenant with nothing categorised yet gets two empty arrays,
+   * which the filter row renders as just "All items" with no pills to pick.
+   */
+  async facets(tenantId: string): Promise<{ categories: string[]; brands: string[] }> {
+    const categoryRows = await this.products
+      .createQueryBuilder("p")
+      .select("DISTINCT p.category", "value")
+      .where("p.tenantId = :tenantId", { tenantId })
+      .andWhere("p.active = true")
+      .andWhere("p.category IS NOT NULL")
+      .orderBy("p.category", "ASC")
+      .getRawMany<{ value: string }>();
+    const brandRows = await this.products
+      .createQueryBuilder("p")
+      .select("DISTINCT p.brand", "value")
+      .where("p.tenantId = :tenantId", { tenantId })
+      .andWhere("p.active = true")
+      .andWhere("p.brand IS NOT NULL")
+      .orderBy("p.brand", "ASC")
+      .getRawMany<{ value: string }>();
+    return {
+      categories: categoryRows.map((r) => r.value),
+      brands: brandRows.map((r) => r.value),
+    };
+  }
+
   /** One grouped count query for the whole page of products, not one query per row. */
   private async variantCountsFor(productIds: string[]): Promise<Map<string, number>> {
     if (productIds.length === 0) {
@@ -401,6 +432,14 @@ export class ProductService {
     }
     if (query.lowStockOnly) {
       qb.andWhere('v."reorderPoint" IS NOT NULL AND v."quantityOnHand" <= v."reorderPoint"');
+    }
+    // Quick Sale's category/brand filter pills — additive to `q`, not a
+    // replacement, so a cashier can type and filter at the same time.
+    if (query.category) {
+      qb.andWhere("product.category = :category", { category: query.category });
+    }
+    if (query.brand) {
+      qb.andWhere("product.brand = :brand", { brand: query.brand });
     }
 
     const [rows, total] = await qb.getManyAndCount();

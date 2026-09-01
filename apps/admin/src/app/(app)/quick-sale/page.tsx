@@ -6,6 +6,7 @@ import {
   ApiRequestError,
   checkoutRetailSale,
   fetchBundles,
+  fetchProductFacets,
   fetchVariants,
   searchCustomers,
   type BundleView,
@@ -24,6 +25,7 @@ import { useToast } from "../../../components/toast";
 import { BarcodeScannerModal } from "../../../components/barcode-scanner-modal";
 import { ConvertCustomLineDrawer } from "../../../components/convert-custom-line-drawer";
 import { AttributeTags, ExpiryBadge, SerialBadge } from "../../../components/variant-badges";
+import { CategoryBrandFilterRow, type CategoryBrandFilter } from "../../../components/category-brand-filter";
 
 type CartLine =
   | { kind: "variant"; key: string; variant: ProductVariantRecord; quantity: number }
@@ -96,6 +98,8 @@ function QuickSalePage() {
   const toast = useToast();
 
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<CategoryBrandFilter>(null);
+  const [facets, setFacets] = useState<{ categories: string[]; brands: string[] }>({ categories: [], brands: [] });
   const [variantResults, setVariantResults] = useState<ProductVariantRecord[]>([]);
   const [bundleResults, setBundleResults] = useState<BundleView[]>([]);
   const [loadingResults, setLoadingResults] = useState(true);
@@ -109,12 +113,34 @@ function QuickSalePage() {
   const [reviewingLine, setReviewingLine] = useState<RetailSaleView["lines"][number] | null>(null);
   const canManageCatalog = canManageInventory(user?.roles ?? []);
 
+  // Fetched once — the filter row's own values don't change while someone is
+  // mid-sale, and refetching on every keystroke would be wasted work.
+  useEffect(() => {
+    fetchProductFacets()
+      .then(setFacets)
+      .catch(() => setFacets({ categories: [], brands: [] }));
+  }, []);
+
   useEffect(() => {
     const handle = setTimeout(() => {
       setLoadingResults(true);
+      // Bundles have no category/brand of their own — a kit can never
+      // truthfully match a facet pill, so it's skipped from the request
+      // entirely (not just hidden from the grid) whenever one is active.
+      // Under "All items" they behave exactly as before.
       Promise.all([
-        fetchVariants({ q: query || undefined, limit: 60 }),
-        fetchBundles({ q: query || undefined, limit: 30 }),
+        fetchVariants({
+          q: query || undefined,
+          category: filter?.kind === "category" ? filter.value : undefined,
+          brand: filter?.kind === "brand" ? filter.value : undefined,
+          limit: 60,
+        }),
+        filter === null
+          ? fetchBundles({ q: query || undefined, limit: 30 })
+          : Promise.resolve<{ data: BundleView[]; meta: { total: number; limit: number; offset: number } }>({
+              data: [],
+              meta: { total: 0, limit: 0, offset: 0 },
+            }),
       ])
         .then(([variants, bundles]) => {
           setVariantResults(variants.data);
@@ -127,7 +153,7 @@ function QuickSalePage() {
         .finally(() => setLoadingResults(false));
     }, 250);
     return () => clearTimeout(handle);
-  }, [query]);
+  }, [query, filter]);
 
   const lines = useMemo(() => Array.from(cart.values()), [cart]);
   const subtotalCents = lines.reduce((sum, l) => sum + linePriceCents(l) * l.quantity, 0);
@@ -302,11 +328,22 @@ function QuickSalePage() {
           Use Custom item — it sells right away and can be added to the catalog properly afterward.
         </p>
 
+        <CategoryBrandFilterRow
+          categories={facets.categories}
+          brands={facets.brands}
+          value={filter}
+          onChange={setFilter}
+        />
+
         {loadingResults && noResults ? (
           <p className="text-sm text-slate-500">Loading products…</p>
         ) : noResults ? (
           <p className="rounded border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
-            Nothing matches &ldquo;{query}&rdquo;.
+            {query
+              ? <>Nothing matches &ldquo;{query}&rdquo;.</>
+              : filter
+                ? `Nothing in ${filter.value} yet.`
+                : "No products in the catalog yet."}
           </p>
         ) : (
           // md:4 assumes the full viewport width; once `lg:` splits this
