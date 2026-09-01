@@ -163,11 +163,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             underneath the bell again, regardless of that page's own layout.
             `NotificationBell` portals its desktop trigger button into this
             div (see notification-bell.tsx) so there is still one shared
-            component/state for the bell, not two.
+            component/state for the bell, not two. Fixed at 40px so the
+            topbar reads identically on every page — the bell inside is sized
+            to match (see notification-bell.tsx's `BellIcon`).
           */}
           <div
             id="desktop-bell-slot"
-            className="hidden shrink-0 items-center justify-end border-b border-slate-200 bg-white px-4 lg:flex lg:h-14"
+            className="hidden shrink-0 items-center justify-end border-b border-slate-200 bg-white px-4 lg:flex lg:h-10"
           />
           <main
             // Removes background content from tab order and the accessibility

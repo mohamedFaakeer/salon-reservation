@@ -42,6 +42,8 @@ const TYPE_ICON: Record<StaffNotificationRecord["type"], string> = {
  * button floating over the page — so it can never end up on top of a page's
  * own content (it used to sit on top of the Today board's "New booking"
  * button; DECISIONS.md). One component, one poll/drawer state, either way.
+ * The strip is a fixed 40px on every page, so the desktop trigger below is
+ * sized to sit comfortably inside that, not the mobile fixed button's size.
  *
  * Mounted once in `(app)/layout.tsx` — the desk shell (owner/manager/
  * receptionist). Not mounted in the floor kiosk: that surface is phone-first
@@ -152,17 +154,21 @@ export function NotificationBell() {
       */}
       {desktopSlot
         ? createPortal(
+            // Sized for the 40px-tall shared strip (`(app)/layout.tsx`), not
+            // the mobile fixed button's size above — h-7/w-7 (28px) leaves a
+            // ~6px margin top and bottom, same proportion the strip had at
+            // its old 56px height with the larger h-9 button.
             <button
               type="button"
               onClick={() => setDrawerOpen(true)}
               aria-label={count > 0 ? `Notifications, ${count} unread` : "Notifications"}
-              className="relative flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
+              className="relative flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
             >
-              <BellIcon />
+              <BellIcon size={16} />
               {count > 0 ? (
                 <span
                   aria-hidden="true"
-                  className="tabular absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white"
+                  className="tabular absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white"
                 >
                   {count > 99 ? "99+" : count}
                 </span>
@@ -175,7 +181,7 @@ export function NotificationBell() {
       {popupsEnabled && popup ? (
         <div
           role="status"
-          className="motion-rise fixed right-4 top-14 z-[31] w-[min(340px,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-4 shadow-xl lg:top-16"
+          className="motion-rise fixed right-4 top-14 z-[31] w-[min(340px,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-4 shadow-xl lg:top-12"
         >
           <div className="flex items-start gap-3">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-50 text-sm text-teal-700">
@@ -333,9 +339,9 @@ function NotificationDrawer({
   );
 }
 
-function BellIcon() {
+function BellIcon({ size = 20 }: { size?: number }) {
   return (
-    <svg viewBox="0 0 20 20" width="20" height="20" fill="none" aria-hidden="true" focusable="false">
+    <svg viewBox="0 0 20 20" width={size} height={size} fill="none" aria-hidden="true" focusable="false">
       <path
         d="M10 2.5c-2.3 0-4.2 1.9-4.2 4.2v2.6c0 .5-.2 1-.5 1.4l-1 1.3c-.5.6-.1 1.5.7 1.5h11.9c.8 0 1.2-.9.7-1.5l-1-1.3c-.3-.4-.5-.9-.5-1.4V6.7c0-2.3-1.9-4.2-4.2-4.2h-1z"
         stroke="currentColor"

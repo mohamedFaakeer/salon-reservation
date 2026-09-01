@@ -66,7 +66,7 @@ export function DateRangePicker({
   const invalid = value.to < value.from;
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-wrap items-end justify-between gap-2">
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Quick date ranges">
         {presets.map((preset) => {
           const active = activePreset?.id === preset.id;
