@@ -92,8 +92,10 @@ justification).
   the real `docs/uat_screenshots/` — those carry "UAT"-suffixed test names
   and, in at least one capture, the developer's own real name as a test
   customer.
-- Both demo-walkthrough videos are placeholders (poster + play affordance)
-  until real files/links are provided — see `VideoSection`'s caption.
+- Both demo-walkthrough videos are real, hosted on the user's own
+  Cloudinary account (`VideoSection` renders a native `<video>` element;
+  the poster frame is derived from the video itself via Cloudinary's
+  `so_0` transformation, no separate poster upload needed).
 - The demo-booking section (`DemoBooking`) reads `NEXT_PUBLIC_CALENDLY_LINK`
   at build time. Unset, it shows an honest "not connected yet" state rather
   than a fake widget; set to a real Calendly event slug, it embeds the real

@@ -112,7 +112,8 @@ export default function LandingPage() {
       <VideoSection
         id="business-demo"
         heading="See the admin app in action."
-        badge="Admin app walkthrough · 2 min"
+        badge="Admin app walkthrough"
+        videoUrl="https://res.cloudinary.com/s5ivpmmf/video/upload/v1788245364/Reports_view.mp4"
         features={BUSINESS_VIDEO_FEATURES}
         tinted
       />
@@ -126,7 +127,8 @@ export default function LandingPage() {
       <VideoSection
         id="customer-demo"
         heading="See the booking app in action."
-        badge="Booking app walkthrough · 1 min"
+        badge="Booking app walkthrough"
+        videoUrl="https://res.cloudinary.com/s5ivpmmf/video/upload/v1788245469/openvid-1920x1080.mp4"
         features={CUSTOMER_VIDEO_FEATURES}
         reverse
         tinted

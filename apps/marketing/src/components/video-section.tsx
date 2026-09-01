@@ -1,10 +1,20 @@
-import { CheckIcon, PlayIcon } from "./icons";
+import { CheckIcon } from "./icons";
 import { Reveal } from "./reveal";
+
+/**
+ * Cloudinary can derive a poster frame from a video by request — swapping
+ * the file extension for .jpg and inserting a `so_0` (seek-offset zero)
+ * transformation gets the first frame with no separate upload needed.
+ */
+function cloudinaryPoster(videoUrl: string): string {
+  return videoUrl.replace("/video/upload/", "/video/upload/so_0/").replace(/\.[a-z0-9]+$/i, ".jpg");
+}
 
 export function VideoSection({
   id,
   heading,
   badge,
+  videoUrl,
   features,
   reverse = false,
   tinted = false,
@@ -12,6 +22,7 @@ export function VideoSection({
   id: string;
   heading: string;
   badge: string;
+  videoUrl: string;
   features: { label: string; body: string }[];
   reverse?: boolean;
   tinted?: boolean;
@@ -31,21 +42,25 @@ export function VideoSection({
           }`}
         >
           <div>
-            <div className="relative flex aspect-[16/10] items-center justify-center overflow-hidden rounded-[var(--r-lg)] border border-[var(--border)] bg-[linear-gradient(155deg,#101B34_0%,var(--navy)_55%,#16233F_100%)] shadow-[var(--shadow-md)]">
-              <div className="pointer-events-none absolute inset-[18px] rounded-[var(--r-default)] border border-white/[0.08] bg-white/[0.05]">
-                <div className="absolute left-4 right-4 top-4 h-2 rounded-full bg-white/10" />
-                <div className="absolute bottom-4 left-4 right-[40%] top-10 rounded-[var(--r-sm)] bg-white/[0.06]" />
-              </div>
-              <div className="group relative z-[2] flex h-[60px] w-[60px] items-center justify-center rounded-full bg-white shadow-[var(--shadow-lg)] transition-transform hover:scale-105">
-                <PlayIcon />
-              </div>
-              <span className="absolute bottom-3.5 left-3.5 z-[2] rounded-[var(--r-sm)] bg-[rgba(2,6,23,0.55)] px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm">
+            <div className="relative overflow-hidden rounded-[var(--r-lg)] border border-[var(--border)] bg-[var(--navy)] shadow-[var(--shadow-md)]">
+              <video
+                src={videoUrl}
+                poster={cloudinaryPoster(videoUrl)}
+                controls
+                playsInline
+                preload="metadata"
+                className="block aspect-[16/10] w-full"
+              >
+                Your browser doesn&rsquo;t support embedded video —{" "}
+                <a href={videoUrl} className="underline">
+                  watch the {badge.toLowerCase()} directly
+                </a>
+                .
+              </video>
+              <span className="pointer-events-none absolute left-3.5 top-3.5 z-[2] rounded-[var(--r-sm)] bg-[rgba(2,6,23,0.55)] px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm">
                 {badge}
               </span>
             </div>
-            <p className="mt-2.5 text-xs text-[var(--slate-soft)]">
-              Placeholder — the real walkthrough video drops in here once the file is ready.
-            </p>
           </div>
 
           <ul className="flex flex-col gap-4">
