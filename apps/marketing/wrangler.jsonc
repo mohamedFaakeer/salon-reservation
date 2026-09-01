@@ -1,0 +1,11 @@
+{
+  // Tells `wrangler deploy` this is a static-assets-only project (no
+  // server-side Worker script) — it just uploads the Next.js static
+  // export (`out/`, produced by `next build` with output: "export" in
+  // next.config.ts) to Cloudflare's edge network.
+  "name": "zelyraone",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./out"
+  }
+}
