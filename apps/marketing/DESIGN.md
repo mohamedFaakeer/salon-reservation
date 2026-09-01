@@ -58,10 +58,16 @@ the doc's Tertiary Sage, used for every CTA, the active chip state, and
   things the source doc says separately: its Buttons section specifies navy
   as Primary, while its Colors section calls out Sage/teal for "links,
   CTAs, highlights" — the highest-priority conversion buttons get the
-  accent; standard chrome does not.
+  accent; standard chrome does not. **Audit fix**: the fill is
+  `--teal-dark`, not `--teal` — white text on `--teal` is 3.68:1, below
+  WCAG AA's 4.5:1; `--teal-dark` is 5.55:1, same brand hue, enough
+  contrast. Do not revert to `--teal` for text-bearing fills.
 - **Chips**: used once, for the partner-eligibility tags (Hair Salons,
   Barbershops, Med-Spas, Wellness Studios, Beauty Retailers) — the source
-  doc's "Filter Active" chip spec, teal instead of sage.
+  doc's "Filter Active" chip spec, teal instead of sage. Same audit fix as
+  buttons: fill is `--teal-dark`, not `--teal`, for the same contrast
+  reason (12px uppercase text needs the full 4.5:1, not a reduced
+  large-text threshold).
 - **Checkboxes, radios, lists, tooltips**: not used. The only form on the
   page is the Calendly booking embed, which renders its own UI — inventing
   a custom form just to use those components would not be honest use of
@@ -83,6 +89,50 @@ branch) by rendering fully visible with no transition. No animation
 library is used — plain CSS transitions and one observer, matching this
 project's dependency discipline (`CLAUDE.md` §3: no new library without
 justification).
+
+Three deliberate additions on top of that baseline:
+
+- **Hero stagger**: the hero's headline, subhead, and CTA row are three
+  separate `<Reveal>`s with `delay-[0/120/240ms]` instead of one block —
+  this hero is the one place that gets a compound entrance; nothing else
+  does.
+- **Hero "Live availability" dot**: a slow 2s opacity pulse
+  (`.live-dot`/`@keyframes live-dot-pulse`), off under
+  `prefers-reduced-motion`.
+- **Button press feedback**: `.btn:active { transform: scale(0.97) }` —
+  real tactile feedback for a real click, not a fake loading/success state
+  (these buttons anchor-scroll or open Calendly; neither has an async
+  result to announce).
+- **FAQ expand/collapse**: `Faq` is a client component using React state
+  per item instead of native `<details>` (which can't reliably animate
+  open/close height across current browsers). Animated via the CSS grid
+  `grid-template-rows: 0fr → 1fr` technique (`.faq-panel`/
+  `.faq-panel-open` in `globals.css`), ~300ms, off under
+  `prefers-reduced-motion`. Accessibility is preserved, not reduced: a
+  `<button aria-expanded aria-controls>` plus `<div role="region"
+  aria-labelledby>` is the ARIA Accordion Pattern — the same
+  expanded/collapsed state a screen reader gets from `<details>`, just
+  produced deliberately instead of for free.
+- **First-load intro** (`IntroLoader`, `src/components/intro-loader.*`):
+  the user's own supplied loader, ported with its visuals unchanged — dark
+  teal gradient backdrop, clip-path logo reveal, ambient aura, twin
+  ripples, a diagonal shine sweep, a spark, a scanning progress bar, and a
+  pulsing status line. This is the one place on the page where the motion
+  is a deliberate brand moment rather than a reveal-on-scroll primitive —
+  genuinely artificial, not tied to any real loading state, since this
+  app is a static export with nothing to actually wait for. Shows once
+  per browser session (`sessionStorage`), not on every reload; hides once
+  `window.load` and `document.fonts.ready` both resolve, with a 1200ms
+  floor so it never flickers by. Ships as static markup from the first
+  byte (a plain Server Component, not `"use client"`) with one inline
+  script doing the session check and hide/remove logic in plain DOM APIs
+  — a React `useEffect` would only run after hydration, by which point
+  the real page is already visible, defeating the point. That script must
+  never call `.remove()` on the loader node before hydration has had time
+  to complete: doing so once caused React to recreate the node to match
+  what it expected to hydrate, undoing the removal — the repeat-visit
+  path hides via the `is-hidden` class instead, only physically removing
+  the node ~2s later, safely past any real hydration timing.
 
 ## Content notes
 

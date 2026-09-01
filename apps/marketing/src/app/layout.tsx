@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { DM_Sans, Fira_Code, Plus_Jakarta_Sans } from "next/font/google";
+import { IntroLoader } from "../components/intro-loader";
 import "./globals.css";
 
 /**
@@ -64,6 +65,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         {/* PROVENANCE is the hardcoded literal defined above — no runtime interpolation, not reachable by user input. */}
         <div hidden aria-hidden="true" dangerouslySetInnerHTML={{ __html: PROVENANCE }} />
+        <IntroLoader />
         {children}
       </body>
     </html>

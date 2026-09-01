@@ -9,7 +9,11 @@ export function FoundingBanner() {
       >
         <div className="max-w-[56ch]">
           <h3 className="text-xl font-semibold">The Founding 50</h3>
-          <p className="mt-1 text-[var(--slate)]">
+          {/* Audit finding: the default --slate body-text color is 4.31:1 on
+              this section's --teal-tint background, just under WCAG's 4.5:1.
+              --navy is 16.15:1 and matches the source doc's own principle
+              ("Navy + White as the primary visual rhythm"). */}
+          <p className="mt-1 text-[var(--navy)]">
             We&rsquo;re onboarding the first 50 wellness businesses in Colombo over a two-week window. Founding
             partners lock in founding-partner terms before general pricing opens — no card required to talk.
           </p>

@@ -31,18 +31,21 @@ export function TrustSection() {
         <h2 className="text-[clamp(24px,3.4vw,32px)] font-bold text-white">
           Trust built into the database, not promised in a pitch.
         </h2>
-        <p className="mt-3 max-w-[62ch] text-[#94A3B8]">
+        <p className="mt-3 max-w-[62ch] text-[var(--footer-ink)]">
           This is true whether you&rsquo;re the salon running the day, or the customer booking a slot.
         </p>
         <div className="mt-8 flex flex-col">
           {ITEMS.map(({ icon: Icon, title, body }) => (
-            <div key={title} className="grid grid-cols-[40px_1fr] gap-6 border-t border-[#1E293B] py-6 last:border-b">
+            <div
+              key={title}
+              className="grid grid-cols-[40px_1fr] gap-6 border-t border-[var(--footer-border)] py-6 last:border-b"
+            >
               <div className="flex h-10 w-10 items-center justify-center rounded-[var(--r-default)] bg-[var(--teal-tint)] text-[var(--teal-dark)]">
                 <Icon />
               </div>
               <div>
                 <h4 className="text-white">{title}</h4>
-                <p className="mt-1 text-[#94A3B8]">{body}</p>
+                <p className="mt-1 text-[var(--footer-ink)]">{body}</p>
               </div>
             </div>
           ))}

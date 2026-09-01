@@ -31,6 +31,12 @@
   --success-tint: #f0fdf4;
   --warning: #eab308;
   --error: #ef4444;
+  --status-success-ink: #16a34a;
+
+  /* Named so the accessibility fix below has one place to live, not five
+     copy-pasted hex literals: text on the navy footer/trust background. */
+  --footer-ink: #94a3b8;
+  --footer-border: #1e293b;
 
   --r-sm: 4px;
   --r-default: 8px;
@@ -44,27 +50,40 @@
   --shadow-lg: 0 8px 32px rgba(15, 23, 42, 0.1);
 }
 
-html,
-body {
-  background: var(--bg);
-  color: var(--navy);
-  font-family: var(--font-body), "Segoe UI", system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
-}
+/* Bug found in review: these three rules used to sit unlayered, which in
+   CSS Cascade Layers beats ANY layered rule regardless of specificity —
+   so this generic `a { color }` was winning over `.btn-primary`/
+   `.btn-navy`'s white text (making button text the same color as its own
+   background, effectively invisible), and this `h1-h4 { color }` was
+   winning over Tailwind's own `text-white` utility the same way. `@layer
+   base` is exactly Tailwind's intended slot for base element styles like
+   these — it correctly loses to both `@layer components` (below) and
+   Tailwind's utilities layer, as the cascade is actually supposed to work
+   for this project's `.btn-primary`/`text-white` usages. Do not move
+   these back out of a layer. */
+@layer base {
+  html,
+  body {
+    background: var(--bg);
+    color: var(--navy);
+    font-family: var(--font-body), "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
 
-h1,
-h2,
-h3,
-h4 {
-  font-family: var(--font-display), "Segoe UI", system-ui, sans-serif;
-  color: var(--navy);
-  text-wrap: balance;
-  letter-spacing: -0.01em;
-}
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display), "Segoe UI", system-ui, sans-serif;
+    color: var(--navy);
+    text-wrap: balance;
+    letter-spacing: -0.01em;
+  }
 
-a {
-  color: var(--teal-dark);
+  a {
+    color: var(--teal-dark);
+  }
 }
 
 ::selection {
@@ -166,6 +185,44 @@ section[id] {
   }
 }
 
+/* ── "Live availability" dot: a slow, subtle pulse — reinforces "live" ── */
+@keyframes live-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.live-dot {
+  animation: live-dot-pulse 2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-dot {
+    animation: none;
+  }
+}
+
+/* ── FAQ accordion: grid-rows 0fr/1fr technique — animates height
+   reliably across current browsers with no experimental CSS. ── */
+.faq-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s ease;
+}
+.faq-panel.faq-panel-open {
+  grid-template-rows: 1fr;
+}
+.faq-panel > div {
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .faq-panel {
+    transition: none;
+  }
+}
+
 /* ── Reusable component surfaces (Verdana Health spec) ── */
 @layer components {
   .btn {
@@ -181,17 +238,30 @@ section[id] {
       background-color 0.15s ease,
       border-color 0.15s ease,
       color 0.15s ease,
-      transform 0.15s ease;
+      transform 0.15s ease,
+      filter 0.15s ease;
   }
-  /* The doc's Colors section calls Sage/teal out for "links, CTAs,
-     highlights" — the conversion buttons use teal; standard chrome
-     buttons follow the doc's literal navy Primary spec. */
+  /* Real, honest press feedback — these buttons are anchor-scrolls or
+     open Calendly in a new tab, not an async action with a result to
+     announce, so a tactile press is the truthful affordance here (not a
+     fake loading/success state). */
+  .btn:active {
+    transform: scale(0.97);
+  }
+  .btn-md {
+    min-height: 42px;
+  }
+  /* Audit finding: --teal (#029591) carrying white text is 3.68:1,
+     below WCAG AA's 4.5:1 for text. --teal-dark is 5.55:1 — same brand
+     hue, enough contrast. The doc's Colors section calls Sage/teal out
+     for "links, CTAs, highlights"; standard chrome buttons follow the
+     doc's literal navy Primary spec. Do not revert this to --teal. */
   .btn-primary {
-    background: var(--teal);
+    background: var(--teal-dark);
     color: #fff;
   }
   .btn-primary:hover {
-    background: var(--teal-dark);
+    filter: brightness(0.88);
   }
   .btn-navy {
     background: var(--navy);
@@ -209,6 +279,8 @@ section[id] {
     background: rgba(15, 23, 42, 0.04);
   }
 
+  /* Same audit finding as .btn-primary above — white text needs
+     --teal-dark, not --teal, to clear 4.5:1 at this 12px uppercase size. */
   .chip {
     font-size: 12px;
     font-weight: 500;
@@ -216,17 +288,11 @@ section[id] {
     letter-spacing: 0.05em;
     padding: 4px 12px;
     border-radius: var(--r-sm);
-    background: var(--teal);
+    background: var(--teal-dark);
     color: #fff;
-    border: 1px solid var(--teal);
+    border: 1px solid var(--teal-dark);
   }
 
-  .faq-item summary {
-    list-style: none;
-  }
-  .faq-item summary::-webkit-details-marker {
-    display: none;
-  }
   .faq-item .plus {
     position: relative;
     width: 20px;
@@ -253,7 +319,7 @@ section[id] {
     left: 9px;
     transition: transform 0.18s ease;
   }
-  .faq-item[open] .plus::after {
+  .faq-item-open .plus::after {
     transform: rotate(90deg);
     opacity: 0;
   }

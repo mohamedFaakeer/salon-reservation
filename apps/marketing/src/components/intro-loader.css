@@ -1,0 +1,290 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Intro loader — ported from the user's own supplied source at
+   ZelyraOne-Landing-Loader/zelyra-loader/index.html. Every color,
+   timing, and keyframe value below is unchanged from that file, with
+   one correction from the first pass at this port: the source's dark
+   backdrop lived on the *demo page's* `body`, not `.zelyra-loader`
+   itself, which is why dropping it as "preview scaffolding" made the
+   real integration look broken (plain page background showing through
+   instead of the intended full-screen splash). It belongs on the
+   loader itself — that's the only real change from the source: the
+   custom properties also move under .zelyra-loader instead of global
+   :root, so they don't leak into this app's own token namespace.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.zelyra-loader {
+  --zelyra: #08b8ad;
+  --zelyra-deep: #0d9488;
+  --ink: #062f31;
+  --loader-duration: 1.85s;
+
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  color: var(--zelyra);
+  background:
+    radial-gradient(circle at 50% 38%, rgba(20, 184, 166, 0.18), transparent 36%),
+    linear-gradient(135deg, #031b1d 0%, #073c3d 52%, #05282a 100%);
+  isolation: isolate;
+  transition:
+    opacity 0.55s ease,
+    visibility 0.55s ease;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+.zelyra-loader::before {
+  content: "";
+  position: absolute;
+  width: min(78vw, 780px);
+  aspect-ratio: 1.7;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(10, 203, 190, 0.14), rgba(10, 203, 190, 0.025) 50%, transparent 72%);
+  filter: blur(10px);
+  animation: zelyra-aura 2.8s ease-in-out infinite;
+  z-index: -1;
+}
+
+.zelyra-loader.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.zelyra-loader .loader-inner {
+  width: min(78vw, 620px);
+  display: grid;
+  justify-items: center;
+  gap: 22px;
+}
+
+.zelyra-loader .mark-stage {
+  position: relative;
+  width: 100%;
+  padding: 32px 18px 24px;
+}
+
+.zelyra-loader .mark-stage::before,
+.zelyra-loader .mark-stage::after {
+  content: "";
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 112px;
+  aspect-ratio: 1;
+  border: 1px solid rgba(49, 226, 211, 0.45);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: zelyra-ripple 2.4s cubic-bezier(0.2, 0.7, 0.25, 1) infinite;
+  pointer-events: none;
+}
+
+.zelyra-loader .mark-stage::after {
+  animation-delay: 1.2s;
+}
+
+.zelyra-loader .logo-wrap {
+  position: relative;
+  overflow: hidden;
+  filter: drop-shadow(0 12px 28px rgba(0, 0, 0, 0.22));
+  animation: zelyra-logo-arrive var(--loader-duration) cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.zelyra-loader .logo-wrap img {
+  display: block;
+  width: 100%;
+  height: auto;
+  filter: brightness(1.14) saturate(1.06);
+  animation: zelyra-breathe 2.8s ease-in-out 1.85s infinite;
+}
+
+.zelyra-loader .logo-wrap::after {
+  content: "";
+  position: absolute;
+  inset: -35% auto -35% -28%;
+  width: 18%;
+  transform: skewX(-18deg);
+  background: linear-gradient(90deg, transparent, rgba(210, 255, 250, 0.9), transparent);
+  filter: blur(4px);
+  mix-blend-mode: screen;
+  animation: zelyra-shine 2.8s ease-in-out 0.85s infinite;
+  pointer-events: none;
+}
+
+.zelyra-loader .spark {
+  position: absolute;
+  left: 82.4%;
+  top: 16%;
+  width: 7px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #b9fff8;
+  box-shadow:
+    0 0 0 5px rgba(91, 255, 239, 0.1),
+    0 0 18px 5px rgba(49, 226, 211, 0.56);
+  animation: zelyra-snip-spark 1.85s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+.zelyra-loader .progress {
+  width: min(46vw, 250px);
+  height: 2px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(171, 255, 247, 0.15);
+}
+
+.zelyra-loader .progress::after {
+  content: "";
+  display: block;
+  width: 45%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, #57f3e4, #fff, transparent);
+  box-shadow: 0 0 14px rgba(49, 226, 211, 0.8);
+  animation: zelyra-progress 1.35s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+.zelyra-loader .status {
+  margin: -10px 0 0;
+  color: rgba(214, 255, 251, 0.65);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  animation: zelyra-status-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes zelyra-logo-arrive {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.94);
+    clip-path: inset(0 100% 0 0 round 12px);
+  }
+  36% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    clip-path: inset(0 0 0 0 round 12px);
+  }
+}
+
+@keyframes zelyra-shine {
+  0%,
+  18% {
+    left: -28%;
+    opacity: 0;
+  }
+  35% {
+    opacity: 0.8;
+  }
+  62%,
+  100% {
+    left: 114%;
+    opacity: 0;
+  }
+}
+
+@keyframes zelyra-progress {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(320%);
+  }
+}
+
+@keyframes zelyra-ripple {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.45);
+  }
+  18% {
+    opacity: 0.65;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(5.1);
+  }
+}
+
+@keyframes zelyra-aura {
+  0%,
+  100% {
+    opacity: 0.75;
+    transform: scale(0.94);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes zelyra-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.012);
+  }
+}
+
+@keyframes zelyra-snip-spark {
+  0%,
+  35%,
+  100% {
+    opacity: 0;
+    transform: scale(0.25);
+  }
+  48% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  70% {
+    opacity: 0;
+    transform: scale(2.8);
+  }
+}
+
+@keyframes zelyra-status-pulse {
+  0%,
+  100% {
+    opacity: 0.42;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+@media (max-width: 520px) {
+  .zelyra-loader .loader-inner {
+    width: 90vw;
+    gap: 17px;
+  }
+  .zelyra-loader .mark-stage {
+    padding-inline: 8px;
+  }
+  .zelyra-loader .status {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zelyra-loader *,
+  .zelyra-loader::before,
+  .zelyra-loader *::before,
+  .zelyra-loader *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

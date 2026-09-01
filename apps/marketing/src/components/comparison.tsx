@@ -35,7 +35,10 @@ export function Comparison() {
             <ul className="flex flex-col gap-3.5">
               {OLD_WAY.map((item) => (
                 <li key={item} className="flex gap-2.5 text-[15px] text-[var(--slate)]">
-                  <CrossIcon className="mt-0.5 flex-shrink-0 text-[var(--slate-soft)]" />
+                  {/* Audit finding: --slate-soft is 2.56:1 on white, below WCAG's
+                      3:1 non-text threshold — --slate (already this column's
+                      body-text color) is 4.76:1. */}
+                  <CrossIcon className="mt-0.5 flex-shrink-0 text-[var(--slate)]" />
                   {item}
                 </li>
               ))}
