@@ -5,7 +5,7 @@ import { sendGAEvent } from "@next/third-parties/google";
  * (Task 17). Every call site is typed to one of these — no ad-hoc event
  * names, so what actually gets measured always matches what's documented.
  */
-export type CtaLocation = "hero" | "navigation" | "founding_banner" | "features_section" | "footer";
+export type CtaLocation = "hero" | "navigation" | "founding_banner" | "features_section" | "features_page" | "footer";
 
 type AnalyticsEvent =
   | { name: "demo_click"; params: { cta_location: CtaLocation; cta_text: string } }

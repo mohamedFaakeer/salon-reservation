@@ -3,7 +3,14 @@
 import { useEffect } from "react";
 import { trackEvent, type CtaLocation } from "../lib/analytics";
 
-const CTA_LOCATIONS: readonly CtaLocation[] = ["hero", "navigation", "founding_banner", "features_section", "footer"];
+const CTA_LOCATIONS: readonly CtaLocation[] = [
+  "hero",
+  "navigation",
+  "founding_banner",
+  "features_section",
+  "features_page",
+  "footer",
+];
 
 function isCtaLocation(value: string | undefined): value is CtaLocation {
   return CTA_LOCATIONS.includes(value as CtaLocation);

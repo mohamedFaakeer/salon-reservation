@@ -20,20 +20,27 @@ export function SiteFooter() {
           </div>
           <div>
             <h4 className="mb-4 text-xs font-semibold uppercase tracking-wider text-white">ZelyraOne</h4>
+            {/* "/#x" not "#x" below — this footer is shared between "/" and
+                /features now; see the same note in site-nav.tsx. */}
             <ul className="flex flex-col gap-2.5 text-sm">
               <li>
-                <a href="#for-partners" className="text-[var(--footer-ink)] hover:text-white">
+                <a href="/features" className="text-[var(--footer-ink)] hover:text-white">
+                  Features
+                </a>
+              </li>
+              <li>
+                <a href="/#for-partners" className="text-[var(--footer-ink)] hover:text-white">
                   For Partners
                 </a>
               </li>
               <li>
-                <a href="#for-customers" className="text-[var(--footer-ink)] hover:text-white">
+                <a href="/#for-customers" className="text-[var(--footer-ink)] hover:text-white">
                   For Customers
                 </a>
               </li>
               <li>
                 <a
-                  href="#book-demo"
+                  href="/#book-demo"
                   className="text-[var(--footer-ink)] hover:text-white"
                   data-analytics="demo_click"
                   data-cta-location="footer"
@@ -47,17 +54,17 @@ export function SiteFooter() {
             <h4 className="mb-4 text-xs font-semibold uppercase tracking-wider text-white">More</h4>
             <ul className="flex flex-col gap-2.5 text-sm">
               <li>
-                <a href="#trust" className="text-[var(--footer-ink)] hover:text-white">
+                <a href="/#trust" className="text-[var(--footer-ink)] hover:text-white">
                   Trust &amp; Security
                 </a>
               </li>
               <li>
-                <a href="#business-faq" className="text-[var(--footer-ink)] hover:text-white">
+                <a href="/#business-faq" className="text-[var(--footer-ink)] hover:text-white">
                   FAQ
                 </a>
               </li>
               <li>
-                <a href="#contact" className="text-[var(--footer-ink)] hover:text-white">
+                <a href="/#contact" className="text-[var(--footer-ink)] hover:text-white">
                   Contact
                 </a>
               </li>
