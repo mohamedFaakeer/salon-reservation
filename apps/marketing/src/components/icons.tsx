@@ -83,6 +83,99 @@ export function PhoneIcon({ className = "" }: { className?: string }) {
   );
 }
 
+/* Added for the Features section — same single-stroke, 18px-viewbox
+   convention as every icon above. */
+export function CustomerIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className={className} aria-hidden="true">
+      <circle cx="9" cy="6.5" r="2.7" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M3.5 14.5c.6-3 2.5-4.5 5.5-4.5s4.9 1.5 5.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function MailIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className={className} aria-hidden="true">
+      <rect x="2.5" y="4.5" width="13" height="9" rx="1.3" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M2.5 5.5l6.5 4.5 6.5-4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function RegisterIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className={className} aria-hidden="true">
+      <path d="M4 6.5h10v8H4z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M6.5 6.5V5a2.5 2.5 0 0 1 5 0v1.5" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+export function StockBoxIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className={className} aria-hidden="true">
+      <path d="M3.5 6.5h11v8h-11z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M3.5 6.5l1.8-2.7h7.4l1.8 2.7" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M6.3 9.8l1.4 1.4L11 7.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function ChartIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className={className} aria-hidden="true">
+      <path d="M3.5 14.5V8M9 14.5V3.5M14.5 14.5v-5M16 14.5h-14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function CalendarCheckIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className={className} aria-hidden="true">
+      <rect x="2.5" y="3.5" width="13" height="12" rx="1.3" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M5.5 2v3M12.5 2v3M2.5 7h13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M6 11l1.8 1.8L12 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function ClipboardCheckIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className={className} aria-hidden="true">
+      <rect x="4" y="2.8" width="10" height="12.5" rx="1.3" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M6.5 6h5M6.5 9.5l1.8 1.8L12 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function LaptopIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className={className} aria-hidden="true">
+      <rect x="2.5" y="3.5" width="13" height="8" rx="1.3" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M1 15h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function GlobeIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className={className} aria-hidden="true">
+      <circle cx="9" cy="9" r="6.5" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M2.5 9h13M9 2.5c1.8 1.8 1.8 11.2 0 13M9 2.5c-1.8 1.8-1.8 11.2 0 13" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+export function LayersIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className={className} aria-hidden="true">
+      <path d="M9 2.5l6.5 3.2-6.5 3.2-6.5-3.2L9 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M2.5 9l6.5 3.2L15.5 9M2.5 12l6.5 3.2 6.5-3.2" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 /* WhatsApp is a recognizable brand mark, not a generic UI glyph, so — like
    PlayIcon above — it's filled rather than drawn in this file's usual single
    stroke weight; a stroke-only outline wouldn't read as "WhatsApp" to anyone. */

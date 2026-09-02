@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 200" role="img" aria-labelledby="04-smart-stock-expiry-title 04-smart-stock-expiry-desc" preserveAspectRatio="xMidYMid meet">
+  <title id="04-smart-stock-expiry-title">Stock that tracks itself, including expiry</title><desc id="04-smart-stock-expiry-desc">Inventory products update automatically while an expiry calendar stays visible.</desc>
+  <style>
+  .line{fill:none;stroke:#0D9488;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+  .thin{fill:none;stroke:#5EEAD4;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+  .dark{fill:none;stroke:#334155;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+  .soft{fill:#CCFBF1}.soft2{fill:#F0FDFA}.teal{fill:#0D9488}.mint{fill:#5EEAD4}
+  .blue{fill:#3B82F6}.amber{fill:#F59E0B}.slate{fill:#64748B}.white{fill:#fff}
+  .float{animation:float 4s ease-in-out infinite}.float2{animation:float 4s ease-in-out -2s infinite}
+  .pulse{transform-box:fill-box;transform-origin:center;animation:pulse 3s ease-in-out infinite}
+  .draw{stroke-dasharray:240;animation:draw 6s ease-in-out infinite}
+  .slide{animation:slide 5s ease-in-out infinite}.slide2{animation:slide2 5s ease-in-out infinite}
+  .blink{animation:blink 3s ease-in-out infinite}.spin{transform-box:fill-box;transform-origin:center;animation:spin 9s linear infinite}
+  @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+  @keyframes pulse{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.12);opacity:1}}
+  @keyframes draw{0%,15%{stroke-dashoffset:240}55%,85%{stroke-dashoffset:0}100%{stroke-dashoffset:-240}}
+  @keyframes slide{0%,100%{transform:translateX(0)}50%{transform:translateX(18px)}}
+  @keyframes slide2{0%,100%{transform:translateX(0)}50%{transform:translateX(-18px)}}
+  @keyframes blink{0%,100%{opacity:.35}50%{opacity:1}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+  <circle class="soft2" cx="74" cy="44" r="7"/><circle class="soft2" cx="526" cy="157" r="10"/>
+  <g class="float2"><rect class="white dark" x="146" y="55" width="92" height="97" rx="14"/><path class="soft" d="M164 38h55v22h-55z"/><path class="line" d="M163 90h58M174 111h36"/><circle class="amber pulse" cx="220" cy="55" r="9"/></g>
+      <g class="slide"><rect class="soft" x="260" y="77" width="76" height="76" rx="14"/><path class="line" d="M275 100h46M275 116h34M275 132h22"/></g>
+      <g class="float"><rect class="white dark" x="367" y="48" width="91" height="98" rx="16"/><path class="teal" d="M367 70h91v17h-91z"/><path class="dark" d="M389 38v22M436 38v22"/><circle class="amber blink" cx="434" cy="119" r="10"/><path class="white" d="m429 119 4 4 7-9"/></g><path class="thin draw" d="M233 93c17-20 31-20 49-3M336 113c14-22 23-24 32-23"/>
+</svg>

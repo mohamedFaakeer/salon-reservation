@@ -2,6 +2,7 @@ import { Comparison } from "../components/comparison";
 import { ContactSection } from "../components/contact-section";
 import { DemoBooking } from "../components/demo-booking";
 import { Faq } from "../components/faq";
+import { FeaturesSection } from "../components/features-section";
 import { FloatingWhatsapp } from "../components/floating-whatsapp";
 import { FoundingBanner } from "../components/founding-banner";
 import { Hero } from "../components/hero";
@@ -109,6 +110,7 @@ export default function LandingPage() {
       <Hero />
       <FoundingBanner />
       <Comparison />
+      <FeaturesSection />
       <WhoCanPartner />
       <HowItWorks id="business-how" heading="How a salon actually goes live." steps={BUSINESS_STEPS} />
       <VideoSection
