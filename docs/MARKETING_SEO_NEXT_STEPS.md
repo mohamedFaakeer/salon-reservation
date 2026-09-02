@@ -1,8 +1,10 @@
-# apps/marketing SEO — Pending Manual Actions
+# apps/marketing SEO — Manual Actions (Completed)
 
-Tracks the follow-up steps from the SEO pass (`docs/DECISIONS.md` #61) that only you can
-do — dashboard/DNS actions outside the codebase. Delete each item (or this file, once
-everything's checked off) as it's completed.
+Tracked the follow-up steps from the SEO pass (`docs/DECISIONS.md` #61) that only the
+user could do — dashboard/DNS actions outside the codebase. All three are done as of
+2026-09-03; kept as a record of what was set up (env var values, GA4 property, Search
+Console verification) rather than deleted, since that's useful reference if anyone
+needs to touch this configuration again.
 
 ## 1. Fix the production Calendly link — ✅ Done (2026-09-03)
 
@@ -20,24 +22,38 @@ Verified two independent ways:
 
 Realtime and DebugView were still showing 0 users right after setup — that's normal
 backend-processing lag for a freshly created GA4 account, not a setup problem (Google's
-own detector already confirms the tag is live and correct). Should populate within a
-few hours.
+own detector already confirms the tag is live and correct).
 
 - [ ] Once Realtime shows real traffic, click through each CTA (demo, WhatsApp, phone,
       contact form) and confirm each event appears exactly once — no duplicates
 - [ ] In GA4 (Admin → Events), mark `demo_click`, `demo_booked`, `whatsapp_click`,
       `phone_click`, `contact_form_submit` as key events
 
-## 3. Google Search Console
+(Left as open checkboxes deliberately — they depend on Realtime actually populating,
+which wasn't confirmed yet as of this file's last update. Everything required to make
+that happen is done.)
 
-- [ ] Open [Search Console](https://search.google.com/search-console), add a **Domain**
-      property for `zelyraone.lk`
-- [ ] Copy the DNS TXT verification record it gives you
-- [ ] Add that TXT record at your domain's DNS provider
-- [ ] Verify the property once DNS propagates
-- [ ] Submit `https://zelyraone.lk/sitemap.xml` under Sitemaps
-- [ ] Use URL Inspection on `https://zelyraone.lk/` and
-      `https://zelyraone.lk/features` — Test Live URL, then Request Indexing for both
+## 3. Google Search Console — ✅ Done (2026-09-03)
+
+`zelyraone.lk` added as a **Domain** property and verified via DNS TXT record.
+`sitemap.xml` submitted (showed "Couldn't fetch" immediately after submission — checked
+the file directly: HTTP 200, correct `Content-Type: application/xml`, correct content;
+also checked Cloudflare's Security Insights and confirmed Bot Fight Mode is **not**
+enabled, ruling out Cloudflare interference. This was the same first-fetch processing
+lag pattern seen with GA4 above, not a misconfiguration — expected to resolve to
+"Success" once Google's crawler makes its first pass).
+
+Two unrelated things Cloudflare's Security Insights surfaced while checking this,
+neither blocking anything today:
+- **Unproxied CNAME records** for `book.zelyraone.lk` and `business.zelyraone.lk`
+  (DNS-only, not proxied through Cloudflare) — fine while those subdomains aren't live
+  yet (per `PRODUCT.md`), but exposes the origin IP directly once something's listening
+  there. Worth proxying before either goes live.
+- Cloudflare auto-injects `Disallow` rules for AI crawlers (`GPTBot`, `ClaudeBot`,
+  `Google-Extended`, etc.) into the served `robots.txt` at the zone level — not
+  something in this codebase, and doesn't affect regular Googlebot/Search indexing
+  (`Google-Extended` is Google's separate AI-training crawler). Only relevant if there's
+  ever a reason to want AI systems referencing the site.
 
 ## Also flagged, not urgent
 
