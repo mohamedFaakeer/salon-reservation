@@ -84,15 +84,24 @@ export const metadata: Metadata = {
     siteName: SITE_NAME,
     type: "website",
     locale: "en_LK",
-    // No og:image yet — no asset on the site is a correct 1200x630 social
-    // card (see structured-data/layout audit). A real one is a follow-up;
-    // omitting is safer than shipping a wrong-aspect-ratio image.
+    // Real, on-brand card (public/og-image.png) — designed via the
+    // banner-design skill, mocked up and approved before export. Exact
+    // 1200x630 per the OG spec, so no cropping on any platform.
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "ZelyraOne — Salon Management Software Built for Sri Lankan Salons",
+      },
+    ],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "Salon Management Software Sri Lanka | ZelyraOne",
     description:
       "Manage appointments, customers, staff, POS, payments, salaries, incentives, sales and reports with ZelyraOne. Built for Sri Lankan salons.",
+    images: ["/og-image.png"],
   },
 };
 
