@@ -5,37 +5,43 @@ name: Keep Render free services warm (business hours only)
 # cold start takes 30-60s — bad in front of a paying merchant. The free-tier
 # fix (Render's Starter plan, ~$7/mo/service) is deferred until the business
 # reaches 4 total clients (a deliberate, budget-driven decision, not an
-# oversight) — until then this workflow pings the API and Admin services
-# often enough that they never sleep, but ONLY during the hours someone is
+# oversight) — until then this workflow pings API, Admin and Web often
+# enough that none of them sleep, but ONLY during the hours someone is
 # actually likely to be using them.
 #
 # This is deliberately NOT a 24/7 ping. Render's 750 free instance-hours/
 # month are shared across the whole workspace, not per service — pinging
 # all day, every day would burn roughly 3x that budget and get every free
 # service suspended for the rest of the month around day 10, which is a
-# worse outcome than the cold-starts this exists to avoid. Pinging API +
-# Admin every 10 minutes across a ~12-hour window (9 AM-9 PM Colombo time)
-# costs ~720 of the 750 free hours/month, leaving headroom for occasional
-# after-hours access. Web (customer booking) is deliberately NOT pinged
-# here yet — with one client, customer traffic is low and bursty, so it's
-# the lowest-priority slot in the hours budget. Add it to this schedule
-# later (splitting to ~8h/day across all three) if customer-facing
-# cold-starts become an actual complaint.
+# worse outcome than the cold-starts this exists to avoid.
+#
+# Web (customer booking) used to be excluded here, on the reasoning that
+# with one client, customer traffic was low and bursty enough to be the
+# lowest-priority slot in the hours budget — with API + Admin alone taking
+# a 12h/day window each (2 x 12h x 30 days = 720 of the 750 free hours),
+# there was no room left to add Web at the same cadence without tripping
+# the shared cap. Customer-facing cold starts became a real complaint, which
+# is exactly the trigger this file originally named for revisiting that
+# call — so all three services now share an 8h/day window instead of API +
+# Admin getting 12h each: 3 x 8h x 30 days = 720 hours/month, the same total
+# as before, just spread across three services instead of two, with the
+# same ~30h/month buffer for occasional after-hours access.
 #
 # Adjust the cron below if the actual client's real operating hours differ
-# from the 9 AM-9 PM assumption. Cron is always UTC; Colombo is UTC+5:30,
-# so 9:00-21:00 Colombo = 03:30-15:30 UTC, expressed below in three pieces
-# to land on the exact half-hour boundary.
+# from the 10 AM-6 PM assumption (centered inside the salon's likely 9 AM-9
+# PM opening hours). Cron is always UTC; Colombo is UTC+5:30, so 10:00-18:00
+# Colombo = 04:30-12:30 UTC, expressed below in three pieces to land on the
+# exact half-hour boundary.
 #
-# DELETE THIS FILE once the business reaches 4 total clients and the API +
-# Admin services move to Render's Starter tier — that's the plan's own
-# stated migration trigger, not a permanent fixture.
+# DELETE THIS FILE once the business reaches 4 total clients and the
+# services move to Render's Starter tier — that's the plan's own stated
+# migration trigger, not a permanent fixture.
 
 on:
   schedule:
-    - cron: "30,40,50 3 * * *"   # 09:00-09:50 Colombo
-    - cron: "*/10 4-14 * * *"    # 10:00-20:50 Colombo
-    - cron: "0,10,20,30 15 * * *" # 21:00-21:30 Colombo
+    - cron: "30,40,50 4 * * *"    # 10:00-10:50 Colombo
+    - cron: "*/10 5-11 * * *"     # 10:30-17:20 Colombo
+    - cron: "0,10,20,30 12 * * *" # 17:30-18:00 Colombo
   workflow_dispatch: {} # allows a manual "Run workflow" click to test it
 
 jobs:
@@ -47,3 +53,10 @@ jobs:
 
       - name: Ping Admin app
         run: curl -fsS --max-time 20 "https://salon-admin-e7sf.onrender.com/login" || true
+
+      # A real public salon page, not "/" — same idea as Admin's /login above:
+      # prove the customer-facing path actually renders, not just that the
+      # process answers. "eagle" is the live production tenant slug (see
+      # `npm run smoke` in package.json), not a placeholder.
+      - name: Ping Web app (customer booking)
+        run: curl -fsS --max-time 20 "https://salon-web-qmpb.onrender.com/salon/eagle" || true
