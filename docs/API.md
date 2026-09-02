@@ -273,6 +273,21 @@ resolves against their own linked `staff` row server-side; any `staffId` on a
 `staff.incentivePlanId` (nullable, `SET NULL` on plan deletion) assigns a plan
 via `PATCH /staff/:id`, validated against the caller's own tenant.
 
+### Payroll (Phase 1 — foundation)
+
+`MANAGE_PAYROLL`, OWNER/MANAGER only — same "this is payroll" precedent as
+Incentives (DECISIONS.md §62). Phase 1 only covers employment/payroll
+profiles and the tenant's pay calendar; there is no run, payslip, or
+statutory calculation yet — see DECISIONS.md §62 for the phased build.
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| GET | `/payroll/employment` | MANAGE_PAYROLL | Every staff member's currently (or next) open employment profile. |
+| GET | `/payroll/employment/:staffId` | MANAGE_PAYROLL | One staff member's full version history, newest first. |
+| POST | `/payroll/employment/:staffId` | MANAGE_PAYROLL | `{ payFrequency, baseRateCents, effectiveFrom }`. Creates the opening version, or — if one is already open — supersedes it: the old version is closed the day before the new one starts, never edited in place. `400 INVALID_EFFECTIVE_DATE` if `effectiveFrom` doesn't come after the currently open version's own start. |
+| GET | `/payroll/pay-calendars/monthly` | MANAGE_PAYROLL | The tenant's monthly pay-period cycle (`monthlyAnchorDay`), defaulting to an ordinary calendar month if never configured. |
+| PUT | `/payroll/pay-calendars/monthly` | MANAGE_PAYROLL | `{ monthlyAnchorDay? }` — 1-28. |
+
 ### Ratings (public)
 
 | Method | Path | Roles | Description |
@@ -290,10 +305,10 @@ via `PATCH /staff/:id`, validated against the caller's own tenant.
 | PATCH | `/super-admin/tenants/:id/entitlements` | SUPER_ADMIN | Whole-replace `{ tier, moduleOverrides?, reportPanelOverrides?, limitOverrides? }` — see DECISIONS.md §34 |
 | PATCH | `/super-admin/tenants/:id/customer-visibility` | SUPER_ADMIN | Activate/deactivate a salon's customer-facing discovery/booking `{ customerBookingEnabled }` — never affects staff/admin login (that's `status` alone); see DECISIONS.md §48 |
 
-Attendance, Incentives, Reports, the audit log and Invoices are each gated by
-the calling tenant's entitlements (`@RequiresModule`) in addition to their
-existing role permission below — a 403 `MODULE_NOT_ENABLED` means the salon's
-plan doesn't include it, not that the caller lacks the role.
+Attendance, Incentives, Payroll, Reports, the audit log and Invoices are each
+gated by the calling tenant's entitlements (`@RequiresModule`) in addition to
+their existing role permission below — a 403 `MODULE_NOT_ENABLED` means the
+salon's plan doesn't include it, not that the caller lacks the role.
 
 ---
 
@@ -314,6 +329,7 @@ plan doesn't include it, not that the caller lacks the role.
 | View attendance / decide corrections | — | ✅ | ✅ | — | own history only |
 | Configure incentive plans / run payouts | — | ✅ | ✅ | — | — |
 | View own incentive earnings | — | — | — | — | ✅ |
+| Configure employment/payroll profiles + pay calendars | — | ✅ | ✅ | — | — |
 
 All checks enforced server-side (`RolesGuard` + `@Permissions`). Frontend hiding is not security.
 

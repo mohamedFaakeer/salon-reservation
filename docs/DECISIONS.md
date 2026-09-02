@@ -2923,3 +2923,99 @@ Next version's static-exports guide, found by reading the actual build
 error), title/canonical/meta description/H1/`<main>` all appear exactly
 once, and zero accidental `noindex`.
 
+## 62. Payroll module — Phase 0 discovery + Phase 1 foundation (2026-09-03)
+
+User supplied a full Sri Lankan payroll implementation spec and asked for a
+new Payroll module in `apps/admin`, with no code until findings, questions,
+and a plan were approved, mockups shown, and a final build approved. Root
+`CLAUDE.md` §1.11 and `docs/PRD.md` §5 both explicitly list "payroll" as out
+of MVP scope ("do not build unless explicitly approved") — this session is
+that explicit approval, recorded here rather than silently overridden.
+
+**Repository audit surfaced a fact that reshaped the whole plan: a real
+commission/payout engine already exists.** The marketing site's copy about
+"set a commission plan, run a payout" isn't aspirational — it's the
+Incentives module (§33), and its own code comment already says plainly
+*"commission plans and payouts are payroll."* Building a second, competing
+compensation engine would have violated this project's own single-source-
+of-truth rule. Decided: Incentives folds into a new unified Payroll domain
+(moved, not deleted or rewritten — the commission math itself is untouched)
+rather than Payroll merely wrapping it read-only. That fold-in is Phase 3,
+not this phase.
+
+**Scope decisions (asked, not assumed):**
+1. v1 targets the full statutory spec, not a narrower wage-tracking cut —
+   but the EPF/ETF/APIT engine ships **flagged off by default** until a
+   qualified Sri Lankan payroll/accounting professional signs off; the user
+   doesn't have that review lined up yet. The spec's own Definition of Done
+   requires that sign-off before production use of statutory figures.
+2. Both MONTHLY and DAILY pay frequencies are required from Phase 1, not
+   DAILY bolted on later — daily-paid staff are first-class per the spec's
+   own insistence.
+3. A new effective-dated `Employment` entity, linked to `Staff` rather than
+   adding columns to it — `Staff` is identity (name, specialty, calendar
+   color) read throughout booking/attendance/incentives; none of that code
+   needs to know how someone is paid, and the spec's own "never overwrite a
+   salary change" rule needs real version history a mutable `Staff` row
+   can't give it.
+
+**Statutory research, sourced, before any daily-pay architecture was
+chosen** (per the spec's own §31 instruction to use official sources, not
+memory): EPF (8% employee / 12% employer) and ETF (3% employer-only) apply
+to every employee from day one regardless of pay frequency — confirmed via
+the [Department of Labour's EPF division](https://labourdept.gov.lk/epf-division-new/)
+and [EPF's own membership page](https://epf.lk/?p=203) — and both are flat
+percentages, safe to compute per individual payout. APIT is different: the
+[IRD's APIT Tax Tables page](https://www.ird.gov.lk/en/publications/sitepages/apit_tax_tables.aspx?menuid=1502)
+publishes exactly one table for regular primary-employment income, and it
+is explicitly a **monthly** table — there is no officially published daily,
+weekly, or fortnightly APIT table. Decided: EPF/ETF are computed and
+reserved on every payout (daily or monthly); APIT is computed only once, at
+month-end statutory close, regardless of how often someone was actually
+paid that month. This is a real technical reason, not a UX preference — but
+still not a substitute for professional sign-off before it handles real
+money (Phase 4, still flagged off per decision 1 above).
+
+**Phase 1 (this entry's actual code change) — foundation only, backend, no
+UI.** Per the project's own UI workflow (impeccable mockup-then-approval),
+no screen work happens without a shown-and-approved mockup first, and the
+approved plan itself scoped Phase 1's UI down to "no more than strictly
+needed" — so this phase is deliberately backend-only:
+
+- `Employment` entity (`apps/api/src/entities/employment.entity.ts`,
+  migration `1750002100000-PayrollFoundation.ts`): effective-dated pay
+  frequency + base rate, versioned by closing the currently open row
+  (`effectiveTo IS NULL`, enforced unique per staff member) and inserting a
+  new one — the same supersede-not-edit shape `incentive_payout` already
+  uses. `EmploymentService.upsert` decides create-vs-supersede from whether
+  an open row already exists, and rejects an `effectiveFrom` that doesn't
+  come after the current version's own start (a genuine backdated
+  correction is a later phase's problem, not a silent rewrite of history).
+- `PayCalendar` entity: one optional row per tenant configuring the monthly
+  pay-period cycle's start day; a tenant with none configured gets the
+  ordinary calendar-month default in code, the same "resolve with a tier
+  default" shape `resolveModules`/`resolveLimits` already use for
+  entitlements. `PayPeriod` is deliberately **not** a persisted table —
+  given a calendar config and a date, the period is pure derived data
+  (`payroll.domain.ts#resolvePayPeriod`), the same "computed at read time,
+  never materialized" reasoning `AttendanceDayStatus` already follows.
+- New `MANAGE_PAYROLL` permission (OWNER/MANAGER only) and `payroll`
+  `ModuleKey` (tier-gated PRO-only, same as `incentives`), mirroring the
+  existing Incentives precedent exactly. Every write goes through
+  `AuditService.record` (`PAYROLL_EMPLOYMENT_CREATED`/`_SUPERSEDED`,
+  `PAYROLL_CALENDAR_UPDATED`).
+- `docs/API.md`, `docs/DATABASE.md` updated with the new routes/tables.
+  `CLAUDE.md`/`docs/PRD.md`'s "out of scope" lines still need their own
+  one-line update to reflect this decision — deliberately deferred to when
+  Phase 1 is demoed and confirmed stable, per this project's "commit at the
+  end of a completed phase" convention, not bundled into this entry.
+
+Phases 2–7 (attendance-linked base pay, the Incentives fold-in, the
+statutory engine, payslips/payments, reports/accounting, hardening) each
+get their own short plan and, where UI is involved, their own approved
+mockup before real components are written — see the approved plan for the
+full phase breakdown and the remaining open questions (bank formats,
+accounting integration, payslip languages, historical-data migration,
+record retention) that aren't blocking Phase 1 but need answers before
+their own phase starts.
+

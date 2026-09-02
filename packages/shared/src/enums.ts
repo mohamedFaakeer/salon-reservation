@@ -278,6 +278,17 @@ export enum RetailReturnDisposition {
 }
 
 /**
+ * How often an employment record is paid — the two frequencies confirmed for
+ * v1 of the Payroll module (DECISIONS.md §62). Monthly-salaried and
+ * daily-waged staff are both first-class from the start, not one bolted onto
+ * the other later, per the product decision behind that entry.
+ */
+export enum PayFrequency {
+  MONTHLY = "MONTHLY",
+  DAILY = "DAILY",
+}
+
+/**
  * Sri Lanka's 9 administrative provinces. A fixed, real-world geographic
  * list — unlike `Customer.title`/`clientSource`, which are tenant-editable
  * free text, this has no per-tenant customization mechanism, the same

@@ -41,4 +41,5 @@ export * from "./dto/inventory.dto";
 export * from "./dto/retail-sale.dto";
 export * from "./dto/retail-return.dto";
 export * from "./dto/monitoring.dto";
+export * from "./dto/payroll.dto";
 export * from "./errors/api-error";

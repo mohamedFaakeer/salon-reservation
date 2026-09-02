@@ -119,4 +119,10 @@ export enum Permission {
    * RESET_TEAM_MEMBER_PASSWORD carved out of MANAGE_TEAM.
    */
   MANAGE_CUSTOMER_TAGS = "MANAGE_CUSTOMER_TAGS",
+  /**
+   * Configure employment/payroll profiles, pay calendars, and (in later
+   * phases) run payroll and view any staff member's payslip. OWNER and
+   * MANAGER only, same precedent as MANAGE_INCENTIVES — this is payroll.
+   */
+  MANAGE_PAYROLL = "MANAGE_PAYROLL",
 }

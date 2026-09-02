@@ -25,6 +25,7 @@ import { AppointmentModule } from "./appointment/appointment.module";
 import { InquiryModule } from "./inquiry/inquiry.module";
 import { AttendanceModule } from "./attendance/attendance.module";
 import { IncentiveModule } from "./incentive/incentive.module";
+import { PayrollModule } from "./payroll/payroll.module";
 import { ReportsModule } from "./reports/reports.module";
 import { InvoiceModule } from "./invoice/invoice.module";
 import { GiftCardModule } from "./gift-card/gift-card.module";
@@ -94,6 +95,7 @@ import { RequestLoggingMiddleware } from "./common/middleware/request-logging.mi
     InquiryModule,
     AttendanceModule,
     IncentiveModule,
+    PayrollModule,
     ReportsModule,
     InvoiceModule,
     GiftCardModule,

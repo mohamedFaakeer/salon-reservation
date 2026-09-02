@@ -38,6 +38,12 @@ export interface ModuleOverrides {
    * customer preferences, and quota management.
    */
   notifications?: boolean;
+  /**
+   * Employment/payroll profiles, pay calendars, and (in later phases) payroll
+   * runs and payslips. Gated the same way `incentives` is — a new, legally
+   * sensitive module a Lite tenant shouldn't get by default (DECISIONS.md §62).
+   */
+  payroll?: boolean;
 }
 
 export type ModuleKey = keyof ModuleOverrides;
@@ -49,6 +55,7 @@ export const ALL_MODULES: ModuleKey[] = [
   "invoices",
   "inventory",
   "notifications",
+  "payroll",
 ];
 
 /** The seven panels the Reports page is actually built from — see reports.service.ts. */
@@ -125,6 +132,7 @@ const PRO_MODULES: Required<ModuleOverrides> = {
   invoices: true,
   inventory: true,
   notifications: true,
+  payroll: true,
 };
 
 const LITE_MODULES: Required<ModuleOverrides> = {
@@ -135,6 +143,7 @@ const LITE_MODULES: Required<ModuleOverrides> = {
   invoices: false,
   inventory: false,
   notifications: false,
+  payroll: false,
 };
 
 const PRO_REPORT_PANELS: Required<ReportPanelOverrides> = {

@@ -297,6 +297,39 @@ uses implies nothing about money.
 `payment.packageRedemptionId` (§2.5) is the redemption trail, same
 no-separate-ledger-table reasoning as gift cards.
 
+### 2.15 Payroll (Phase 1 — foundation)
+
+**employment** — `id (uuid PK)`, `tenantId (FK, CASCADE)`, `staffId (FK,
+CASCADE)`, `payFrequency (varchar 10 — MONTHLY|DAILY)`, `baseRateCents (int,
+>= 0 — a monthly salary or a daily wage, depending on `payFrequency`)`,
+`effectiveFrom (date)`, `effectiveTo (date, nullable — `NULL` means this is
+the version currently in force, or about to be)`, `supersedesEmploymentId
+(uuid, nullable, SET NULL — the version this one replaced, kept for a
+visible history)`, `createdBy (FK user)`, `createdAt`.
+
+How a staff member is paid, effective-dated: never edited in place, only
+superseded, the same rule `incentive_payout` already follows for a payout
+figure (DECISIONS.md §62). **Unique `(staffId) WHERE effectiveTo IS NULL`**
+is what makes that real — at most one row per staff member may be open at a
+time, so the version chain for one person always tiles the calendar with no
+gap and no overlap; the row that applied on any date, past or future, is
+found with `effectiveFrom <= date <= (effectiveTo ?? infinity)`.
+`CHK_employment_range_valid` requires `effectiveTo >= effectiveFrom`
+whenever it's set. EPF/ETF eligibility, bank details, and every other field
+the full payroll spec eventually needs are deliberately not columns yet —
+each later phase (statutory engine, payments) adds what it needs as a new
+version, not a retrofit of this one.
+
+**pay_calendar** — `id (uuid PK)`, `tenantId (FK, CASCADE, UNIQUE — one row
+per tenant)`, `monthlyAnchorDay (int, 1-28, default 1)`, `createdAt`,
+`updatedAt`. The tenant's monthly pay-period cycle — day 1 is an ordinary
+calendar month, day 21 is a 21st-to-20th cycle. A tenant with no row
+configured gets the calendar-month default in code
+(`PayCalendarService.resolve`), the same "resolve with a tier default"
+shape `resolveModules`/`resolveLimits` already use for entitlements, so a
+row only exists for a tenant that has actually customised it. Daily pay
+periods need no calendar at all — a day is a day.
+
 ---
 
 ## 3. Concurrency Model — Double-Booking Protection

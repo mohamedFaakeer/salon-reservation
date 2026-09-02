@@ -13,6 +13,7 @@ const MODULE_LABELS: Record<ModuleKey, string> = {
   invoices: "Invoices",
   inventory: "Retail inventory",
   notifications: "Notifications",
+  payroll: "Payroll",
 };
 
 /**

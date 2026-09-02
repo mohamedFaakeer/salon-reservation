@@ -14,12 +14,12 @@ function entitlements(overrides: Partial<TenantEntitlements> = {}): TenantEntitl
 describe("resolveModules", () => {
   it("PRO defaults every module on", () => {
     const modules = resolveModules(entitlements({ tier: "PRO" }));
-    expect(modules).toEqual({ attendance: true, incentives: true, reports: true, auditLog: true, invoices: true, inventory: true, notifications: true });
+    expect(modules).toEqual({ attendance: true, incentives: true, reports: true, auditLog: true, invoices: true, inventory: true, notifications: true, payroll: true });
   });
 
   it("LITE defaults every module off", () => {
     const modules = resolveModules(entitlements({ tier: "LITE" }));
-    expect(modules).toEqual({ attendance: false, incentives: false, reports: false, auditLog: false, invoices: false, inventory: false, notifications: false });
+    expect(modules).toEqual({ attendance: false, incentives: false, reports: false, auditLog: false, invoices: false, inventory: false, notifications: false, payroll: false });
   });
 
   it("an explicit override wins over the tier default in either direction", () => {
