@@ -20,9 +20,7 @@ export function Comparison() {
     <section id="comparison" className="py-16 sm:py-20">
       <div className="mx-auto max-w-[1120px] px-6">
         <Reveal>
-          <h2 className="text-[clamp(24px,3.4vw,32px)] font-bold">
-            The old way runs on memory. ZelyraOne runs on one engine.
-          </h2>
+          <h2 className="text-[clamp(24px,3.4vw,32px)] font-bold">ZelyraOne runs on one engine.</h2>
           <p className="mt-3 max-w-[62ch] text-[var(--slate)]">
             Every channel your customers already use — phone, WhatsApp, walk-in, online — writes to the same
             calendar, enforced by the database itself.
