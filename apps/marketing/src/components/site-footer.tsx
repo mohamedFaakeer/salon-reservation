@@ -32,7 +32,12 @@ export function SiteFooter() {
                 </a>
               </li>
               <li>
-                <a href="#book-demo" className="text-[var(--footer-ink)] hover:text-white">
+                <a
+                  href="#book-demo"
+                  className="text-[var(--footer-ink)] hover:text-white"
+                  data-analytics="demo_click"
+                  data-cta-location="footer"
+                >
                   Book a demo
                 </a>
               </li>

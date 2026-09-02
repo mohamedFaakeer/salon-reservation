@@ -24,7 +24,12 @@ export function SiteNav() {
             </a>
           </div>
 
-          <a href="#book-demo" className="btn btn-primary px-5 py-2.5 text-sm">
+          <a
+            href="#book-demo"
+            className="btn btn-primary px-5 py-2.5 text-sm"
+            data-analytics="demo_click"
+            data-cta-location="navigation"
+          >
             Book a demo
           </a>
         </div>

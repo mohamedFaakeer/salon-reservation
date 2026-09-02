@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
+import { trackEvent } from "../lib/analytics";
 import { Reveal } from "./reveal";
 import { PhoneIcon, WhatsAppIcon } from "./icons";
 import { WHATSAPP_URL } from "./floating-whatsapp";
@@ -48,6 +49,13 @@ export function ContactSection({ id }: { id: string }) {
   const [company, setCompany] = useState(""); // honeypot — real visitors never see or fill this
   const [errors, setErrors] = useState<FieldErrors>({});
   const [status, setStatus] = useState<Status>("idle");
+  const hasStartedRef = useRef(false); // contact_form_start fires once, on first real field focus — not on page load.
+
+  function handleFieldFocus() {
+    if (hasStartedRef.current) return;
+    hasStartedRef.current = true;
+    trackEvent({ name: "contact_form_start" });
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -81,6 +89,7 @@ export function ContactSection({ id }: { id: string }) {
         setName("");
         setPhone("");
         setInquiry("");
+        trackEvent({ name: "contact_form_submit" }); // only the true-success path — never on validation or network failure.
       } else {
         setStatus("error");
       }
@@ -144,6 +153,7 @@ export function ContactSection({ id }: { id: string }) {
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
+                    onFocus={handleFieldFocus}
                     placeholder="Your name"
                     aria-invalid={!!errors.name}
                     aria-describedby={errors.name ? "contact-name-error" : undefined}
@@ -167,6 +177,7 @@ export function ContactSection({ id }: { id: string }) {
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
+                    onFocus={handleFieldFocus}
                     placeholder="07XX XXX XXX"
                     aria-invalid={!!errors.phone}
                     aria-describedby={errors.phone ? "contact-phone-error" : undefined}
@@ -189,6 +200,7 @@ export function ContactSection({ id }: { id: string }) {
                     id="contact-inquiry"
                     value={inquiry}
                     onChange={(e) => setInquiry(e.target.value)}
+                    onFocus={handleFieldFocus}
                     placeholder="Describe your inquiry"
                     rows={4}
                     aria-invalid={!!errors.inquiry}
@@ -243,11 +255,19 @@ export function ContactSection({ id }: { id: string }) {
               <div>
                 <div className="text-xs font-semibold uppercase tracking-wide text-[var(--slate-soft)]">Call us</div>
                 <div className="mt-0.5 text-[14.5px] font-medium">
-                  <a href="tel:+94771932264" className="text-[var(--navy)] no-underline hover:text-[var(--teal-dark)]">
+                  <a
+                    href="tel:+94771932264"
+                    className="text-[var(--navy)] no-underline hover:text-[var(--teal-dark)]"
+                    data-analytics="phone_click"
+                  >
                     077 193 2264
                   </a>
                   <span className="mx-1.5 text-[var(--border)]">/</span>
-                  <a href="tel:+94725630734" className="text-[var(--navy)] no-underline hover:text-[var(--teal-dark)]">
+                  <a
+                    href="tel:+94725630734"
+                    className="text-[var(--navy)] no-underline hover:text-[var(--teal-dark)]"
+                    data-analytics="phone_click"
+                  >
                     072 563 0734
                   </a>
                 </div>
@@ -266,6 +286,8 @@ export function ContactSection({ id }: { id: string }) {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-[var(--navy)] no-underline hover:text-[var(--teal-dark)]"
+                    data-analytics="whatsapp_click"
+                    data-cta-location="contact_section"
                   >
                     072 563 0734
                   </a>

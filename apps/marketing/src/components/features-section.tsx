@@ -162,7 +162,13 @@ function Tile({ tile, duplicate = false }: { tile: FeatureTile; duplicate?: bool
       </div>
       <h4>{tile.title}</h4>
       <p>{tile.body}</p>
-      <a href="#book-demo" className="learn-more" tabIndex={duplicate ? -1 : undefined}>
+      <a
+        href="#book-demo"
+        className="learn-more"
+        tabIndex={duplicate ? -1 : undefined}
+        data-analytics="demo_click"
+        data-cta-location="features_section"
+      >
         Learn more
       </a>
     </div>

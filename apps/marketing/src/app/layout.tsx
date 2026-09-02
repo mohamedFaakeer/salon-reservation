@@ -1,7 +1,17 @@
 import type { Metadata } from "next";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import { DM_Sans, Fira_Code, Plus_Jakarta_Sans } from "next/font/google";
+import { AnalyticsListener } from "../components/analytics-listener";
 import { IntroLoader } from "../components/intro-loader";
+import { StructuredData } from "../components/structured-data";
+import { SITE_NAME, SITE_URL } from "../lib/site-config";
 import "./globals.css";
+
+// Unset until a real GA4 property exists — see the SEO report's "manual
+// actions" checklist for how to create one. No component renders at all
+// until this is set: no placeholder ID, no analytics call that silently
+// goes nowhere.
+const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 
 /**
  * Self-hosted via next/font, matching apps/web's convention — no
@@ -53,10 +63,37 @@ const PROVENANCE = `<!--
   specifies one mode. Full record: apps/marketing/DESIGN.md
 -->`;
 
+// Meta description intentionally says "30-minute demo" (not the SEO brief's
+// drafted "15-minute demo") — confirmed with the user that 30 minutes is the
+// site's actual, current demo length; every visible CTA already says the same.
+const DESCRIPTION =
+  "ZelyraOne is salon management software built for Sri Lankan salons. Manage appointments, customers, staff, POS, payments, salaries, incentives, sales and reports in one system. Book a 30-minute demo.";
+
 export const metadata: Metadata = {
-  title: "ZelyraOne — One engine for every booking",
-  description:
-    "ZelyraOne runs the walk-in, the phone call, the WhatsApp message, and the online booking through the same engine — so Colombo's salons, barbers, and wellness studios never double-book again.",
+  metadataBase: new URL(SITE_URL),
+  title: "Salon Management Software Sri Lanka | ZelyraOne",
+  description: DESCRIPTION,
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: "Salon Management Software Sri Lanka | ZelyraOne",
+    description:
+      "Manage appointments, customers, staff, POS, payments, salaries, incentives, sales and reports with ZelyraOne. Built for Sri Lankan salons.",
+    url: SITE_URL,
+    siteName: SITE_NAME,
+    type: "website",
+    locale: "en_LK",
+    // No og:image yet — no asset on the site is a correct 1200x630 social
+    // card (see structured-data/layout audit). A real one is a follow-up;
+    // omitting is safer than shipping a wrong-aspect-ratio image.
+  },
+  twitter: {
+    card: "summary",
+    title: "Salon Management Software Sri Lanka | ZelyraOne",
+    description:
+      "Manage appointments, customers, staff, POS, payments, salaries, incentives, sales and reports with ZelyraOne. Built for Sri Lankan salons.",
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -65,6 +102,13 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         {/* PROVENANCE is the hardcoded literal defined above — no runtime interpolation, not reachable by user input. */}
         <div hidden aria-hidden="true" dangerouslySetInnerHTML={{ __html: PROVENANCE }} />
+        <StructuredData />
+        {GA_MEASUREMENT_ID && (
+          <>
+            <GoogleAnalytics gaId={GA_MEASUREMENT_ID} />
+            <AnalyticsListener />
+          </>
+        )}
         <IntroLoader />
         {children}
       </body>

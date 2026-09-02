@@ -1,3 +1,7 @@
+"use client";
+
+import { useEffect } from "react";
+import { trackEvent } from "../lib/analytics";
 import { Reveal } from "./reveal";
 
 /**
@@ -10,11 +14,29 @@ import { Reveal } from "./reveal";
  * user set up their own Calendly link instead — both are free, hosted
  * scheduling providers; this embeds Calendly's plain iframe rather than
  * Cal.com's `?embed=true` pattern). Set NEXT_PUBLIC_CALENDLY_LINK to the
- * part of the URL after "calendly.com/" (e.g. "faakeermohamed/15min").
+ * part of the URL after "calendly.com/" (e.g. "faakeermohamed/30min" — the
+ * real demo length, confirmed with the user; every visible CTA says the same).
+ *
+ * "use client" only because demo_booked (SEO brief Task 17) needs it: a
+ * booked-call confirmation is a real, reliable signal Calendly's iframe
+ * embed posts to the parent window (`calendly.event_scheduled`) — not a
+ * guess, and not faked the way the brief explicitly warns against.
  */
 const CALENDLY_LINK = process.env.NEXT_PUBLIC_CALENDLY_LINK;
 
 export function DemoBooking() {
+  useEffect(() => {
+    if (!CALENDLY_LINK) return;
+    function handleMessage(e: MessageEvent) {
+      if (e.origin !== "https://calendly.com") return;
+      if (e.data?.event === "calendly.event_scheduled") {
+        trackEvent({ name: "demo_booked" });
+      }
+    }
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
   return (
     <section id="book-demo" className="border-t border-[var(--border)] bg-[var(--surface)] py-16 sm:py-20">
       <Reveal as="section" className="mx-auto max-w-[1120px] px-6">

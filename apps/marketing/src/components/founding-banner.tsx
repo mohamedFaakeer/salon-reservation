@@ -26,7 +26,12 @@ export function FoundingBanner() {
               partners lock in founding-partner terms before general pricing opens — no card required to talk.
             </p>
           </div>
-          <a href="#book-demo" className="btn btn-navy px-5 py-2.5 text-sm">
+          <a
+            href="#book-demo"
+            className="btn btn-navy px-5 py-2.5 text-sm"
+            data-analytics="demo_click"
+            data-cta-location="founding_banner"
+          >
             Claim a founding spot with special discount
           </a>
         </div>

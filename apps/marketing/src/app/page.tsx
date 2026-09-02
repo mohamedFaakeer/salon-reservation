@@ -107,39 +107,41 @@ export default function LandingPage() {
   return (
     <>
       <SiteNav />
-      <Hero />
-      <FoundingBanner />
-      <Comparison />
-      <FeaturesSection />
-      <WhoCanPartner />
-      <HowItWorks id="business-how" heading="How a salon actually goes live." steps={BUSINESS_STEPS} />
-      <VideoSection
-        id="business-demo"
-        heading="See the admin app in action."
-        badge="Admin app walkthrough"
-        videoUrl="https://res.cloudinary.com/s5ivpmmf/video/upload/v1788245364/Reports_view.mp4"
-        features={BUSINESS_VIDEO_FEATURES}
-        tinted
-      />
-      <Faq id="business-faq" heading="Questions owners ask before booking the call." items={BUSINESS_FAQ} />
-      <TrustSection />
-      <HowItWorks
-        id="for-customers"
-        heading="Booking that takes less time than finding the salon's number."
-        steps={CUSTOMER_STEPS}
-      />
-      <VideoSection
-        id="customer-demo"
-        heading="See the booking app in action."
-        badge="Booking app walkthrough"
-        videoUrl="https://res.cloudinary.com/s5ivpmmf/video/upload/v1788245469/openvid-1920x1080.mp4"
-        features={CUSTOMER_VIDEO_FEATURES}
-        reverse
-        tinted
-      />
-      <Faq id="customers-faq" heading="Questions customers ask before their first booking." items={CUSTOMER_FAQ} />
-      <DemoBooking />
-      <ContactSection id="contact" />
+      <main>
+        <Hero />
+        <FoundingBanner />
+        <Comparison />
+        <FeaturesSection />
+        <WhoCanPartner />
+        <HowItWorks id="business-how" heading="How a salon actually goes live." steps={BUSINESS_STEPS} />
+        <VideoSection
+          id="business-demo"
+          heading="See the admin app in action."
+          badge="Admin app walkthrough"
+          videoUrl="https://res.cloudinary.com/s5ivpmmf/video/upload/v1788245364/Reports_view.mp4"
+          features={BUSINESS_VIDEO_FEATURES}
+          tinted
+        />
+        <Faq id="business-faq" heading="Questions owners ask before booking the call." items={BUSINESS_FAQ} />
+        <TrustSection />
+        <HowItWorks
+          id="for-customers"
+          heading="Booking that takes less time than finding the salon's number."
+          steps={CUSTOMER_STEPS}
+        />
+        <VideoSection
+          id="customer-demo"
+          heading="See the booking app in action."
+          badge="Booking app walkthrough"
+          videoUrl="https://res.cloudinary.com/s5ivpmmf/video/upload/v1788245469/openvid-1920x1080.mp4"
+          features={CUSTOMER_VIDEO_FEATURES}
+          reverse
+          tinted
+        />
+        <Faq id="customers-faq" heading="Questions customers ask before their first booking." items={CUSTOMER_FAQ} />
+        <DemoBooking />
+        <ContactSection id="contact" />
+      </main>
       <SiteFooter />
       <FloatingWhatsapp />
     </>

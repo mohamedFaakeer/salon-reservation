@@ -2846,3 +2846,80 @@ check had silently doubled as "is this a bundle line" — fixed to check
 === null` but needs its own path (a straight monetary refund, no
 restock/quarantine branch, since there was never any stock to move).
 
+## 61. apps/marketing SEO pass — metadata, robots/sitemap, structured data, CTA tracking (2026-09-02)
+
+First real SEO pass on the marketing site, following a user-supplied
+implementation brief. Audited first (Next 16.3 App Router, `output: "export"`
+static site on Cloudflare Pages, zero prior metadata beyond a title/
+description, no robots.txt/sitemap.xml/structured data/analytics anywhere)
+before changing anything, per the brief's own Step 1 and this project's
+"inspect before coding" rule.
+
+**Demo duration — confirmed and corrected, twice.** Every visible CTA said
+"30-minute demo"; the brief assumed 15 minutes. First check: user confirmed
+30 minutes was correct, leave the copy as-is. Mid-implementation, reading
+`.env.local` for its own purposes surfaced that the live
+`NEXT_PUBLIC_CALENDLY_LINK` value was `faakeermohamed/15min` — the real
+booking link disagreed with the just-confirmed answer. Flagged it plainly
+rather than silently trusting either source; re-asked with the new evidence.
+Resolved: the Calendly event genuinely is 30 minutes, the URL slug was just
+stale from an earlier rename. Site copy stays untouched; `.env.local` fixed
+to `faakeermohamed/30min` to match reality. The user still needs to update
+the same env var in whatever dashboard controls the production build
+(Cloudflare Pages), since fixing the local file doesn't touch production.
+
+**H1 changed for SEO clarity, marketing copy demoted, not dropped.** Hero H1
+was "One system. Every booking. No double-bookings — ever." (strong copy,
+zero SEO signal for what the product is or where it operates). Changed H1 to
+"Salon Management Software Built for Sri Lankan Salons"; the old H1 text
+moves to a bold tagline directly under it, so nothing was deleted — the
+hierarchy just now leads with search-clarity. Screenshotting the real mobile
+viewport (not just reasoning about the CSS) caught a real regression this
+introduced: the extra headline lines pushed the body paragraph down into the
+fixed WhatsApp button on first paint. Fixed with small mobile-only spacing
+trims (`pt-16`→`pt-10`, animation `my-6`→`my-4`, CTA row `mt-8`→`mt-6`);
+desktop untouched.
+
+**OG image deferred, not fabricated.** No asset on the site is a correct
+1200×630 social card (the only candidate, a logo lockup PNG, is 1200×352
+with a transparent background — wrong shape, would render broken on link
+previews). Shipped every other Open Graph field; user chose to design a real
+card as a separate follow-up rather than skip it permanently or ship a
+wrong-shaped one.
+
+**New dependency: `@next/third-parties@16.3.0`** (pinned to match the
+installed `next` version exactly). Considered hand-rolling a `next/script`
+gtag.js loader instead — asked the user given this project's "no
+unnecessary dependencies" rule; chose the official Vercel-maintained
+package since it's the Next.js team's own documented recommended path for
+GA4 in App Router (optimized script loading, a safe `sendGAEvent` helper
+that already no-ops instead of throwing if analytics was never
+initialized). No GA4 property/Measurement ID exists yet —
+`NEXT_PUBLIC_GA_MEASUREMENT_ID` unset means `<GoogleAnalytics>` never
+renders at all, matching the honest-fallback convention `demo-booking.tsx`
+and `contact-section.tsx` already used for Calendly/Web3Forms.
+
+**CTA tracking uses one delegated click listener, not five new client
+components.** hero/site-nav/founding-banner/site-footer/floating-whatsapp
+were all plain server components; converting each to add an `onClick` would
+have meant five new client-component boundaries for a single-page site that
+had deliberately kept only five total. Instead each CTA carries plain
+`data-analytics`/`data-cta-location` attributes, and one new client
+component (`analytics-listener.tsx`, only mounted when GA is configured)
+handles every click via `element.closest("[data-analytics]")`.
+`demo_booked` is the one event requiring real client logic on its own
+component: Calendly's iframe embed posts a genuine
+`calendly.event_scheduled` message to the parent window on a real booking,
+so `demo-booking.tsx` became a client component specifically to listen for
+it — a real confirmation signal, not the guess the brief explicitly warned
+against faking.
+
+**Structured data:** Organization + WebSite + SoftwareApplication only, no
+AggregateRating/Review/pricing — none of those are real. Verified via a real
+build's output, not just reading the source: JSON-LD renders once, robots.txt
+and sitemap.xml both work under static export (needed `export const dynamic
+= "force-static"` on both route files — not documented explicitly in this
+Next version's static-exports guide, found by reading the actual build
+error), title/canonical/meta description/H1/`<main>` all appear exactly
+once, and zero accidental `noindex`.
+
