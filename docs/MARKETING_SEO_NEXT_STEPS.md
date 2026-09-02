@@ -4,35 +4,29 @@ Tracks the follow-up steps from the SEO pass (`docs/DECISIONS.md` #61) that only
 do — dashboard/DNS actions outside the codebase. Delete each item (or this file, once
 everything's checked off) as it's completed.
 
-## 1. Fix the production Calendly link
+## 1. Fix the production Calendly link — ✅ Done (2026-09-03)
 
-The local `.env.local` was corrected to `NEXT_PUBLIC_CALENDLY_LINK=faakeermohamed/30min`
-(the Calendly event really is 30 minutes; the old `/15min` slug was just stale from an
-earlier rename). **Cloudflare Pages' own environment variable for this still needs the
-same fix** — updating the local file doesn't touch what's actually deployed.
+`NEXT_PUBLIC_CALENDLY_LINK` updated to `faakeermohamed/30min` in Cloudflare Pages and
+redeployed (via an empty commit — the dashboard had no visible manual redeploy button).
 
-- [ ] In the Cloudflare Pages dashboard for the `zelyraone.lk` project, update
-      `NEXT_PUBLIC_CALENDLY_LINK` to `faakeermohamed/30min`
-- [ ] Redeploy (or trigger a new build) so the change takes effect
-- [ ] Spot-check `https://zelyraone.lk/#book-demo` opens the 30-minute event, not the
-      old 15-minute one
+## 2. Turn on GA4 — ✅ Code/config done, dashboard still catching up (2026-09-03)
 
-## 2. Turn on GA4
+`NEXT_PUBLIC_GA_MEASUREMENT_ID=G-04T63JQWS3` is set in Cloudflare Pages and deployed.
+Verified two independent ways:
+- A live automated browser visit captured the real network request landing at
+  `google-analytics.com/g/collect` with the correct `tid` and `en=page_view`.
+- GA4's own **Admin → Get started → Set up data collection → Take action** live checker
+  confirmed: *"Your Google tag was correctly detected on your website."*
 
-Nothing fires yet — `NEXT_PUBLIC_GA_MEASUREMENT_ID` is unset, so `<GoogleAnalytics>`
-never renders and every CTA event (`demo_click`, `whatsapp_click`, `phone_click`,
-`contact_form_start`, `contact_form_submit`, `demo_booked`) is a safe no-op.
+Realtime and DebugView were still showing 0 users right after setup — that's normal
+backend-processing lag for a freshly created GA4 account, not a setup problem (Google's
+own detector already confirms the tag is live and correct). Should populate within a
+few hours.
 
-- [ ] Create a GA4 property at [analytics.google.com](https://analytics.google.com)
-- [ ] Add a Web Data Stream for `https://zelyraone.lk`
-- [ ] Copy its Measurement ID (starts with `G-`)
-- [ ] Add `NEXT_PUBLIC_GA_MEASUREMENT_ID` to Cloudflare Pages' environment variables
-- [ ] Redeploy
-- [ ] Visit the live site, check GA4 Realtime shows the pageview
-- [ ] Click through each CTA (demo, WhatsApp, phone, contact form) and confirm each
-      event appears exactly once in Realtime — no duplicates
-- [ ] In GA4, mark the events that matter as key events/conversions (`demo_click`,
-      `demo_booked`, `whatsapp_click`, `phone_click`, `contact_form_submit` at minimum)
+- [ ] Once Realtime shows real traffic, click through each CTA (demo, WhatsApp, phone,
+      contact form) and confirm each event appears exactly once — no duplicates
+- [ ] In GA4 (Admin → Events), mark `demo_click`, `demo_booked`, `whatsapp_click`,
+      `phone_click`, `contact_form_submit` as key events
 
 ## 3. Google Search Console
 
