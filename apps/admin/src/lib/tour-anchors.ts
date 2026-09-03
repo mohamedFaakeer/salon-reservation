@@ -172,4 +172,58 @@ export const TOUR_ANCHORS = {
     historyStats: "customer-detail.history-stats",
     bookingHistoryTable: "customer-detail.booking-history-table",
   },
+  products: {
+    createButton: "products.create-button",
+    /** Shared by every row — opens ProductDetailDrawer. */
+    rowLink: "products.row-link",
+  },
+  productDrawer: {
+    nameField: "product-drawer.name-field",
+    trackingFields: "product-drawer.tracking-fields",
+    submitButton: "product-drawer.submit-button",
+  },
+  productDetailDrawer: {
+    variantFields: "product-detail-drawer.variant-fields",
+    addVariantButton: "product-detail-drawer.add-variant-button",
+  },
+  stock: {
+    receiveButton: "stock.receive-button",
+    adjustButton: "stock.adjust-button",
+  },
+  stockReceiveDrawer: {
+    /** Shared by every batch row (variant + quantity + cost together). */
+    batchRow: "stock-receive-drawer.batch-row",
+    submitButton: "stock-receive-drawer.submit-button",
+  },
+  stockAdjustDrawer: {
+    directionField: "stock-adjust-drawer.direction-field",
+    submitButton: "stock-adjust-drawer.submit-button",
+  },
+  bundles: {
+    createButton: "bundles.create-button",
+  },
+  bundleDrawer: {
+    nameField: "bundle-drawer.name-field",
+    componentPicker: "bundle-drawer.component-picker",
+    submitButton: "bundle-drawer.submit-button",
+  },
+  quickSale: {
+    searchField: "quick-sale.search-field",
+    /** Shared by every product tile in the grid. */
+    productTile: "quick-sale.product-tile",
+    attachCustomerButton: "quick-sale.attach-customer-button",
+    chargeOpenButton: "quick-sale.charge-open-button",
+    /** Shared by every payment-method option. */
+    chargeMethodOption: "quick-sale.charge-method-option",
+    chargeConfirmButton: "quick-sale.charge-confirm-button",
+  },
+  sales: {
+    searchField: "sales.search-field",
+    /** Shared by every row — opens the sale detail page. */
+    rowLink: "sales.row-link",
+  },
+  saleDetail: {
+    itemsCard: "sale-detail.items-card",
+    recordReturnButton: "sale-detail.record-return-button",
+  },
 } as const;

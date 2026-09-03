@@ -15,6 +15,11 @@ import { attendanceCorrectionStaffTour } from "./attendance-correction-staff.tou
 import { leaveConfigurationTour } from "./leave-configuration.tour";
 import { closureConfigurationTour } from "./closure-configuration.tour";
 import { reportsOverviewTour } from "./reports-overview.tour";
+import { productManagementTour } from "./product-management.tour";
+import { stockManagementTour } from "./stock-management.tour";
+import { bundleManagementTour } from "./bundle-management.tour";
+import { quickSaleTour } from "./quick-sale.tour";
+import { salesHistoryTour } from "./sales-history.tour";
 import type { TourDef, TourRole } from "./types";
 
 /**
@@ -43,6 +48,11 @@ export const TOUR_REGISTRY: TourDef[] = [
   leaveConfigurationTour,
   closureConfigurationTour,
   reportsOverviewTour,
+  productManagementTour,
+  stockManagementTour,
+  bundleManagementTour,
+  quickSaleTour,
+  salesHistoryTour,
 ];
 
 /** Tours structurally relevant to at least one of the given roles, in catalog order. */

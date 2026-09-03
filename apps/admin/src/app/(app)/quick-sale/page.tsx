@@ -26,6 +26,7 @@ import { BarcodeScannerModal } from "../../../components/barcode-scanner-modal";
 import { ConvertCustomLineDrawer } from "../../../components/convert-custom-line-drawer";
 import { AttributeTags, ExpiryBadge, SerialBadge } from "../../../components/variant-badges";
 import { CategoryBrandFilterRow, type CategoryBrandFilter } from "../../../components/category-brand-filter";
+import { TOUR_ANCHORS } from "../../../lib/tour-anchors";
 
 type CartLine =
   | { kind: "variant"; key: string; variant: ProductVariantRecord; quantity: number }
@@ -285,6 +286,7 @@ function QuickSalePage() {
             </svg>
             <input
               data-testid="quick-sale-search"
+              data-tour-id={TOUR_ANCHORS.quickSale.searchField}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -393,6 +395,7 @@ function QuickSalePage() {
                   key={variant.id}
                   type="button"
                   data-testid={`quick-sale-product-${variant.sku}`}
+                  data-tour-id={TOUR_ANCHORS.quickSale.productTile}
                   disabled={outOfStock}
                   onClick={() => addVariantToCart(variant)}
                   className="relative flex min-h-[112px] flex-col items-start justify-between rounded-[10px] border border-slate-200 bg-white p-3.5 text-left hover:border-teal-600 hover:shadow-sm disabled:opacity-55 disabled:hover:border-slate-200 disabled:hover:shadow-none"
@@ -517,6 +520,7 @@ function QuickSalePage() {
           <button
             type="button"
             data-testid="quick-sale-attach-customer"
+            data-tour-id={TOUR_ANCHORS.quickSale.attachCustomerButton}
             onClick={() => setShowAttachCustomer(true)}
             className="text-xs font-semibold text-teal-700 hover:underline"
           >
@@ -536,6 +540,7 @@ function QuickSalePage() {
           <button
             type="button"
             data-testid="quick-sale-charge-open"
+            data-tour-id={TOUR_ANCHORS.quickSale.chargeOpenButton}
             disabled={lines.length === 0}
             onClick={() => setShowCharge(true)}
             className="min-h-[52px] w-full rounded-[10px] bg-teal-600 text-[15px] font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"
@@ -926,6 +931,7 @@ function ChargeDrawer({
                 key={m.value}
                 type="button"
                 data-testid={`charge-method-${m.value}`}
+                data-tour-id={TOUR_ANCHORS.quickSale.chargeMethodOption}
                 onClick={() => setMethod(m.value)}
                 className={`flex-1 rounded-md border px-3 py-2 text-sm font-semibold ${
                   method === m.value ? "border-teal-600 bg-teal-50 text-teal-700" : "border-slate-300 text-slate-600 hover:bg-slate-50"
@@ -948,6 +954,7 @@ function ChargeDrawer({
           <button
             type="button"
             data-testid="charge-confirm"
+            data-tour-id={TOUR_ANCHORS.quickSale.chargeConfirmButton}
             disabled={submitting}
             onClick={() => void confirm()}
             className="min-h-11 flex-1 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"

@@ -5,6 +5,7 @@ import { ApiRequestError, createProduct, updateProduct, type ProductRecord } fro
 import { DrawerShell } from "./drawer-shell";
 import { BusyLabel } from "./spinner";
 import { errorCopy } from "../lib/error-copy";
+import { TOUR_ANCHORS } from "../lib/tour-anchors";
 
 export function ProductDrawer({
   product,
@@ -66,7 +67,7 @@ export function ProductDrawer({
           </p>
         ) : null}
 
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1 text-sm" data-tour-id={TOUR_ANCHORS.productDrawer.nameField}>
           <span className="font-medium text-slate-700">Name</span>
           <input
             data-testid="product-name"
@@ -116,7 +117,7 @@ export function ProductDrawer({
           />
         </label>
 
-        <fieldset className="flex flex-col gap-2">
+        <fieldset className="flex flex-col gap-2" data-tour-id={TOUR_ANCHORS.productDrawer.trackingFields}>
           <legend className="text-sm font-medium text-slate-700">Tracking</legend>
           <label className="flex items-start gap-2.5 rounded-lg border border-slate-200 px-3 py-2.5 hover:bg-slate-50">
             <input
@@ -179,6 +180,7 @@ export function ProductDrawer({
           <button
             type="button"
             data-testid="product-submit"
+            data-tour-id={TOUR_ANCHORS.productDrawer.submitButton}
             disabled={!valid || submitting}
             onClick={() => void submit()}
             className="min-h-11 flex-1 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"

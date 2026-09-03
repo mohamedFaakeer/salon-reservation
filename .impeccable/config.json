@@ -186,6 +186,30 @@
         "value": "apps/admin/src/components/tour-launcher.tsx 122",
         "createdAt": "2026-09-03T20:27:22.667Z",
         "reason": "same reviewed sanctioned exception as before (decorative status glyph), line shifted after fixing conflicting left/right positioning utilities"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/app/(app)/bundles/page.tsx 140",
+        "createdAt": "2026-09-03T20:57:10.144Z",
+        "reason": "pre-existing ternary: emerald-100/emerald-700 (active) and slate-100/slate-500 (discontinued) are mutually exclusive status-pill states, not simultaneous; not part of this session's change"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/app/(app)/bundles/page.tsx 141",
+        "createdAt": "2026-09-03T20:57:29.457Z",
+        "reason": "same pre-existing false positive as before, line shifted by one after adding the create-button anchor"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/components/bundle-drawer.tsx 420",
+        "createdAt": "2026-09-03T20:58:01.443Z",
+        "reason": "pre-existing: hover:bg-red-50 pairs with hover:text-red-700 on the same button, base state is slate-600 on transparent bg -- not simultaneous gray-on-red; not part of this session's change"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/components/bundle-drawer.tsx 421",
+        "createdAt": "2026-09-03T20:58:44.370Z",
+        "reason": "same reviewed false-positive as before, line shifted by one after adding the component-picker anchor"
       }
     ]
   }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ApiRequestError, fetchVariants, receiveStock, type ProductVariantRecord } from "../lib/api-client";
 import { DrawerShell } from "./drawer-shell";
 import { BusyLabel } from "./spinner";
+import { TOUR_ANCHORS } from "../lib/tour-anchors";
 
 interface BatchRow {
   key: string;
@@ -153,7 +154,11 @@ export function StockReceiveDrawer({ onClose, onReceived }: { onClose: () => voi
               {rows.map((row, i) => {
                 const variant = variantFor(row.variantId);
                 return (
-                  <div key={row.key} className="rounded-lg border border-slate-200 p-3">
+                  <div
+                    key={row.key}
+                    className="rounded-lg border border-slate-200 p-3"
+                    data-tour-id={TOUR_ANCHORS.stockReceiveDrawer.batchRow}
+                  >
                     <div className="mb-2 flex items-center justify-between">
                       <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-400">
                         Batch {i + 1}
@@ -273,6 +278,7 @@ export function StockReceiveDrawer({ onClose, onReceived }: { onClose: () => voi
           <button
             type="button"
             data-testid="receipt-submit"
+            data-tour-id={TOUR_ANCHORS.stockReceiveDrawer.submitButton}
             disabled={!rowsValid || submitting}
             onClick={() => void submit()}
             className="min-h-11 flex-1 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"

@@ -20,6 +20,7 @@ import { RetailReturnDrawer } from "../../../../components/retail-return-drawer"
 import { RetailSaleReceipt } from "../../../../components/retail-sale-receipt";
 import { DrawerShell } from "../../../../components/drawer-shell";
 import { useToast } from "../../../../components/toast";
+import { TOUR_ANCHORS } from "../../../../lib/tour-anchors";
 
 /** Same NEXT_PUBLIC_API_URL convention — the public receipt page lives in apps/web, not this app. */
 const CUSTOMER_APP_URL = process.env.NEXT_PUBLIC_CUSTOMER_APP_URL ?? "";
@@ -154,6 +155,7 @@ function SaleDetailPage() {
             <button
               type="button"
               data-testid="sale-record-return"
+              data-tour-id={TOUR_ANCHORS.saleDetail.recordReturnButton}
               onClick={() => setShowReturn(true)}
               className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700"
             >
@@ -164,7 +166,10 @@ function SaleDetailPage() {
       </div>
 
       <div className="grid gap-3.5 lg:grid-cols-[1.5fr_1fr]">
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div
+          className="rounded-lg border border-slate-200 bg-white p-4"
+          data-tour-id={TOUR_ANCHORS.saleDetail.itemsCard}
+        >
           <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-slate-400">Items</p>
           <div className="mt-2 flex flex-col gap-2">
             {sale.lines.map((line) => (
