@@ -47,4 +47,7 @@ export interface TourDef {
   roles: TourRole[];
   shell: "app" | "floor";
   steps: TourStepDef[];
+  /** Shown as a success toast the moment the tour is actually finished (not on skip) — the same confirmation pattern the rest of the app uses for a completed action, so a tour ending reads as clearly "done" as any other. */
+  completionTitle: string;
+  completionMessage: string;
 }

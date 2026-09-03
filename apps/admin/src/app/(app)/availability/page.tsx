@@ -25,6 +25,7 @@ import { LeaveDrawer } from "../../../components/leave-drawer";
 import { ClosureDrawer } from "../../../components/closure-drawer";
 import { BusyLabel } from "../../../components/spinner";
 import { formatDateRange, todayLocalDate } from "../../../lib/format";
+import { TOUR_ANCHORS } from "../../../lib/tour-anchors";
 
 type Tab = "rota" | "leave" | "closures";
 
@@ -153,6 +154,7 @@ export default function AvailabilityPage() {
           <button
             type="button"
             data-testid="add-leave-button"
+            data-tour-id={TOUR_ANCHORS.availability.addLeaveButton}
             onClick={() => setAddingLeave(true)}
             className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700"
           >
@@ -163,6 +165,7 @@ export default function AvailabilityPage() {
           <button
             type="button"
             data-testid="add-closure-button"
+            data-tour-id={TOUR_ANCHORS.availability.addClosureButton}
             onClick={() => setAddingClosure(true)}
             className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700"
           >
@@ -183,6 +186,13 @@ export default function AvailabilityPage() {
             key={key}
             type="button"
             data-testid={`tab-${key}`}
+            data-tour-id={
+              key === "rota"
+                ? TOUR_ANCHORS.availability.rotaTab
+                : key === "leave"
+                  ? TOUR_ANCHORS.availability.leaveTab
+                  : TOUR_ANCHORS.availability.closuresTab
+            }
             onClick={() => setTab(key)}
             aria-current={tab === key ? "page" : undefined}
             className={`min-h-11 border-b-2 px-4 text-sm ${
@@ -256,6 +266,7 @@ export default function AvailabilityPage() {
                       <button
                         type="button"
                         data-testid={`remove-leave-${row.id}`}
+                        data-tour-id={TOUR_ANCHORS.availability.removeLeaveButton}
                         onClick={() => void removeLeave(row.staffId, row.id)}
                         disabled={removingId === row.id}
                         className="min-h-11 rounded border border-slate-300 px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
@@ -301,6 +312,7 @@ export default function AvailabilityPage() {
                     <button
                       type="button"
                       data-testid={`remove-closure-${row.id}`}
+                      data-tour-id={TOUR_ANCHORS.availability.removeClosureButton}
                       onClick={() => void removeClosure(row.id)}
                       disabled={removingId === row.id}
                       className="min-h-11 rounded border border-slate-300 px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"

@@ -11,6 +11,12 @@
  * Named by UI concept, not by tour — several tours can and do point at the
  * same element (e.g. the booking drawer's submit button matters to the
  * `bookingCreate` tour today and will matter to others later).
+ *
+ * A handful of these values are deliberately applied to every row of a list
+ * (e.g. `services.toggleServiceButton`, one per service). driver.js resolves
+ * an anchor with `document.querySelector`, which returns the first match —
+ * for a per-row action that's the first row currently on screen, which is
+ * exactly what a tour wants to demonstrate on ("here's how you retire one").
  */
 export const TOUR_ANCHORS = {
   today: {
@@ -24,5 +30,75 @@ export const TOUR_ANCHORS = {
     dateField: "booking-drawer.date-field",
     timeSlots: "booking-drawer.time-slots",
     submitButton: "booking-drawer.submit-button",
+  },
+  services: {
+    newServiceButton: "services.new-service-button",
+    /** Shared by every row's Retire/Restore button — see file-level note. */
+    toggleServiceButton: "services.toggle-service-button",
+  },
+  serviceDrawer: {
+    nameField: "service-drawer.name-field",
+    durationPriceFields: "service-drawer.duration-price-fields",
+    saveButton: "service-drawer.save-button",
+  },
+  staff: {
+    addStaffButton: "staff.add-staff-button",
+    teamTab: "staff.team-tab",
+    matrixTab: "staff.matrix-tab",
+    /** Shared by every row's Deactivate/Restore button — see file-level note. */
+    toggleStaffButton: "staff.toggle-staff-button",
+    /** Shared by every row's Skills/Assign-skills button. */
+    skillsShortcutButton: "staff.skills-shortcut-button",
+  },
+  staffDrawer: {
+    nameField: "staff-drawer.name-field",
+    phoneField: "staff-drawer.phone-field",
+    saveButton: "staff-drawer.save-button",
+  },
+  skillsMatrix: {
+    /** Shared by every stylist's row in the matrix. */
+    row: "skills-matrix.row",
+    saveButton: "skills-matrix.save-button",
+  },
+  team: {
+    newTeamButton: "team.new-team-button",
+    newLoginCredentials: "team.new-login-credentials",
+    /** Shared by every row's role <select>. */
+    roleSelect: "team.role-select",
+    /** Shared by every row's Reset password button. */
+    resetPasswordButton: "team.reset-password-button",
+  },
+  teamDrawer: {
+    nameField: "team-drawer.name-field",
+    emailField: "team-drawer.email-field",
+    roleFields: "team-drawer.role-fields",
+    saveButton: "team-drawer.save-button",
+  },
+  availability: {
+    rotaTab: "availability.rota-tab",
+    leaveTab: "availability.leave-tab",
+    closuresTab: "availability.closures-tab",
+    addLeaveButton: "availability.add-leave-button",
+    addClosureButton: "availability.add-closure-button",
+    /** Shared by every stylist/weekday cell in the rota grid. */
+    rotaCell: "availability.rota-cell",
+    /** Shared by every leave row's Remove button. */
+    removeLeaveButton: "availability.remove-leave-button",
+    /** Shared by every closure row's Remove button. */
+    removeClosureButton: "availability.remove-closure-button",
+  },
+  scheduleDrawer: {
+    hoursFields: "schedule-drawer.hours-fields",
+    saveButton: "schedule-drawer.save-button",
+  },
+  leaveDrawer: {
+    staffField: "leave-drawer.staff-field",
+    datesField: "leave-drawer.dates-field",
+    saveButton: "leave-drawer.save-button",
+  },
+  closureDrawer: {
+    nameField: "closure-drawer.name-field",
+    datesField: "closure-drawer.dates-field",
+    saveButton: "closure-drawer.save-button",
   },
 } as const;

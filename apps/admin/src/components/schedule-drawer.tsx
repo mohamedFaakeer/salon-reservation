@@ -12,6 +12,7 @@ import {
 import { WEEKDAY_NAMES, minutesToTime, timeToMinutes } from "../lib/format";
 import { DrawerShell } from "./drawer-shell";
 import { BusyLabel } from "./spinner";
+import { TOUR_ANCHORS } from "../lib/tour-anchors";
 
 /**
  * Edit one stylist's hours for one weekday.
@@ -145,7 +146,7 @@ export function ScheduleDrawer({
           </label>
         ) : null}
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3" data-tour-id={TOUR_ANCHORS.scheduleDrawer.hoursFields}>
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-slate-700">Starts</span>
             <input
@@ -221,6 +222,7 @@ export function ScheduleDrawer({
           <button
             type="button"
             data-testid="schedule-save"
+            data-tour-id={TOUR_ANCHORS.scheduleDrawer.saveButton}
             onClick={() => void save()}
             disabled={!timesValid || submitting}
             className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"

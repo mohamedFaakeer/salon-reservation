@@ -8,6 +8,7 @@ import { DrawerShell } from "./drawer-shell";
 import { BusyLabel } from "./spinner";
 import { PasswordVisibilityToggle } from "./password-visibility-toggle";
 import { useToast } from "./toast";
+import { TOUR_ANCHORS } from "../lib/tour-anchors";
 
 /**
  * Create a login for someone who works here.
@@ -90,7 +91,7 @@ export function TeamDrawer({
   return (
     <DrawerShell title="New login" onClose={onClose}>
       <div className="flex flex-col gap-4">
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1 text-sm" data-tour-id={TOUR_ANCHORS.teamDrawer.nameField}>
           <span className="font-medium text-slate-700">Name</span>
           <input
             data-testid="team-name"
@@ -100,7 +101,7 @@ export function TeamDrawer({
           />
         </label>
 
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1 text-sm" data-tour-id={TOUR_ANCHORS.teamDrawer.emailField}>
           <span className="font-medium text-slate-700">Email</span>
           <input
             data-testid="team-email"
@@ -138,7 +139,7 @@ export function TeamDrawer({
           </span>
         </label>
 
-        <fieldset className="flex flex-col gap-2">
+        <fieldset className="flex flex-col gap-2" data-tour-id={TOUR_ANCHORS.teamDrawer.roleFields}>
           <legend className="pb-1 text-sm font-medium text-slate-700">What they can do</legend>
           {ROLES.map((option) => {
             const selected = role === option.value;
@@ -192,6 +193,7 @@ export function TeamDrawer({
           <button
             type="button"
             data-testid="team-save"
+            data-tour-id={TOUR_ANCHORS.teamDrawer.saveButton}
             onClick={() => void save()}
             disabled={!canSubmit || submitting}
             className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"

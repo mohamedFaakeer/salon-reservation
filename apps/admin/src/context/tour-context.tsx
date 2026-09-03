@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./auth-context";
+import { useToast } from "../components/toast";
 import { toursForRoles, getTour, type TourDef } from "../lib/tours/registry";
 import { getTourProgress, setTourProgress, type TourProgressStatus } from "../lib/tour-progress";
 
@@ -27,6 +28,7 @@ const TourContext = createContext<TourContextValue | null>(null);
 export function TourProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const router = useRouter();
+  const toast = useToast();
   const [activeTourId, setActiveTourId] = useState<string | null>(null);
   // Bumped after a tour finishes so `statusOf` recomputes from localStorage
   // rather than reading a value captured before the write happened.
@@ -63,6 +65,13 @@ export function TourProvider({ children }: { children: ReactNode }) {
               setTourProgress(user.tenantId, user.id, tourId, status);
               setProgressVersion((v) => v + 1);
               setActiveTourId(null);
+              // Skipping early is a deliberate exit, not an outcome to
+              // celebrate — only a genuinely finished tour gets the same
+              // "you're done" confirmation every other completed action in
+              // the app gets.
+              if (status === "completed") {
+                toast.success(tour.completionTitle, tour.completionMessage);
+              }
             },
           });
         })

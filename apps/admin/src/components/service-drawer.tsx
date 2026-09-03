@@ -20,6 +20,7 @@ import { DrawerShell } from "./drawer-shell";
 import { BusyLabel } from "./spinner";
 import { useToast } from "./toast";
 import { errorCopy } from "../lib/error-copy";
+import { TOUR_ANCHORS } from "../lib/tour-anchors";
 
 /**
  * Create/edit a service.
@@ -152,7 +153,7 @@ export function ServiceDrawer({
     <>
       <DrawerShell title={editing ? "Edit service" : "New service"} onClose={onClose}>
         <div className="flex flex-col gap-4">
-          <label className="flex flex-col gap-1 text-sm">
+          <label className="flex flex-col gap-1 text-sm" data-tour-id={TOUR_ANCHORS.serviceDrawer.nameField}>
             <span className="font-medium text-slate-700">Name</span>
             <input
               data-testid="service-name"
@@ -175,7 +176,7 @@ export function ServiceDrawer({
             />
           </label>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3" data-tour-id={TOUR_ANCHORS.serviceDrawer.durationPriceFields}>
             <label className="flex flex-col gap-1 text-sm">
               <span className="font-medium text-slate-700">Duration (minutes)</span>
               <input
@@ -215,6 +216,7 @@ export function ServiceDrawer({
             <button
               type="button"
               data-testid="service-save"
+              data-tour-id={TOUR_ANCHORS.serviceDrawer.saveButton}
               onClick={handleSubmit}
               disabled={!canSubmit || submitting}
               className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"

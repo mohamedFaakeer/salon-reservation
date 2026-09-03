@@ -1,12 +1,31 @@
+import { serviceManagementTour } from "./service-management.tour";
+import { staffRecordsTour } from "./staff-records.tour";
+import { skillsMatrixTour } from "./skills-matrix.tour";
+import { weeklyRotaTour } from "./weekly-rota.tour";
+import { staffLoginsTour } from "./staff-logins.tour";
 import { bookingCreateTour } from "./booking-create.tour";
+import { leaveConfigurationTour } from "./leave-configuration.tour";
+import { closureConfigurationTour } from "./closure-configuration.tour";
 import type { TourDef, TourRole } from "./types";
 
 /**
- * Every tour that exists. Grows by one entry per pilot-approved tour — see
- * `docs/DECISIONS.md` and the product-tour plan for the full 15-tour catalog
- * and per-role ordering this will eventually cover.
+ * Every tour that exists, in the OWNER onboarding order from the
+ * product-tour plan: setup-dependency-ordered (nothing is bookable without a
+ * service; nothing is assignable without a stylist qualified and scheduled)
+ * before the day-to-day transaction loop. `toursForRoles` filters this same
+ * order down per role, so a RECEPTIONIST or MANAGER naturally sees only
+ * their relevant slice in the same relative sequence.
  */
-export const TOUR_REGISTRY: TourDef[] = [bookingCreateTour];
+export const TOUR_REGISTRY: TourDef[] = [
+  serviceManagementTour,
+  staffRecordsTour,
+  skillsMatrixTour,
+  weeklyRotaTour,
+  staffLoginsTour,
+  bookingCreateTour,
+  leaveConfigurationTour,
+  closureConfigurationTour,
+];
 
 /** Tours structurally relevant to at least one of the given roles, in catalog order. */
 export function toursForRoles(roles: string[]): TourDef[] {

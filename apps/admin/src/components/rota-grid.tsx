@@ -2,6 +2,7 @@
 
 import type { StaffLeaveRecord, StaffMember, WorkingSchedule } from "../lib/api-client";
 import { WEEKDAYS, minutesToTime } from "../lib/format";
+import { TOUR_ANCHORS } from "../lib/tour-anchors";
 
 /**
  * Weekly rota: stylists down, days across.
@@ -214,6 +215,7 @@ export function RotaGrid({
                         <button
                           type="button"
                           data-testid={`rota-cell-${member.id}-${dayIndex}`}
+                          data-tour-id={TOUR_ANCHORS.availability.rotaCell}
                           onClick={() => onEditDay(member, dayIndex, sched)}
                           className={`flex min-h-14 w-full flex-col items-center justify-center gap-0.5 px-1 py-2 hover:bg-slate-50 ${
                             away ? "bg-amber-50" : ""

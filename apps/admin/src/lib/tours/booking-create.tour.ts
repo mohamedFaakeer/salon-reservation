@@ -13,6 +13,8 @@ export const bookingCreateTour: TourDef = {
   description: "Walk-in, phone or online — one form for all of it.",
   roles: ["OWNER", "MANAGER", "RECEPTIONIST"],
   shell: "app",
+  completionTitle: "Tour complete",
+  completionMessage: "You've walked through creating a booking — every booking source in the app, real or practiced, goes through this same form.",
   steps: [
     {
       anchor: TOUR_ANCHORS.today.newBookingButton,

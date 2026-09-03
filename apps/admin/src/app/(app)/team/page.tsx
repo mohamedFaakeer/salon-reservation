@@ -19,6 +19,7 @@ import { ConfirmDialog } from "../../../components/confirm-dialog";
 import { BusyLabel } from "../../../components/spinner";
 import { useToast } from "../../../components/toast";
 import { formatDate } from "../../../lib/format";
+import { TOUR_ANCHORS } from "../../../lib/tour-anchors";
 
 const ROLE_LABELS: Record<string, string> = {
   OWNER: "Owner",
@@ -142,6 +143,7 @@ export default function TeamPage() {
           <button
             type="button"
             data-testid="new-team-button"
+            data-tour-id={TOUR_ANCHORS.team.newTeamButton}
             onClick={() => setCreating(true)}
             className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700"
           >
@@ -153,6 +155,7 @@ export default function TeamPage() {
       {newLogin ? (
         <div
           data-testid="new-login-credentials"
+          data-tour-id={TOUR_ANCHORS.team.newLoginCredentials}
           role="status"
           className="rounded-lg border border-teal-300 bg-teal-50 p-4"
         >
@@ -241,6 +244,7 @@ export default function TeamPage() {
                   {canManage && !protectedRow ? (
                     <select
                       data-testid={`team-role-select-${member.userId}`}
+                      data-tour-id={TOUR_ANCHORS.team.roleSelect}
                       value={member.role}
                       onChange={(e) => void setRole(member, e.target.value as AssignableRole)}
                       disabled={busyId === member.userId}
@@ -287,6 +291,7 @@ export default function TeamPage() {
                       <button
                         type="button"
                         data-testid={`team-reset-password-${member.userId}`}
+                        data-tour-id={TOUR_ANCHORS.team.resetPasswordButton}
                         onClick={() => setResetTarget(member)}
                         className="min-h-11 rounded border border-slate-300 px-2.5 text-xs font-medium text-slate-700 hover:bg-white"
                       >
