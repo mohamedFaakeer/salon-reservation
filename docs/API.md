@@ -300,6 +300,7 @@ statutory calculation yet — see DECISIONS.md §62 for the phased build.
 | GET | `/payroll/pay-components?staffId` | MANAGE_PAYROLL | Every allowance/deduction, optionally filtered to one staff member. |
 | POST | `/payroll/pay-components/:staffId` | MANAGE_PAYROLL | `{ type, amountCents, epfApplicable?, etfApplicable?, reason? }` — `type` is one of the ten fixed `PayComponentType` values (DECISIONS.md §69); `reason` is required when `type` is `OTHER_DEDUCTION`. Assigning a type that's already active for this staff member deactivates the old one and creates a new one — never two active at once. |
 | DELETE | `/payroll/pay-components/:id` | MANAGE_PAYROLL | Deactivates (never hard-deletes, CLAUDE.md §8) — stops applying to future runs; past runs already have it frozen in their snapshot regardless. |
+| GET | `/payroll/reports?from&to` | MANAGE_PAYROLL | A cost breakdown across every non-void run fully contained in `[from, to]` — salary/commission/allowances expense, EPF/ETF (employee + employer), APIT, deductions, net pay, and total cost to the salon. For manual entry into whatever accounting software the salon uses — this product has no accounting/GL system to post a journal into (DECISIONS.md §70). |
 
 Global (platform-wide, not tenant-scoped) — `PLATFORM_ADMIN`/SUPER_ADMIN only:
 

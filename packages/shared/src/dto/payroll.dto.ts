@@ -222,3 +222,12 @@ export class UpsertPayComponentDto {
   @MaxLength(500)
   reason?: string;
 }
+
+/** GET /payroll/reports — a cost breakdown across every non-void run fully contained in the range. */
+export class PayrollReportQueryDto {
+  @IsDateString()
+  from!: string;
+
+  @IsDateString()
+  to!: string;
+}

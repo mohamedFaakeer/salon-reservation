@@ -22,6 +22,8 @@ import { PayComponentController } from "./pay-component.controller";
 import { PayComponentService } from "./pay-component.service";
 import { PayrollPreviewController } from "./payroll-preview.controller";
 import { PayrollPreviewService } from "./payroll-preview.service";
+import { PayrollReportController } from "./payroll-report.controller";
+import { PayrollReportService } from "./payroll-report.service";
 import { PayrollRunController } from "./payroll-run.controller";
 import { PayrollRunService } from "./payroll-run.service";
 import { PayrollSettingsController } from "./payroll-settings.controller";
@@ -58,6 +60,7 @@ import { StatutoryRuleSetService } from "./statutory-rule-set.service";
     StatutoryPreviewController,
     PayrollRunController,
     PayrollSettingsController,
+    PayrollReportController,
   ],
   providers: [
     EmploymentService,
@@ -69,6 +72,7 @@ import { StatutoryRuleSetService } from "./statutory-rule-set.service";
     StatutoryPreviewService,
     PayrollRunService,
     PayrollSettingsService,
+    PayrollReportService,
   ],
   exports: [
     EmploymentService,

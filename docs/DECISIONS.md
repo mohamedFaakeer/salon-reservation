@@ -3387,3 +3387,42 @@ document lists each active component by name and amount.
 
 Phase 7 (reports & accounting mapping) is next.
 
+## 70. Payroll module — Phase 7, reports & cost breakdown (2026-09-03)
+
+Scoped before building, per this project's standing rule: this codebase
+has no accounting/GL system anywhere (Phase 0's discovery flagged "what
+accounting system and chart of accounts are used?" as an open question
+that was never answered, because there isn't one integrated) — so spec
+§18's "accounting mapping" (posting journal entries) has nothing to map
+into. Asked the product owner directly rather than build a fictional
+journal-posting feature or silently skip the whole phase.
+
+**Decided**: a read-only cost breakdown, grouped the way a bookkeeper
+needs it for manual entry into whatever accounting software or
+spreadsheet the salon already uses (salary/base-pay expense, commission
+expense, allowances expense, EPF employee withheld, EPF/ETF employer
+expense, APIT withheld, deductions recovered, net pay, and total cost to
+the salon), plus a CSV export. No journal, no GL, no posting — this is the
+realistic, buildable half of spec §18 given what this product actually is.
+
+**Implementation** (`GET /payroll/reports?from&to`, `PayrollReportService`):
+sums figures directly out of every non-void `PayrollRun.snapshot` fully
+contained in the requested range — no new table, no second copy of
+figures already frozen in each run. A run only partly overlapping the
+range is excluded entirely rather than counted at a fraction, so every
+total is the sum of whole, real runs. "Total cost to the salon" is gross
+pay plus employer EPF/ETF (the true cost to the business, not just what
+staff took home) — distinct from "net pay," which is what actually left
+the bank/cash drawer.
+
+UI: `/payroll/reports` — a date-range picker, the cost-breakdown cards, a
+per-run table, and a client-side CSV export (no new dependency — a Blob
+and an anchor download, the same pattern this app already has no reason
+not to reuse elsewhere).
+
+This completes the phase list from the original discovery pass except
+Phase 8 (hardening: security review, parallel-run testing, and the
+professional sign-off gate before the statutory engine can ever be turned
+on for a real tenant) — everything else in the roadmap set at §62 has now
+shipped.
+

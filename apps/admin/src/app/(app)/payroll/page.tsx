@@ -73,6 +73,12 @@ function PayrollPage() {
             Payroll runs
           </Link>
           <Link
+            href="/payroll/reports"
+            className="flex min-h-11 items-center rounded border border-slate-300 px-3.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Reports
+          </Link>
+          <Link
             href="/payroll/settings"
             className="flex min-h-11 items-center rounded border border-slate-300 px-3.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >

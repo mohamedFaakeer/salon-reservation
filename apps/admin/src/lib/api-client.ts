@@ -2648,6 +2648,41 @@ export function deactivatePayComponent(id: string): Promise<PayComponentView> {
   return request<PayComponentView>(`/payroll/pay-components/${id}`, { method: "DELETE" });
 }
 
+export interface PayrollReportRunRow {
+  id: string;
+  periodStart: string;
+  periodEnd: string;
+  status: PayrollRunStatus;
+  staffCount: number;
+  grossCents: number;
+  employerStatutoryCostCents: number;
+  netCents: number;
+}
+
+/** A cost breakdown for manual entry into whatever accounting software the salon uses — this product has no accounting/GL system to post into (DECISIONS.md §70). */
+export interface PayrollCostSummaryView {
+  from: string;
+  to: string;
+  runsCount: number;
+  staffCount: number;
+  totalBasePayCents: number;
+  totalIncentiveCents: number;
+  totalAllowancesCents: number;
+  totalDeductionsCents: number;
+  totalGrossCents: number;
+  totalEpfEmployeeCents: number;
+  totalEpfEmployerCents: number;
+  totalEtfEmployerCents: number;
+  totalApitCents: number;
+  totalEmployerCostCents: number;
+  totalNetCents: number;
+  runs: PayrollReportRunRow[];
+}
+
+export function fetchPayrollCostSummary(from: string, to: string): Promise<PayrollCostSummaryView> {
+  return request<PayrollCostSummaryView>(`/payroll/reports?from=${from}&to=${to}`);
+}
+
 /* -----------------------------------------------------------------------
  * Gift cards
  *

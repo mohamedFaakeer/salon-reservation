@@ -420,6 +420,13 @@ a finalized period regardless of later edits here. `epfApplicable`/
 what counts toward EPF/ETF is never applied silently; only affects a
 figure once the tenant's statutory engine is also turned on.
 
+**Phase 7 (reports & cost breakdown, DECISIONS.md §70)** added no new
+tables — `GET /payroll/reports` reads every non-void `payroll_run` fully
+contained in the requested range and sums figures straight out of each
+run's own `snapshot`, the same "one source of truth" reasoning every other
+report in this codebase already follows. No accounting/GL journal is
+posted anywhere — this product has no accounting system to post one into.
+
 ---
 
 ## 3. Concurrency Model — Double-Booking Protection
