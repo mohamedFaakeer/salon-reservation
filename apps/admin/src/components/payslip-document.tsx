@@ -1,6 +1,6 @@
 "use client";
 
-import type { PayrollRunLine, PayrollRunView } from "../lib/api-client";
+import { PAY_COMPONENT_LABEL, type PayrollRunLine, type PayrollRunView } from "../lib/api-client";
 import { formatDateRange, formatPriceCents } from "../lib/format";
 
 const PAYMENT_METHOD_LABEL: Record<string, string> = {
@@ -17,9 +17,8 @@ const PAYMENT_METHOD_LABEL: Record<string, string> = {
  *
  * Deliberately narrower than the full spec (§16): English only, no
  * year-to-date totals (those need aggregating across every run this staff
- * member has ever been part of, not built yet), no allowances/deductions
- * catalogue (doesn't exist yet — DECISIONS.md §67). Employer EPF/ETF are
- * shown as clearly-labelled informational lines, never folded into the
+ * member has ever been part of, not built yet). Employer EPF/ETF are shown
+ * as clearly-labelled informational lines, never folded into the
  * employee's own deductions.
  */
 export function PayslipDocument({
@@ -72,6 +71,11 @@ export function PayslipDocument({
             value={formatPriceCents(line.incentiveCents)}
           />
         ) : null}
+        {line.payComponents
+          .filter((c) => c.kind === "ALLOWANCE")
+          .map((c) => (
+            <PayLine key={c.type} label={PAY_COMPONENT_LABEL[c.type]} value={formatPriceCents(c.amountCents)} />
+          ))}
         <PayLine label="Gross pay" value={formatPriceCents(line.grossCents)} strong />
         {line.statutory ? (
           <>
@@ -81,6 +85,11 @@ export function PayslipDocument({
             ) : null}
           </>
         ) : null}
+        {line.payComponents
+          .filter((c) => c.kind === "DEDUCTION")
+          .map((c) => (
+            <PayLine key={c.type} label={PAY_COMPONENT_LABEL[c.type]} value={`− ${formatPriceCents(c.amountCents)}`} muted />
+          ))}
         <PayLine label="Net pay" value={formatPriceCents(line.netCents)} strong large />
       </dl>
 

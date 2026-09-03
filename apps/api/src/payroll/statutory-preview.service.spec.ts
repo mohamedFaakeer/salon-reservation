@@ -29,6 +29,11 @@ function payrollPreview(overrides: Partial<PayrollPreviewView> = {}): PayrollPre
       days: [],
     },
     incentive: null,
+    payComponents: [],
+    allowancesCents: 0,
+    deductionsCents: 0,
+    epfApplicableEarningsCents: 300_000_00,
+    etfApplicableEarningsCents: 300_000_00,
     totalCents: 300_000_00,
     ...overrides,
   };

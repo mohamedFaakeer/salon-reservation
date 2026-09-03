@@ -14,6 +14,7 @@ import { EmptyState } from "../../../components/empty-state";
 import { TableSkeleton } from "../../../components/loading-skeleton";
 import { Cell, DataTable, Row, RowActions } from "../../../components/data-table";
 import { EmploymentDrawer } from "../../../components/employment-drawer";
+import { PayComponentDrawer } from "../../../components/pay-component-drawer";
 import { ModuleGate } from "../../../components/module-gate";
 
 export default function PayrollPageGated() {
@@ -35,6 +36,7 @@ function PayrollPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
+  const [componentsStaff, setComponentsStaff] = useState<StaffMember | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -130,6 +132,13 @@ function PayrollPage() {
                 <RowActions>
                   <button
                     type="button"
+                    onClick={() => setComponentsStaff(s)}
+                    className="min-h-11 rounded border border-slate-300 px-2.5 text-xs font-medium text-slate-700 hover:bg-white"
+                  >
+                    Allowances & deductions
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setEditingStaff(s)}
                     className={
                       current
@@ -164,6 +173,8 @@ function PayrollPage() {
           }}
         />
       ) : null}
+
+      {componentsStaff ? <PayComponentDrawer staff={componentsStaff} onClose={() => setComponentsStaff(null)} /> : null}
     </div>
   );
 }

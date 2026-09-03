@@ -3326,3 +3326,64 @@ decision after reviewing the Phase 5 mockup) is next; Phase 7 (reports &
 accounting mapping) and Phase 8 (hardening) follow, renumbered down one
 each from the original §62 plan.
 
+## 69. Payroll module — Phase 6, allowances and deductions (2026-09-03)
+
+New ground: nothing existed for this before, backend or UI. Scoped with
+the product owner before any code, the same way every other phase started:
+
+1. **A curated fixed list, not an owner-typed generic catalog.** Six
+   allowance types (transport, meal, attendance, phone/data, uniform,
+   cost-of-living) and four deduction types (salary advance recovery, loan
+   repayment, uniform/equipment recovery, and `OTHER_DEDUCTION` — the one
+   escape hatch, requiring a typed reason, for a one-off case like a court
+   order that doesn't fit a preset category). Covers the common Sri Lankan
+   salon cases from the spec (§6.2/§9) without the long tail (acting
+   allowance, union dues, ...) a small salon doesn't need.
+2. **Both allowances and deductions, one mechanism** (`EmployeePayComponent`,
+   a `kind` derived from `type` via one shared lookup, `PAY_COMPONENT_KIND`,
+   rather than two parallel tables).
+3. **Recurring by default.** Assigning "Transport allowance: Rs. 5,000"
+   applies to every payroll run computed while active, until changed or
+   deactivated — not effective-dated like `Employment`, since an allowance
+   amount changing isn't the same kind of record-worthy event a wage
+   change is, and `PayrollRun.snapshot` already preserves what was actually
+   applied to a finalized period regardless of later edits. "Editable per
+   run" is satisfied by components being read fresh at submit time, not by
+   a separate per-run override mechanism — changing or removing one before
+   running payroll for the next period is enough, and a true one-off,
+   non-persisted override was deliberately left out of v1 as unnecessary
+   added complexity.
+4. **EPF/ETF applicability is a configurable flag per assignment, default
+   off.** Whether a given allowance counts toward EPF/ETF is genuinely
+   unclear in general — the same caution the statutory engine itself
+   already uses (§62) rather than asserting a specific legal position for
+   every salon's exact setup.
+
+**A real correction, found while building this, not left sitting next to
+it**: the Phase 4 `computeEpfEtf` call folded incentive/commission into the
+EPF/ETF base by feeding it `gross.totalCents` (base pay + incentive)
+directly. This directly contradicts this project's own sourced Phase 0
+research (§62): *"Excluded [from EPF]: overtime payments, reimbursable
+traveling expenses, and incentive/bonus payments."* Fixed as part of this
+phase's necessary refactor (adding a second, allowance-derived base makes
+this the natural moment): `computeEpfEtf` now takes two explicit bases,
+`epfApplicableEarningsCents`/`etfApplicableEarningsCents` — each basePay
+plus only the allowances marked applicable, **never incentive**. Computed
+once in `PayrollPreviewService` (`computeEarningsBases`, pure and unit-
+tested) and read from there by both `PayrollRunService` and
+`StatutoryPreviewService`, so the two can't drift apart on what "the EPF
+base" means.
+
+**Net pay now also subtracts `deductionsCents`** (advance/loan/uniform
+recovery, `OTHER_DEDUCTION`) after statutory, in both the run and the
+single-staff statutory preview: `netCents = grossCents − deductionsCents −
+epfEmployeeCents − apitCents`. Deductions are recoveries against net pay,
+not a reduction to gross earnings or to either statutory base.
+
+UI: a "Allowances & deductions" drawer per staff member (Employment page),
+offering only types not already assigned (one active per type); the Runs
+panel's per-staff table gained Allowances/Deductions columns; the payslip
+document lists each active component by name and amount.
+
+Phase 7 (reports & accounting mapping) is next.
+

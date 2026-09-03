@@ -297,6 +297,9 @@ statutory calculation yet — see DECISIONS.md §62 for the phased build.
 | PATCH | `/payroll/runs/:id/paid` | MANAGE_PAYROLL | `{ paymentMethod: CASH\|BANK_TRANSFER\|MIXED, reference? }` — moves `APPROVED` → `PAID`, recording how the money actually moved. `409 PAYROLL_RUN_NOT_APPROVED` if it hasn't been approved first. |
 | PATCH | `/payroll/runs/:id/void` | MANAGE_PAYROLL | `{ reason }` — a manual correction from any non-void status, without resubmitting. |
 | GET | `/payroll/settings` | MANAGE_PAYROLL | Read-only: `{ payCalendar, statutoryPayrollEnabled, statutoryRuleSet }` — one round trip for the Settings screen (the pay cycle, plus the tenant's statutory status; `statutoryRuleSet` is only ever populated when `statutoryPayrollEnabled` is true). Changing the pay cycle is `PUT /payroll/pay-calendars/monthly`; statutory enablement is platform-only. |
+| GET | `/payroll/pay-components?staffId` | MANAGE_PAYROLL | Every allowance/deduction, optionally filtered to one staff member. |
+| POST | `/payroll/pay-components/:staffId` | MANAGE_PAYROLL | `{ type, amountCents, epfApplicable?, etfApplicable?, reason? }` — `type` is one of the ten fixed `PayComponentType` values (DECISIONS.md §69); `reason` is required when `type` is `OTHER_DEDUCTION`. Assigning a type that's already active for this staff member deactivates the old one and creates a new one — never two active at once. |
+| DELETE | `/payroll/pay-components/:id` | MANAGE_PAYROLL | Deactivates (never hard-deletes, CLAUDE.md §8) — stops applying to future runs; past runs already have it frozen in their snapshot regardless. |
 
 Global (platform-wide, not tenant-scoped) — `PLATFORM_ADMIN`/SUPER_ADMIN only:
 

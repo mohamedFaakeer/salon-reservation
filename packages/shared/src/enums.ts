@@ -317,6 +317,61 @@ export enum PayrollPaymentMethod {
   MIXED = "MIXED",
 }
 
+export enum PayComponentKind {
+  ALLOWANCE = "ALLOWANCE",
+  DEDUCTION = "DEDUCTION",
+}
+
+/**
+ * Payroll module, Phase 6 (DECISIONS.md §69) — a curated fixed list rather
+ * than an owner-typed generic catalog, confirmed with the product owner:
+ * covers the common Sri Lankan salon cases from the spec without the long
+ * tail (acting allowance, union dues, court orders, ...) that a small salon
+ * doesn't need. `OTHER_DEDUCTION` is the one deliberate escape hatch, and
+ * requires a typed reason — a one-off case that doesn't fit a preset
+ * category, not a way to reintroduce a free-form catalog through the back
+ * door.
+ */
+export enum PayComponentType {
+  TRANSPORT = "TRANSPORT",
+  MEAL = "MEAL",
+  ATTENDANCE = "ATTENDANCE",
+  PHONE = "PHONE",
+  UNIFORM = "UNIFORM",
+  COST_OF_LIVING = "COST_OF_LIVING",
+  SALARY_ADVANCE_RECOVERY = "SALARY_ADVANCE_RECOVERY",
+  LOAN_REPAYMENT = "LOAN_REPAYMENT",
+  UNIFORM_EQUIPMENT_RECOVERY = "UNIFORM_EQUIPMENT_RECOVERY",
+  OTHER_DEDUCTION = "OTHER_DEDUCTION",
+}
+
+/** Which side of pay each fixed type belongs to — the single place this mapping lives, shared by validation and display. */
+export const PAY_COMPONENT_KIND: Record<PayComponentType, PayComponentKind> = {
+  [PayComponentType.TRANSPORT]: PayComponentKind.ALLOWANCE,
+  [PayComponentType.MEAL]: PayComponentKind.ALLOWANCE,
+  [PayComponentType.ATTENDANCE]: PayComponentKind.ALLOWANCE,
+  [PayComponentType.PHONE]: PayComponentKind.ALLOWANCE,
+  [PayComponentType.UNIFORM]: PayComponentKind.ALLOWANCE,
+  [PayComponentType.COST_OF_LIVING]: PayComponentKind.ALLOWANCE,
+  [PayComponentType.SALARY_ADVANCE_RECOVERY]: PayComponentKind.DEDUCTION,
+  [PayComponentType.LOAN_REPAYMENT]: PayComponentKind.DEDUCTION,
+  [PayComponentType.UNIFORM_EQUIPMENT_RECOVERY]: PayComponentKind.DEDUCTION,
+  [PayComponentType.OTHER_DEDUCTION]: PayComponentKind.DEDUCTION,
+};
+
+export const PAY_COMPONENT_LABEL: Record<PayComponentType, string> = {
+  [PayComponentType.TRANSPORT]: "Transport allowance",
+  [PayComponentType.MEAL]: "Meal allowance",
+  [PayComponentType.ATTENDANCE]: "Attendance allowance",
+  [PayComponentType.PHONE]: "Phone/data allowance",
+  [PayComponentType.UNIFORM]: "Uniform allowance",
+  [PayComponentType.COST_OF_LIVING]: "Cost-of-living allowance",
+  [PayComponentType.SALARY_ADVANCE_RECOVERY]: "Salary advance recovery",
+  [PayComponentType.LOAN_REPAYMENT]: "Loan repayment",
+  [PayComponentType.UNIFORM_EQUIPMENT_RECOVERY]: "Uniform/equipment recovery",
+  [PayComponentType.OTHER_DEDUCTION]: "Other deduction",
+};
+
 /**
  * Sri Lanka's 9 administrative provinces. A fixed, real-world geographic
  * list — unlike `Customer.title`/`clientSource`, which are tenant-editable

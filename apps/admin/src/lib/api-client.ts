@@ -2455,6 +2455,14 @@ export function updatePayCalendar(input: { monthlyAnchorDay?: number }): Promise
 
 export type PayrollRunStatus = "SUBMITTED" | "APPROVED" | "PAID" | "VOID";
 
+export interface PayrollRunLineComponent {
+  type: PayComponentType;
+  kind: PayComponentKind;
+  amountCents: number;
+  epfApplicable: boolean;
+  etfApplicable: boolean;
+}
+
 export interface PayrollRunLine {
   staffId: string;
   staffName: string;
@@ -2464,6 +2472,9 @@ export interface PayrollRunLine {
   unresolvedClosureDays: number;
   incentiveCents: number;
   incentiveSource: "FINALIZED_PAYOUT" | "LIVE_ESTIMATE" | null;
+  payComponents: PayrollRunLineComponent[];
+  allowancesCents: number;
+  deductionsCents: number;
   grossCents: number;
   /** `null` whenever statutory calculations aren't enabled for this tenant, or the period isn't a full calendar month. */
   statutory: {
@@ -2557,6 +2568,84 @@ export interface PayrollSettingsView {
 
 export function fetchPayrollSettings(): Promise<PayrollSettingsView> {
   return request<PayrollSettingsView>("/payroll/settings");
+}
+
+/**
+ * A curated fixed list, not an owner-typed catalog (DECISIONS.md §69) — the
+ * one place these ten types and their labels are named, so the drawer and
+ * anywhere else displaying a component read from the same list rather than
+ * risking two copies drifting apart.
+ */
+export type PayComponentKind = "ALLOWANCE" | "DEDUCTION";
+
+export type PayComponentType =
+  | "TRANSPORT"
+  | "MEAL"
+  | "ATTENDANCE"
+  | "PHONE"
+  | "UNIFORM"
+  | "COST_OF_LIVING"
+  | "SALARY_ADVANCE_RECOVERY"
+  | "LOAN_REPAYMENT"
+  | "UNIFORM_EQUIPMENT_RECOVERY"
+  | "OTHER_DEDUCTION";
+
+export const PAY_COMPONENT_KIND: Record<PayComponentType, PayComponentKind> = {
+  TRANSPORT: "ALLOWANCE",
+  MEAL: "ALLOWANCE",
+  ATTENDANCE: "ALLOWANCE",
+  PHONE: "ALLOWANCE",
+  UNIFORM: "ALLOWANCE",
+  COST_OF_LIVING: "ALLOWANCE",
+  SALARY_ADVANCE_RECOVERY: "DEDUCTION",
+  LOAN_REPAYMENT: "DEDUCTION",
+  UNIFORM_EQUIPMENT_RECOVERY: "DEDUCTION",
+  OTHER_DEDUCTION: "DEDUCTION",
+};
+
+export const PAY_COMPONENT_LABEL: Record<PayComponentType, string> = {
+  TRANSPORT: "Transport allowance",
+  MEAL: "Meal allowance",
+  ATTENDANCE: "Attendance allowance",
+  PHONE: "Phone/data allowance",
+  UNIFORM: "Uniform allowance",
+  COST_OF_LIVING: "Cost-of-living allowance",
+  SALARY_ADVANCE_RECOVERY: "Salary advance recovery",
+  LOAN_REPAYMENT: "Loan repayment",
+  UNIFORM_EQUIPMENT_RECOVERY: "Uniform/equipment recovery",
+  OTHER_DEDUCTION: "Other deduction",
+};
+
+export interface PayComponentView {
+  id: string;
+  staffId: string;
+  staffName: string;
+  type: PayComponentType;
+  kind: PayComponentKind;
+  amountCents: number;
+  epfApplicable: boolean;
+  etfApplicable: boolean;
+  reason: string | null;
+  active: boolean;
+  createdByName: string;
+  createdAt: string;
+}
+
+export function fetchPayComponents(staffId?: string): Promise<PayComponentView[]> {
+  const qs = staffId ? `?staffId=${staffId}` : "";
+  return request<PayComponentView[]>(`/payroll/pay-components${qs}`);
+}
+
+/** Assigns a component, replacing any existing active one of the same type for this staff member. */
+export function upsertPayComponent(
+  staffId: string,
+  input: { type: PayComponentType; amountCents: number; epfApplicable?: boolean; etfApplicable?: boolean; reason?: string },
+): Promise<PayComponentView> {
+  return request<PayComponentView>(`/payroll/pay-components/${staffId}`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export function deactivatePayComponent(id: string): Promise<PayComponentView> {
+  return request<PayComponentView>(`/payroll/pay-components/${id}`, { method: "DELETE" });
 }
 
 /* -----------------------------------------------------------------------

@@ -44,6 +44,11 @@ function grossFor(staffId: string, overrides: Partial<PayrollPreviewView> = {}):
     to: "2026-09-30",
     basePay: { staffId, staffName: "Nadia", from: "2026-09-01", to: "2026-09-30", earnedCents: 300_000_00, unpaidAbsenceDays: 0, unresolvedClosureDays: 0, daysWithoutEmployment: 0, days: [] },
     incentive: null,
+    payComponents: [],
+    allowancesCents: 0,
+    deductionsCents: 0,
+    epfApplicableEarningsCents: 300_000_00,
+    etfApplicableEarningsCents: 300_000_00,
     totalCents: 300_000_00,
     ...overrides,
   };

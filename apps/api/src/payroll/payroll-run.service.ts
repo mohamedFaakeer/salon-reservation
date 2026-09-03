@@ -86,10 +86,15 @@ export class PayrollRunService {
 
       let statutory: PayrollRunLine["statutory"] = null;
       if (ruleSet) {
-        const epfEtf = computeEpfEtf(gross.totalCents, ruleSet);
+        const epfEtf = computeEpfEtf(
+          { epfApplicableEarningsCents: gross.epfApplicableEarningsCents, etfApplicableEarningsCents: gross.etfApplicableEarningsCents },
+          ruleSet,
+        );
         const apitCents = computeApitForMonth(gross.totalCents, ruleSet.apitMonthlyFreeThresholdCents, ruleSet.apitBands);
         statutory = { ...epfEtf, apitCents, verified: ruleSet.verified };
       }
+
+      const netCents = gross.totalCents - gross.deductionsCents - (statutory ? statutory.epfEmployeeCents + statutory.apitCents : 0);
 
       lines.push({
         staffId: gross.staffId,
@@ -100,9 +105,18 @@ export class PayrollRunService {
         unresolvedClosureDays: gross.basePay.unresolvedClosureDays,
         incentiveCents: gross.incentive?.totalCents ?? 0,
         incentiveSource: gross.incentive?.source ?? null,
+        payComponents: gross.payComponents.map((c) => ({
+          type: c.type,
+          kind: c.kind,
+          amountCents: c.amountCents,
+          epfApplicable: c.epfApplicable,
+          etfApplicable: c.etfApplicable,
+        })),
+        allowancesCents: gross.allowancesCents,
+        deductionsCents: gross.deductionsCents,
         grossCents: gross.totalCents,
         statutory,
-        netCents: statutory ? gross.totalCents - statutory.epfEmployeeCents - statutory.apitCents : gross.totalCents,
+        netCents,
       });
     }
 

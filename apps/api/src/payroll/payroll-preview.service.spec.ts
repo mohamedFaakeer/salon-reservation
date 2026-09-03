@@ -1,11 +1,13 @@
 import type { ObjectLiteral, Repository } from "typeorm";
-import { IncentivePayoutStatus } from "@salon/shared";
+import { IncentivePayoutStatus, PayComponentType } from "@salon/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PayrollPreviewService } from "./payroll-preview.service";
 import type { BasePayService } from "./base-pay.service";
 import type { BasePayPreviewView } from "./base-pay.types";
 import type { IncentiveService, StaffEarnings } from "../incentive/incentive.service";
 import type { IncentivePayout } from "../entities/incentive-payout.entity";
+import type { PayComponentService } from "./pay-component.service";
+import type { PayComponentView } from "./pay-component.types";
 
 function mockRepo<T extends ObjectLiteral>() {
   return { findOne: vi.fn(async () => null as T | null) } as unknown as Repository<T>;
@@ -29,14 +31,21 @@ function basePayResult(overrides: Partial<BasePayPreviewView> = {}): BasePayPrev
 describe("PayrollPreviewService", () => {
   let basePay: { preview: ReturnType<typeof vi.fn> };
   let incentives: { earningsFor: ReturnType<typeof vi.fn> };
+  let payComponents: { list: ReturnType<typeof vi.fn> };
   let payouts: Repository<IncentivePayout>;
   let service: PayrollPreviewService;
 
   beforeEach(() => {
     basePay = { preview: vi.fn(async () => basePayResult()) };
     incentives = { earningsFor: vi.fn(async () => null) };
+    payComponents = { list: vi.fn(async () => [] as PayComponentView[]) };
     payouts = mockRepo<IncentivePayout>();
-    service = new PayrollPreviewService(basePay as unknown as BasePayService, incentives as unknown as IncentiveService, payouts);
+    service = new PayrollPreviewService(
+      basePay as unknown as BasePayService,
+      incentives as unknown as IncentiveService,
+      payComponents as unknown as PayComponentService,
+      payouts,
+    );
   });
 
   it("returns base pay alone when the tenant doesn't have Incentives enabled", async () => {
@@ -74,5 +83,30 @@ describe("PayrollPreviewService", () => {
     const result = await service.preview("tenant-1", { staffId: "s1", from: "2026-09-01", to: "2026-09-30" }, true);
     expect(result.incentive).toBeNull();
     expect(result.totalCents).toBe(300_000);
+  });
+
+  it("adds active allowances to gross and separates deductions out, without touching the EPF base unless marked applicable", async () => {
+    payComponents.list.mockResolvedValue([
+      { id: "c1", type: PayComponentType.TRANSPORT, kind: "ALLOWANCE", amountCents: 5_000, epfApplicable: true, etfApplicable: false, active: true } as unknown as PayComponentView,
+      { id: "c2", type: PayComponentType.MEAL, kind: "ALLOWANCE", amountCents: 3_000, epfApplicable: false, etfApplicable: false, active: true } as unknown as PayComponentView,
+      { id: "c3", type: PayComponentType.LOAN_REPAYMENT, kind: "DEDUCTION", amountCents: 2_000, epfApplicable: false, etfApplicable: false, active: true } as unknown as PayComponentView,
+    ]);
+
+    const result = await service.preview("tenant-1", { staffId: "s1", from: "2026-09-01", to: "2026-09-30" }, false);
+
+    expect(result.allowancesCents).toBe(8_000);
+    expect(result.deductionsCents).toBe(2_000);
+    expect(result.totalCents).toBe(300_000 + 8_000);
+    expect(result.epfApplicableEarningsCents).toBe(300_000 + 5_000);
+    expect(result.payComponents).toHaveLength(3);
+  });
+
+  it("excludes inactive components from every figure", async () => {
+    payComponents.list.mockResolvedValue([
+      { id: "c1", type: PayComponentType.TRANSPORT, kind: "ALLOWANCE", amountCents: 5_000, epfApplicable: false, etfApplicable: false, active: false } as unknown as PayComponentView,
+    ]);
+    const result = await service.preview("tenant-1", { staffId: "s1", from: "2026-09-01", to: "2026-09-30" }, false);
+    expect(result.allowancesCents).toBe(0);
+    expect(result.payComponents).toHaveLength(0);
   });
 });

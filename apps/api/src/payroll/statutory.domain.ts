@@ -12,18 +12,29 @@ export interface EpfEtfResult {
   etfEmployerCents: number;
 }
 
+export interface EpfEtfBases {
+  /** basePay + only the EPF-applicable allowances — never incentive/commission. */
+  epfApplicableEarningsCents: number;
+  etfApplicableEarningsCents: number;
+}
+
 /**
- * EPF (employee + employer) and ETF (employer-only) — flat percentages of
- * gross earnings, safe to compute on any period since neither is
- * progressive (DECISIONS.md §62's statutory research). Each figure is
- * rounded independently to the nearest cent, which is the rounding rule
- * stored alongside every calculation snapshot (spec §12.1).
+ * EPF (employee + employer) and ETF (employer-only) — flat percentages,
+ * safe to compute on any period since neither is progressive (DECISIONS.md
+ * §62's statutory research). Takes two bases rather than one combined
+ * gross: EPF and ETF are computed on basePay plus only the allowances an
+ * owner has explicitly marked applicable (`computeEarningsBases`), and
+ * deliberately never on incentive/commission, or on an allowance not
+ * marked applicable (DECISIONS.md §69 — the sourced finding that
+ * incentive/bonus payments are excluded from EPF). Each figure is rounded
+ * independently to the nearest cent, the rounding rule stored alongside
+ * every calculation snapshot (spec §12.1).
  */
-export function computeEpfEtf(grossCents: number, rates: StatutoryPercentages): EpfEtfResult {
+export function computeEpfEtf(bases: EpfEtfBases, rates: StatutoryPercentages): EpfEtfResult {
   return {
-    epfEmployeeCents: Math.round((grossCents * rates.epfEmployeePercent) / 100),
-    epfEmployerCents: Math.round((grossCents * rates.epfEmployerPercent) / 100),
-    etfEmployerCents: Math.round((grossCents * rates.etfEmployerPercent) / 100),
+    epfEmployeeCents: Math.round((bases.epfApplicableEarningsCents * rates.epfEmployeePercent) / 100),
+    epfEmployerCents: Math.round((bases.epfApplicableEarningsCents * rates.epfEmployerPercent) / 100),
+    etfEmployerCents: Math.round((bases.etfApplicableEarningsCents * rates.etfEmployerPercent) / 100),
   };
 }
 

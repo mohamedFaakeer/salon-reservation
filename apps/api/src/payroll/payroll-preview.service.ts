@@ -13,6 +13,10 @@ import { IncentivePayout } from "../entities/incentive-payout.entity";
 import { BasePayService } from "./base-pay.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { IncentiveService } from "../incentive/incentive.service";
+// PayComponentService must stay a VALUE import for the same DI reason.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { PayComponentService } from "./pay-component.service";
+import { computeEarningsBases } from "./pay-component.domain";
 import type { PayrollIncentiveComponent, PayrollPreviewView } from "./payroll-preview.types";
 
 /**
@@ -30,6 +34,7 @@ export class PayrollPreviewService {
   constructor(
     private readonly basePay: BasePayService,
     private readonly incentives: IncentiveService,
+    private readonly payComponents: PayComponentService,
     @InjectRepository(IncentivePayout) private readonly payouts: Repository<IncentivePayout>,
   ) {}
 
@@ -37,10 +42,27 @@ export class PayrollPreviewService {
    * `incentivesEnabled` reflects the tenant's own entitlements — a tenant
    * without the Incentives module included never gets an incentive
    * component here, whatever payroll-only data might technically exist.
+   *
+   * This is the one place allowances/deductions are fetched and folded in
+   * (DECISIONS.md §69) — `PayrollRunService`/`StatutoryPreviewService` both
+   * read the resulting `allowancesCents`/`deductionsCents`/
+   * `epfApplicableEarningsCents`/`etfApplicableEarningsCents` off this
+   * result rather than re-fetching components themselves, so there's one
+   * place the earnings-bases math can't quietly drift from the run/preview.
    */
   async preview(tenantId: string, dto: BasePayPreviewQueryDto, incentivesEnabled: boolean): Promise<PayrollPreviewView> {
-    const basePay = await this.basePay.preview(tenantId, dto);
+    const [basePay, componentViews] = await Promise.all([
+      this.basePay.preview(tenantId, dto),
+      this.payComponents.list(tenantId, dto.staffId),
+    ]);
     const incentive = incentivesEnabled ? await this.resolveIncentive(tenantId, dto) : null;
+
+    const active = componentViews.filter((c) => c.active);
+    const bases = computeEarningsBases(
+      basePay.earnedCents,
+      incentive?.totalCents ?? 0,
+      active.map((c) => ({ type: c.type, kind: c.kind, amountCents: c.amountCents, epfApplicable: c.epfApplicable, etfApplicable: c.etfApplicable })),
+    );
 
     return {
       staffId: basePay.staffId,
@@ -49,7 +71,12 @@ export class PayrollPreviewService {
       to: basePay.to,
       basePay,
       incentive,
-      totalCents: basePay.earnedCents + (incentive?.totalCents ?? 0),
+      payComponents: active,
+      allowancesCents: bases.allowancesCents,
+      deductionsCents: bases.deductionsCents,
+      epfApplicableEarningsCents: bases.epfApplicableEarningsCents,
+      etfApplicableEarningsCents: bases.etfApplicableEarningsCents,
+      totalCents: bases.grossCents,
     };
   }
 

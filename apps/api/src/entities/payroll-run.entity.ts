@@ -3,6 +3,15 @@ import type { PayrollRunStatus } from "@salon/shared";
 import { Tenant } from "./tenant.entity";
 import { User } from "./user.entity";
 
+/** One allowance/deduction as applied to a frozen line — see `EmployeePayComponent` for the live, editable version this was copied from. */
+export interface PayrollRunLineComponent {
+  type: string;
+  kind: "ALLOWANCE" | "DEDUCTION";
+  amountCents: number;
+  epfApplicable: boolean;
+  etfApplicable: boolean;
+}
+
 /** One staff member's line within a run — frozen at submit time, the same "as applied" reasoning `IncentivePayout.snapshot` uses. */
 export interface PayrollRunLine {
   staffId: string;
@@ -13,6 +22,9 @@ export interface PayrollRunLine {
   unresolvedClosureDays: number;
   incentiveCents: number;
   incentiveSource: "FINALIZED_PAYOUT" | "LIVE_ESTIMATE" | null;
+  payComponents: PayrollRunLineComponent[];
+  allowancesCents: number;
+  deductionsCents: number;
   grossCents: number;
   statutory: {
     epfEmployeeCents: number;

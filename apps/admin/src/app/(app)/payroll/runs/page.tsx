@@ -425,6 +425,8 @@ function RunPanel({
                   { label: "Staff" },
                   { label: "Base pay", align: "right" },
                   { label: "Commission", align: "right" },
+                  { label: "Allowances", align: "right" },
+                  { label: "Deductions", align: "right" },
                   { label: "Statutory", align: "right" },
                   { label: "Net", align: "right" },
                   { label: "Payslip", srOnly: true },
@@ -577,6 +579,12 @@ function LineRow({ line, runId, payslipReady }: { line: PayrollRunLine; runId: s
         ) : (
           <span className="text-slate-300">—</span>
         )}
+      </Cell>
+      <Cell align="right">
+        {line.allowancesCents > 0 ? formatPriceCents(line.allowancesCents) : <span className="text-slate-300">—</span>}
+      </Cell>
+      <Cell align="right">
+        {line.deductionsCents > 0 ? `−${formatPriceCents(line.deductionsCents)}` : <span className="text-slate-300">—</span>}
       </Cell>
       <Cell align="right">
         {line.statutory ? (

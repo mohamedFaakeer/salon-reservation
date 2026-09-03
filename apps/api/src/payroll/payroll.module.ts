@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
+import { EmployeePayComponent } from "../entities/employee-pay-component.entity";
 import { Employment } from "../entities/employment.entity";
 import { IncentivePayout } from "../entities/incentive-payout.entity";
 import { PayCalendar } from "../entities/pay-calendar.entity";
@@ -17,6 +18,8 @@ import { EmploymentController } from "./employment.controller";
 import { EmploymentService } from "./employment.service";
 import { PayCalendarController } from "./pay-calendar.controller";
 import { PayCalendarService } from "./pay-calendar.service";
+import { PayComponentController } from "./pay-component.controller";
+import { PayComponentService } from "./pay-component.service";
 import { PayrollPreviewController } from "./payroll-preview.controller";
 import { PayrollPreviewService } from "./payroll-preview.service";
 import { PayrollRunController } from "./payroll-run.controller";
@@ -30,7 +33,17 @@ import { StatutoryRuleSetService } from "./statutory-rule-set.service";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Employment, PayCalendar, Staff, StaffLeave, IncentivePayout, StatutoryRuleSet, Tenant, PayrollRun]),
+    TypeOrmModule.forFeature([
+      Employment,
+      PayCalendar,
+      Staff,
+      StaffLeave,
+      IncentivePayout,
+      StatutoryRuleSet,
+      Tenant,
+      PayrollRun,
+      EmployeePayComponent,
+    ]),
     AuditModule,
     AttendanceModule,
     IncentiveModule,
@@ -38,6 +51,7 @@ import { StatutoryRuleSetService } from "./statutory-rule-set.service";
   controllers: [
     EmploymentController,
     PayCalendarController,
+    PayComponentController,
     BasePayController,
     PayrollPreviewController,
     StatutoryRuleSetController,
@@ -48,6 +62,7 @@ import { StatutoryRuleSetService } from "./statutory-rule-set.service";
   providers: [
     EmploymentService,
     PayCalendarService,
+    PayComponentService,
     BasePayService,
     PayrollPreviewService,
     StatutoryRuleSetService,
@@ -55,6 +70,14 @@ import { StatutoryRuleSetService } from "./statutory-rule-set.service";
     PayrollRunService,
     PayrollSettingsService,
   ],
-  exports: [EmploymentService, PayCalendarService, BasePayService, PayrollPreviewService, StatutoryRuleSetService, PayrollRunService],
+  exports: [
+    EmploymentService,
+    PayCalendarService,
+    PayComponentService,
+    BasePayService,
+    PayrollPreviewService,
+    StatutoryRuleSetService,
+    PayrollRunService,
+  ],
 })
 export class PayrollModule {}

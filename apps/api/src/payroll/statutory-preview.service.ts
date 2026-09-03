@@ -60,7 +60,10 @@ export class StatutoryPreviewService {
     }
 
     const gross = await this.payrollPreview.preview(tenantId, dto, incentivesEnabled);
-    const epfEtf = computeEpfEtf(gross.totalCents, ruleSet);
+    const epfEtf = computeEpfEtf(
+      { epfApplicableEarningsCents: gross.epfApplicableEarningsCents, etfApplicableEarningsCents: gross.etfApplicableEarningsCents },
+      ruleSet,
+    );
     const apitCents = computeApitForMonth(gross.totalCents, ruleSet.apitMonthlyFreeThresholdCents, ruleSet.apitBands);
 
     return {
@@ -73,7 +76,7 @@ export class StatutoryPreviewService {
       epfEmployerCents: epfEtf.epfEmployerCents,
       etfEmployerCents: epfEtf.etfEmployerCents,
       apitCents,
-      netCents: gross.totalCents - epfEtf.epfEmployeeCents - apitCents,
+      netCents: gross.totalCents - gross.deductionsCents - epfEtf.epfEmployeeCents - apitCents,
       verified: ruleSet.verified,
       ruleSetId: ruleSet.id,
     };

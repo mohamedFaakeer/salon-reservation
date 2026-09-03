@@ -15,7 +15,7 @@ import {
   MinLength,
   ValidateNested,
 } from "class-validator";
-import { PayFrequency, PayrollPaymentMethod } from "../enums";
+import { PayComponentType, PayFrequency, PayrollPaymentMethod } from "../enums";
 
 /**
  * POST /payroll/employment/:staffId and POST /payroll/employment/:staffId/change
@@ -187,4 +187,38 @@ export class MarkPayrollRunPaidDto {
   @IsString()
   @MaxLength(255)
   reference?: string;
+}
+
+/**
+ * POST /payroll/pay-components/:staffId and PUT /payroll/pay-components/:id
+ * — OWNER, MANAGER only (MANAGE_PAYROLL). Recurring by default: once
+ * assigned, applies to every payroll run computed while `active`, until
+ * changed or deactivated (DECISIONS.md §69) — there is no separate
+ * effective-dated version history the way `Employment` has, since an
+ * allowance amount changing isn't the same kind of record-worthy event a
+ * wage change is; the frozen `PayrollRun.snapshot` is what preserves what
+ * was actually applied to a given period regardless.
+ */
+export class UpsertPayComponentDto {
+  @IsEnum(PayComponentType)
+  type!: PayComponentType;
+
+  @IsInt()
+  @Min(0)
+  amountCents!: number;
+
+  /** Whether this component's amount counts toward the EPF-applicable earnings base. Defaults `false` — an unconfirmed legal assumption is never applied silently. */
+  @IsOptional()
+  @IsBoolean()
+  epfApplicable?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  etfApplicable?: boolean;
+
+  /** Required when `type` is `OTHER_DEDUCTION` — validated in the service, since it depends on the chosen type. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
 }

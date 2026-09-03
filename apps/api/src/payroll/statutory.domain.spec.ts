@@ -2,23 +2,43 @@ import { describe, expect, it } from "vitest";
 import { computeApitForMonth, computeEpfEtf } from "./statutory.domain";
 
 describe("computeEpfEtf", () => {
-  it("computes each figure as an independent flat percentage of gross", () => {
-    const result = computeEpfEtf(100_000_00, { epfEmployeePercent: 8, epfEmployerPercent: 12, etfEmployerPercent: 3 });
+  it("computes each figure as an independent flat percentage of its own base", () => {
+    const result = computeEpfEtf(
+      { epfApplicableEarningsCents: 100_000_00, etfApplicableEarningsCents: 100_000_00 },
+      { epfEmployeePercent: 8, epfEmployerPercent: 12, etfEmployerPercent: 3 },
+    );
     expect(result).toEqual({ epfEmployeeCents: 8_000_00, epfEmployerCents: 12_000_00, etfEmployerCents: 3_000_00 });
   });
 
   it("rounds to the nearest cent", () => {
-    const result = computeEpfEtf(333, { epfEmployeePercent: 8, epfEmployerPercent: 12, etfEmployerPercent: 3 });
+    const result = computeEpfEtf(
+      { epfApplicableEarningsCents: 333, etfApplicableEarningsCents: 333 },
+      { epfEmployeePercent: 8, epfEmployerPercent: 12, etfEmployerPercent: 3 },
+    );
     // 333 * 0.08 = 26.64 -> 27; * 0.12 = 39.96 -> 40; * 0.03 = 9.99 -> 10
     expect(result).toEqual({ epfEmployeeCents: 27, epfEmployerCents: 40, etfEmployerCents: 10 });
   });
 
-  it("zero gross earns zero everything", () => {
-    expect(computeEpfEtf(0, { epfEmployeePercent: 8, epfEmployerPercent: 12, etfEmployerPercent: 3 })).toEqual({
+  it("zero base earns zero everything", () => {
+    expect(
+      computeEpfEtf(
+        { epfApplicableEarningsCents: 0, etfApplicableEarningsCents: 0 },
+        { epfEmployeePercent: 8, epfEmployerPercent: 12, etfEmployerPercent: 3 },
+      ),
+    ).toEqual({
       epfEmployeeCents: 0,
       epfEmployerCents: 0,
       etfEmployerCents: 0,
     });
+  });
+
+  it("computes EPF and ETF from independent bases when they differ", () => {
+    const result = computeEpfEtf(
+      { epfApplicableEarningsCents: 300_000_00, etfApplicableEarningsCents: 305_000_00 },
+      { epfEmployeePercent: 8, epfEmployerPercent: 12, etfEmployerPercent: 3 },
+    );
+    expect(result.epfEmployeeCents).toBe(Math.round(300_000_00 * 0.08));
+    expect(result.etfEmployerCents).toBe(Math.round(305_000_00 * 0.03));
   });
 });
 

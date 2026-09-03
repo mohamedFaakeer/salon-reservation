@@ -398,7 +398,27 @@ checks. Two more columns, `paymentMethod` (`CASH|BANK_TRANSFER|MIXED`) and
 `paymentReference` (free text — a bank batch reference or a cash
 acknowledgement note), record how a run was actually paid out; `paymentMethod`
 is required whenever `status = 'PAID'` (`CHK_payroll_run_paid_has_timestamp`
-now checks for it too) — DECISIONS.md §68.
+now checks for it too) — DECISIONS.md §68. `PayrollRunLine` also gained
+`payComponents`/`allowancesCents`/`deductionsCents` alongside the existing
+fields, per §69 below.
+
+**employee_pay_component** — `id (uuid PK)`, `tenantId (FK, CASCADE)`,
+`staffId (FK, CASCADE)`, `type (varchar 40 — one of ten fixed
+`PayComponentType` values, DECISIONS.md §69)`, `amountCents (int, >= 0)`,
+`epfApplicable`/`etfApplicable (boolean, default false)`, `reason (varchar
+500, nullable — required when `type = 'OTHER_DEDUCTION'`)`, `active
+(boolean, default true)`, `createdBy (FK user)`, `createdAt`, `updatedAt`.
+A curated fixed list (six allowance types, four deduction types), not an
+owner-typed generic catalog — confirmed with the product owner. **Unique
+`(staffId, type) WHERE active = true`** — one active assignment per type
+per staff member; reassigning deactivates the old row rather than creating
+a second. Not effective-dated like `employment` — an allowance amount
+changing isn't the same kind of record-worthy event a wage change is, and
+`payroll_run.snapshot` already preserves whatever was actually applied to
+a finalized period regardless of later edits here. `epfApplicable`/
+`etfApplicable` default `false` — an unconfirmed legal assumption about
+what counts toward EPF/ETF is never applied silently; only affects a
+figure once the tenant's statutory engine is also turned on.
 
 ---
 
