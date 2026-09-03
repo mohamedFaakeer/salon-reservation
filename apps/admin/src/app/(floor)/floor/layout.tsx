@@ -13,6 +13,8 @@ import {
 import { isStaffOnly } from "../../../lib/permissions";
 import { FloorNav } from "../../../components/floor-nav";
 import { ModulesProvider } from "../../../context/modules-context";
+import { TourProvider } from "../../../context/tour-context";
+import { TourLauncher } from "../../../components/tour-launcher";
 
 /**
  * The floor shell — a phone-first kiosk, not the desk sidebar shrunk down.
@@ -123,23 +125,26 @@ export default function FloorLayout({ children }: { children: ReactNode }) {
 
   return (
     <ModulesProvider value={{ modules, reportPanels }}>
-      <div className="mx-auto flex h-dvh max-w-md flex-col bg-slate-100">
-        <header className="flex shrink-0 items-center justify-between px-5 pb-3 pt-[calc(env(safe-area-inset-top)+14px)]">
-          <div className="min-w-0">
-            <p className="truncate text-xs font-semibold text-slate-500">{salonName ?? " "}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {now ? (
-              <span className="tabular text-xs font-semibold text-slate-900">
-                {now.toLocaleTimeString("en-LK", { hour: "numeric", minute: "2-digit" })}
-              </span>
-            ) : null}
-            {logoutButton}
-          </div>
-        </header>
-        <main className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">{children}</main>
-        <FloorNav />
-      </div>
+      <TourProvider>
+        <div className="mx-auto flex h-dvh max-w-md flex-col bg-slate-100">
+          <header className="flex shrink-0 items-center justify-between px-5 pb-3 pt-[calc(env(safe-area-inset-top)+14px)]">
+            <div className="min-w-0">
+              <p className="truncate text-xs font-semibold text-slate-500">{salonName ?? " "}</p>
+            </div>
+            <div className="flex items-center gap-3">
+              {now ? (
+                <span className="tabular text-xs font-semibold text-slate-900">
+                  {now.toLocaleTimeString("en-LK", { hour: "numeric", minute: "2-digit" })}
+                </span>
+              ) : null}
+              <TourLauncher roles={user.roles} dropDirection="down" />
+              {logoutButton}
+            </div>
+          </header>
+          <main className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">{children}</main>
+          <FloorNav />
+        </div>
+      </TourProvider>
     </ModulesProvider>
   );
 }

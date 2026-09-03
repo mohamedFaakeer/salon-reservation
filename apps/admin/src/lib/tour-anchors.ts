@@ -132,4 +132,27 @@ export const TOUR_ANCHORS = {
     viewButton: "invoice-panel.view-button",
     sendButton: "invoice-panel.send-button",
   },
+  attendanceRequests: {
+    pendingTab: "attendance-requests.pending-tab",
+    /** Shared by every pending request's card. */
+    requestCard: "attendance-requests.request-card",
+    /** Shared by every card's Approve/Decline button pair. */
+    decisionButtons: "attendance-requests.decision-buttons",
+  },
+  reports: {
+    rangeBar: "reports.range-bar",
+    takingsPanel: "reports.takings-panel",
+    staffPanel: "reports.staff-panel",
+    servicesPanel: "reports.services-panel",
+    busyHoursPanel: "reports.busy-hours-panel",
+  },
+  floorRequests: {
+    newButton: "floor-requests.new-button",
+  },
+  floorRequestForm: {
+    dayField: "floor-request-form.day-field",
+    timeFields: "floor-request-form.time-fields",
+    reasonField: "floor-request-form.reason-field",
+    sendButton: "floor-request-form.send-button",
+  },
 } as const;

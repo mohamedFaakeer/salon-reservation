@@ -4,11 +4,19 @@ import { useEffect, useRef, useState } from "react";
 import { useTour } from "../context/tour-context";
 
 /**
- * The "?" trigger in the sidebar footer strip and its on-demand tour list.
- * On-demand only, by design (product-tour plan) — no tour is ever offered
- * proactively; this is the sole way a tour starts.
+ * The "?" trigger and its on-demand tour list — in the desk sidebar's
+ * footer strip, and in the floor kiosk's top header. On-demand only, by
+ * design (product-tour plan) — no tour is ever offered proactively; this is
+ * the sole way a tour starts.
  */
-export function TourLauncher({ roles }: { roles: string[] }) {
+export function TourLauncher({
+  roles,
+  dropDirection = "up",
+}: {
+  roles: string[];
+  /** "up": panel opens above the trigger (desk footer). "down": opens below it (floor header, near the top of the screen). */
+  dropDirection?: "up" | "down";
+}) {
   const { toursForCurrentUser, statusOf, startTour, activeTourId } = useTour();
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -74,7 +82,11 @@ export function TourLauncher({ roles }: { roles: string[] }) {
           role="dialog"
           aria-label="Guided tours"
           data-testid="tour-launcher-panel"
-          className="motion-rise absolute bottom-[calc(100%+8px)] left-0 z-50 w-80 max-w-[85vw] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
+          className={`motion-rise absolute z-50 w-80 max-w-[85vw] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl ${
+            dropDirection === "down"
+              ? "right-0 top-[calc(100%+8px)]"
+              : "bottom-[calc(100%+8px)] left-0"
+          }`}
         >
           <div className="border-b border-slate-100 px-4 py-3">
             <div className="flex items-center justify-between gap-2">

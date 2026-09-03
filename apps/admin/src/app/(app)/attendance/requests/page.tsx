@@ -14,6 +14,7 @@ import { useToast } from "../../../../components/toast";
 import { ListSkeleton } from "../../../../components/loading-skeleton";
 import { EmptyState } from "../../../../components/empty-state";
 import { ModuleGate } from "../../../../components/module-gate";
+import { TOUR_ANCHORS } from "../../../../lib/tour-anchors";
 
 const TABS: Array<{ value: AttendanceEditRequestStatus | "ALL"; label: string }> = [
   { value: "PENDING", label: "Pending" },
@@ -80,6 +81,7 @@ function AttendanceRequestsPage() {
           <button
             key={t.value}
             type="button"
+            data-tour-id={t.value === "PENDING" ? TOUR_ANCHORS.attendanceRequests.pendingTab : undefined}
             onClick={() => setTab(t.value)}
             className={`min-h-9 rounded-full px-3.5 text-sm font-medium ${
               tab === t.value ? "bg-teal-600 text-white" : "border border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
@@ -100,7 +102,11 @@ function AttendanceRequestsPage() {
             const date = new Date(`${r.workDate}T00:00:00`);
             const pending = r.status === "PENDING";
             return (
-              <div key={r.id} className="rounded border border-slate-200 bg-white p-4">
+              <div
+                key={r.id}
+                data-tour-id={TOUR_ANCHORS.attendanceRequests.requestCard}
+                className="rounded border border-slate-200 bg-white p-4"
+              >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <span className="text-sm font-medium text-slate-900">
                     {r.staffName} ·{" "}
@@ -158,7 +164,10 @@ function AttendanceRequestsPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="mt-3 flex gap-2">
+                    <div
+                      className="mt-3 flex gap-2"
+                      data-tour-id={TOUR_ANCHORS.attendanceRequests.decisionButtons}
+                    >
                       <button
                         type="button"
                         disabled={decidingId === r.id}

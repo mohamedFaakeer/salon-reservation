@@ -1,6 +1,7 @@
 "use client";
 
 import { todayLocalDate } from "../../lib/format";
+import { TOUR_ANCHORS } from "../../lib/tour-anchors";
 
 /**
  * The one control that governs every panel.
@@ -57,7 +58,10 @@ export function RangeBar({
   const invalid = range.to < range.from;
 
   return (
-    <div className="sticky top-0 z-10 my-4 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white/90 p-2.5 backdrop-blur">
+    <div
+      className="sticky top-0 z-10 my-4 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white/90 p-2.5 backdrop-blur"
+      data-tour-id={TOUR_ANCHORS.reports.rangeBar}
+    >
       <div className="flex flex-wrap gap-2" role="group" aria-label="Period">
         {PRESETS.map((preset) => {
           const active = activeLabel === preset.label;

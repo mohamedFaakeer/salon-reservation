@@ -1,5 +1,6 @@
 import type { BusyHourCell } from "../../lib/api-client";
 import { Card, LockedPanel, Panel, Quiet } from "./report-shell";
+import { TOUR_ANCHORS } from "../../lib/tour-anchors";
 
 /**
  * When the salon is actually busy, as weekday against hour.
@@ -26,7 +27,7 @@ export function BusyHoursPanel({ cells }: { cells: BusyHourCell[] | null }) {
   }
   if (cells.length === 0) {
     return (
-      <Panel title="When the salon is busy">
+      <Panel title="When the salon is busy" tourId={TOUR_ANCHORS.reports.busyHoursPanel}>
         <Card>
           <Quiet>No appointments fell in this period, so there is no pattern to show yet.</Quiet>
         </Card>
@@ -46,7 +47,11 @@ export function BusyHoursPanel({ cells }: { cells: BusyHourCell[] | null }) {
   const peak = cells.reduce((best, c) => (c.count > best.count ? c : best), cells[0]);
 
   return (
-    <Panel title="When the salon is busy" note="appointments by hour, across the chosen period">
+    <Panel
+      title="When the salon is busy"
+      note="appointments by hour, across the chosen period"
+      tourId={TOUR_ANCHORS.reports.busyHoursPanel}
+    >
       <Card className="p-4">
         <div
           className="grid gap-[3px] overflow-x-auto"

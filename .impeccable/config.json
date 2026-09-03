@@ -156,6 +156,36 @@
         "value": "apps/admin/src/components/tour-launcher.tsx 110",
         "createdAt": "2026-09-03T19:02:07.540Z",
         "reason": "decorative aria-hidden status glyph (slate-500 on slate-100, ~3.9:1) — state is also conveyed by the row's Start/Review button text, not by this icon alone"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/app/(app)/attendance/requests/page.tsx 86",
+        "createdAt": "2026-09-03T20:17:04.749Z",
+        "reason": "pre-existing ternary: bg-teal-600/text-white and border-slate-300/text-slate-600 are mutually exclusive tab states, not simultaneous gray-on-teal; not part of this session's change"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/app/(app)/attendance/requests/page.tsx 87",
+        "createdAt": "2026-09-03T20:18:13.352Z",
+        "reason": "pre-existing ternary: bg-teal-600/text-white and border-slate-300/text-slate-600 are mutually exclusive tab states, not simultaneous gray-on-teal; not part of this session's change (line shifted from 86 after adding an import)"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/components/tour-launcher.tsx 73",
+        "createdAt": "2026-09-03T20:26:08.954Z",
+        "reason": "same reviewed false-positive as before (hover:text-teal-700 overrides text-slate-500), line shifted after adding the dropDirection prop"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/components/tour-launcher.tsx 118",
+        "createdAt": "2026-09-03T20:26:09.155Z",
+        "reason": "same reviewed sanctioned exception as before (decorative status glyph), line shifted after adding the dropDirection prop"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/components/tour-launcher.tsx 122",
+        "createdAt": "2026-09-03T20:27:22.667Z",
+        "reason": "same reviewed sanctioned exception as before (decorative status glyph), line shifted after fixing conflicting left/right positioning utilities"
       }
     ]
   }

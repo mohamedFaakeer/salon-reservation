@@ -9,8 +9,11 @@ import { bookingStatusLifecycleTour } from "./booking-status-lifecycle.tour";
 import { paymentRecordingTour } from "./payment-recording.tour";
 import { invoiceManagementTour } from "./invoice-management.tour";
 import { bookingCancelTour } from "./booking-cancel.tour";
+import { attendanceCorrectionManagerTour } from "./attendance-correction-manager.tour";
+import { attendanceCorrectionStaffTour } from "./attendance-correction-staff.tour";
 import { leaveConfigurationTour } from "./leave-configuration.tour";
 import { closureConfigurationTour } from "./closure-configuration.tour";
+import { reportsOverviewTour } from "./reports-overview.tour";
 import type { TourDef, TourRole } from "./types";
 
 /**
@@ -33,8 +36,11 @@ export const TOUR_REGISTRY: TourDef[] = [
   paymentRecordingTour,
   invoiceManagementTour,
   bookingCancelTour,
+  attendanceCorrectionManagerTour,
+  attendanceCorrectionStaffTour,
   leaveConfigurationTour,
   closureConfigurationTour,
+  reportsOverviewTour,
 ];
 
 /** Tours structurally relevant to at least one of the given roles, in catalog order. */

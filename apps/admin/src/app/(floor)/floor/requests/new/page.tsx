@@ -7,6 +7,7 @@ import { errorCopy } from "../../../../../lib/error-copy";
 import { todayLocalDate } from "../../../../../lib/format";
 import { useToast } from "../../../../../components/toast";
 import { BusyLabel } from "../../../../../components/spinner";
+import { TOUR_ANCHORS } from "../../../../../lib/tour-anchors";
 
 export default function NewCorrectionRequestPage() {
   return (
@@ -89,7 +90,7 @@ function NewCorrectionRequestForm() {
         </button>
       </div>
 
-      <Field label="Which day?">
+      <Field label="Which day?" tourId={TOUR_ANCHORS.floorRequestForm.dayField}>
         <input
           type="date"
           value={workDate}
@@ -99,7 +100,7 @@ function NewCorrectionRequestForm() {
         />
       </Field>
 
-      <Field label="Corrected check-in">
+      <Field label="Corrected check-in" tourId={TOUR_ANCHORS.floorRequestForm.timeFields}>
         <input
           type="time"
           value={checkIn}
@@ -119,7 +120,7 @@ function NewCorrectionRequestForm() {
         />
       </Field>
 
-      <Field label="Why?">
+      <Field label="Why?" tourId={TOUR_ANCHORS.floorRequestForm.reasonField}>
         <textarea
           value={reason}
           onChange={(e) => setReason(e.target.value)}
@@ -133,6 +134,7 @@ function NewCorrectionRequestForm() {
         type="button"
         onClick={() => void submit()}
         disabled={submitting}
+        data-tour-id={TOUR_ANCHORS.floorRequestForm.sendButton}
         className="mt-1 min-h-[52px] w-full rounded-2xl bg-teal-600 text-[15px] font-bold text-white disabled:opacity-60"
       >
         <BusyLabel busy={submitting} busyText="Sending…">
@@ -143,9 +145,17 @@ function NewCorrectionRequestForm() {
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({
+  label,
+  tourId,
+  children,
+}: {
+  label: string;
+  tourId?: string;
+  children: ReactNode;
+}) {
   return (
-    <label className="flex flex-col gap-1.5">
+    <label className="flex flex-col gap-1.5" data-tour-id={tourId}>
       <span className="text-xs font-bold text-slate-500">{label}</span>
       {children}
     </label>
