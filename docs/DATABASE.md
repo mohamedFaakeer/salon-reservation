@@ -343,6 +343,14 @@ deliberately left unresolved rather than guessed, since Sri Lankan
 paid-holiday entitlement for daily-rated workers needs its own statutory
 verification, same as EPF/ETF/APIT.
 
+**Phase 3 (payroll-run preview)** also added no new tables.
+`GET /payroll/preview` reads `incentive_payout` (§2.12) directly for an
+already-finalized figure, falling back to `IncentiveService.earningsFor`
+for a live estimate — the `incentive` module's own files, tables, and
+routes are untouched (DECISIONS.md §64): a tenant can have Incentives
+without Payroll, or Payroll without Incentives, and each behaves correctly
+on its own.
+
 ---
 
 ## 3. Concurrency Model — Double-Booking Protection

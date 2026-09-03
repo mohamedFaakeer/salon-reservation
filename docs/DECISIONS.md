@@ -3078,3 +3078,45 @@ applied to a read, not just a write path.
 
 Phase 3 (folding Incentives under this Payroll umbrella) is next.
 
+## 64. Payroll module — Phase 3, combining base pay with commission (2026-09-03)
+
+The approved plan (§62) called for "folding" Incentives into Payroll via a
+physical file move — relocating `apps/api/src/incentive/` into `payroll/`.
+On reflection during implementation, that was flagged back to the product
+owner rather than executed as originally written: Incentives is live,
+shipped functionality that `apps/admin` already calls today, and a full
+move (every import path, every route re-verified byte-identical) carries
+real regression risk to a working feature for a purely organizational
+win — nothing about the routes, permissions, or commission math would
+actually change.
+
+**Decided:** Incentives' files, routes, and permissions stay exactly where
+they are, untouched — a salon that wants commission tracking without
+Payroll keeps using it standalone, exactly as before. A salon that enables
+Payroll gets the commission figure **included automatically** as part of
+the payroll total; a salon with Payroll but not Incentives simply gets no
+commission component, rather than an error or a stale one. "Folding in"
+now means: a new read in the `payroll` module that combines Phase 2's base
+pay with the Incentives module's own data, not a code relocation.
+
+**Implementation** (`payroll-preview.service.ts`/`.controller.ts`,
+`GET /payroll/preview?staffId&from&to`): for the commission component,
+prefers an already-**finalized** `IncentivePayout` for the exact requested
+period (a settled fact — `IncentivePayoutStatus <> VOID`) and falls back to
+`IncentiveService.earningsFor`'s live estimate when no payout has been run
+yet, labelling the response `FINALIZED_PAYOUT` vs `LIVE_ESTIMATE`
+explicitly so nobody reads an estimate as if it were settled. Whether the
+commission component appears at all is decided from the calling tenant's
+own resolved entitlements (`ctx.modules.incentives`), not from whether
+commission data happens to exist in the database — the two module keys
+(`payroll`, `incentives`) are independent, and the response respects
+whichever combination the tenant actually has.
+
+Reads `IncentiveService`/`incentive_payout` as an existing source of truth
+(the same way `IncentiveModule` itself already reads `Payment`/`Appointment`
+rows it doesn't own) rather than duplicating the commission calculation —
+this project's single-source-of-truth rule applied without requiring the
+two modules to physically merge.
+
+Phase 4 (the statutory engine, shipped flagged off per §62) is next.
+

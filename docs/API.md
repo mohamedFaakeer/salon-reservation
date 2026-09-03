@@ -288,6 +288,7 @@ statutory calculation yet — see DECISIONS.md §62 for the phased build.
 | GET | `/payroll/pay-calendars/monthly` | MANAGE_PAYROLL | The tenant's monthly pay-period cycle (`monthlyAnchorDay`), defaulting to an ordinary calendar month if never configured. |
 | PUT | `/payroll/pay-calendars/monthly` | MANAGE_PAYROLL | `{ monthlyAnchorDay? }` — 1-28. |
 | GET | `/payroll/base-pay/preview?staffId&from&to` | MANAGE_PAYROLL | A live, unsaved base-pay figure for one staff member over a range, built day-by-day from their Employment/Attendance/StaffLeave records — see DECISIONS.md §62 for the earning rules. Nothing here is persisted; it's a preview, the same shape `GET /incentive-plans/preview` already uses. |
+| GET | `/payroll/preview?staffId&from&to` | MANAGE_PAYROLL | The real payroll-run figure: base pay plus this period's commission. The commission component is an already-finalized `IncentivePayout` for this exact period if one exists, otherwise a live estimate (clearly labelled `LIVE_ESTIMATE` vs `FINALIZED_PAYOUT`) — and `null` entirely if the tenant doesn't have the Incentives module enabled. Reads the Incentives module as-is (DECISIONS.md §64); doesn't touch or duplicate it. |
 
 ### Ratings (public)
 
