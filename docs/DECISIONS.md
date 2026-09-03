@@ -3231,3 +3231,54 @@ Next in Phase 5: payslip documents, cash/bank payment recording, and — the
 first real UI screens for this whole module — a mockup, shown and approved,
 before any admin component is written.
 
+## 67. Payroll module — Phase 5 UI, Employment/Runs/Settings screens (2026-09-03)
+
+Real admin screens for the first time — `/payroll`, `/payroll/runs`,
+`/payroll/settings` — built to a mockup shown and approved first
+(`/impeccable` + `/ui-ux-pro-max` + `/frontend-design`, per the user's
+standing instruction), following the Incentives module's own screens
+(`incentives/page.tsx`, `incentives/payouts/page.tsx`) as the direct
+implementation precedent rather than inventing new conventions: same
+`DataTable`/`EmptyState`/`DrawerShell`/toast/`errorCopy` primitives, same
+teal-600/slate desk world, same route-per-screen-with-a-back-link shape
+(no in-page tab switcher, which the mockup used for reviewer convenience
+but doesn't match how Attendance/Incentives are actually structured).
+
+**Settings needed one new small backend read** discovered while wiring the
+frontend: nothing previously let a regular salon admin read their own
+tenant's `statutoryPayrollEnabled` status — only the SUPER_ADMIN write side
+existed (Phase 4). Added `GET /payroll/settings`
+(`PayrollSettingsService`/`Controller`) combining the pay calendar and
+statutory status in one round trip, the same "one endpoint, one screen"
+shape `ReportsService.summary` already uses. A tenant not enabled for
+statutory calculations never receives the platform's rate table in the
+response at all — not just hidden client-side.
+
+**One deliberate deviation from the approved mockup's mechanics, not its
+design**: the mockup showed a "Preview" step before "Submit" for a payroll
+run. The real backend has no non-persisting preview across every staff
+member at once — only single-staff previews exist as true previews.
+`POST /payroll/runs` is itself idempotent on the money (§66): calling it
+again for an unchanged period returns the same live run rather than a
+duplicate, which makes submitting the run *itself* the safe way to see the
+breakdown before approving it. The real "Run payroll" button submits
+directly and shows the resulting `SUBMITTED` run for review — same
+information architecture as the mockup (breakdown table, status trail,
+approve/mark-paid/void), different (and more honest, given what actually
+exists) button semantics.
+
+**Data availability also trimmed one mockup detail**: the mockup showed a
+"22 days worked" sub-line for daily-wage staff. `PayrollRunLine` carries
+`basePayCents` but not the underlying day-rate or day-count needed to
+derive that display, so it was dropped rather than invented; `unpaidAbsenceDays`
+and `unresolvedClosureDays` (real fields) are shown instead when nonzero.
+
+Allowances/deductions remains its own future phase (not yet numbered),
+confirmed with the user after they asked where EPF/ETF/allowances settings
+were in the mockup — the Settings screen answers the statutory half; the
+allowances half is deliberately still nothing, backend or UI, until that
+phase starts.
+
+Phase 5 continues: payslip documents and cash/bank payment recording are
+still ahead.
+

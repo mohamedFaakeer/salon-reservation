@@ -30,7 +30,7 @@ export interface FirstLoginChallenge {
   changeToken: string;
 }
 
-export type ModuleKey = "attendance" | "incentives" | "reports" | "auditLog" | "invoices" | "inventory";
+export type ModuleKey = "attendance" | "incentives" | "reports" | "auditLog" | "invoices" | "inventory" | "payroll";
 export type ReportPanelKey =
   | "takings"
   | "staff"
@@ -2391,6 +2391,165 @@ export function voidIncentivePayout(id: string, reason: string): Promise<Incenti
     method: "PATCH",
     body: JSON.stringify({ reason }),
   });
+}
+
+/* -----------------------------------------------------------------------
+ * Payroll
+ *
+ * Employment (an effective-dated pay frequency + rate per staff member),
+ * the tenant's pay calendar, and payroll runs — base pay plus commission
+ * plus statutory (if enabled), submitted/approved/paid/voided. Incentives
+ * (above) stays a separate, standalone module either way — see
+ * DECISIONS.md #62-#66.
+ * ------------------------------------------------------------------ */
+
+export type PayFrequency = "MONTHLY" | "DAILY";
+
+export interface EmploymentView {
+  id: string;
+  staffId: string;
+  staffName: string;
+  payFrequency: PayFrequency;
+  baseRateCents: number;
+  effectiveFrom: string;
+  /** `null` = the currently open version. */
+  effectiveTo: string | null;
+  supersedesEmploymentId: string | null;
+  createdByName: string;
+  createdAt: string;
+}
+
+/** Every staff member's currently (or next) open employment profile. */
+export function fetchEmployment(): Promise<EmploymentView[]> {
+  return request<EmploymentView[]>("/payroll/employment");
+}
+
+/** One staff member's full version history, newest first. */
+export function fetchEmploymentHistory(staffId: string): Promise<EmploymentView[]> {
+  return request<EmploymentView[]>(`/payroll/employment/${staffId}`);
+}
+
+/** Sets (or, if one is already open, supersedes) a staff member's pay. Never edits history in place. */
+export function upsertEmployment(
+  staffId: string,
+  input: { payFrequency: PayFrequency; baseRateCents: number; effectiveFrom: string },
+): Promise<EmploymentView> {
+  return request<EmploymentView>(`/payroll/employment/${staffId}`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export interface PayCalendarConfig {
+  monthlyAnchorDay: number;
+}
+
+/** Defaults to an ordinary calendar month (day 1) if the tenant has never customised it. */
+export function fetchPayCalendar(): Promise<PayCalendarConfig> {
+  return request<PayCalendarConfig>("/payroll/pay-calendars/monthly");
+}
+
+export function updatePayCalendar(input: { monthlyAnchorDay?: number }): Promise<PayCalendarConfig> {
+  return request<PayCalendarConfig>("/payroll/pay-calendars/monthly", {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export type PayrollRunStatus = "SUBMITTED" | "APPROVED" | "PAID" | "VOID";
+
+export interface PayrollRunLine {
+  staffId: string;
+  staffName: string;
+  payFrequency: PayFrequency;
+  basePayCents: number;
+  unpaidAbsenceDays: number;
+  unresolvedClosureDays: number;
+  incentiveCents: number;
+  incentiveSource: "FINALIZED_PAYOUT" | "LIVE_ESTIMATE" | null;
+  grossCents: number;
+  /** `null` whenever statutory calculations aren't enabled for this tenant, or the period isn't a full calendar month. */
+  statutory: {
+    epfEmployeeCents: number;
+    epfEmployerCents: number;
+    etfEmployerCents: number;
+    apitCents: number;
+    verified: boolean;
+  } | null;
+  netCents: number;
+}
+
+export interface PayrollRunView {
+  id: string;
+  periodStart: string;
+  periodEnd: string;
+  status: PayrollRunStatus;
+  staffCount: number;
+  totalGrossCents: number;
+  totalNetCents: number;
+  lines: PayrollRunLine[];
+  submittedByName: string;
+  submittedAt: string;
+  approvedByName: string | null;
+  approvedAt: string | null;
+  paidByName: string | null;
+  paidAt: string | null;
+  voidedByName: string | null;
+  voidedAt: string | null;
+  voidReason: string | null;
+}
+
+export function fetchPayrollRuns(query: { status?: PayrollRunStatus } = {}): Promise<PayrollRunView[]> {
+  const params = new URLSearchParams();
+  if (query.status) {
+    params.set("status", query.status);
+  }
+  const qs = params.toString();
+  return request(`/payroll/runs${qs ? `?${qs}` : ""}`);
+}
+
+export function fetchPayrollRun(id: string): Promise<PayrollRunView> {
+  return request<PayrollRunView>(`/payroll/runs/${id}`);
+}
+
+/**
+ * Submits a run for a period. Idempotent on the money: calling this again
+ * for a period whose figures haven't moved returns the same live run
+ * rather than a duplicate — which also makes this the natural way to
+ * "preview" a run before approving it, since submitting is what surfaces
+ * the breakdown to review in the first place.
+ */
+export function runPayroll(input: { periodStart: string; periodEnd: string }): Promise<PayrollRunView> {
+  return request<PayrollRunView>("/payroll/runs", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function approvePayrollRun(id: string): Promise<PayrollRunView> {
+  return request<PayrollRunView>(`/payroll/runs/${id}/approve`, { method: "PATCH" });
+}
+
+export function markPayrollRunPaid(id: string): Promise<PayrollRunView> {
+  return request<PayrollRunView>(`/payroll/runs/${id}/paid`, { method: "PATCH" });
+}
+
+export function voidPayrollRun(id: string, reason: string): Promise<PayrollRunView> {
+  return request<PayrollRunView>(`/payroll/runs/${id}/void`, {
+    method: "PATCH",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export interface PayrollSettingsView {
+  payCalendar: PayCalendarConfig;
+  statutoryPayrollEnabled: boolean;
+  /** Only ever populated when `statutoryPayrollEnabled` — a tenant not enabled never sees the platform's rate table. */
+  statutoryRuleSet: {
+    epfEmployeePercent: number;
+    epfEmployerPercent: number;
+    etfEmployerPercent: number;
+    apitMonthlyFreeThresholdCents: number;
+    verified: boolean;
+  } | null;
+}
+
+export function fetchPayrollSettings(): Promise<PayrollSettingsView> {
+  return request<PayrollSettingsView>("/payroll/settings");
 }
 
 /* -----------------------------------------------------------------------

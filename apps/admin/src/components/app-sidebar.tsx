@@ -10,6 +10,7 @@ import {
   canManageIncentives,
   canManageInventory,
   canManageNotifications,
+  canManagePayroll,
   canManageServicePackages,
   canManageServices,
   canManageSettings,
@@ -269,6 +270,18 @@ const GROUPS: NavGroup[] = [
           <Icon>
             <circle cx="8" cy="8" r="6" {...stroke} />
             <path d="M8 4.6v6.8M6 6.4c0-.9.9-1.6 2-1.6s2 .7 2 1.6-.9 1.4-2 1.6c-1.1.2-2 .7-2 1.6s.9 1.6 2 1.6 2-.7 2-1.6" {...stroke} />
+          </Icon>
+        ),
+      },
+      {
+        href: "/payroll",
+        label: "Payroll",
+        visible: canManagePayroll,
+        module: "payroll",
+        icon: (
+          <Icon>
+            <rect x="2" y="4.4" width="12" height="8.2" rx="1.3" {...stroke} />
+            <path d="M5 8.5h6M5 10.6h3.4" {...stroke} />
           </Icon>
         ),
       },

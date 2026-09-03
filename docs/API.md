@@ -296,6 +296,7 @@ statutory calculation yet — see DECISIONS.md §62 for the phased build.
 | PATCH | `/payroll/runs/:id/approve` | MANAGE_PAYROLL | Moves `SUBMITTED` → `APPROVED`. `409 PAYROLL_RUN_NOT_SUBMITTED` otherwise. |
 | PATCH | `/payroll/runs/:id/paid` | MANAGE_PAYROLL | Moves `APPROVED` → `PAID`. `409 PAYROLL_RUN_NOT_APPROVED` if it hasn't been approved first. |
 | PATCH | `/payroll/runs/:id/void` | MANAGE_PAYROLL | `{ reason }` — a manual correction from any non-void status, without resubmitting. |
+| GET | `/payroll/settings` | MANAGE_PAYROLL | Read-only: `{ payCalendar, statutoryPayrollEnabled, statutoryRuleSet }` — one round trip for the Settings screen (the pay cycle, plus the tenant's statutory status; `statutoryRuleSet` is only ever populated when `statutoryPayrollEnabled` is true). Changing the pay cycle is `PUT /payroll/pay-calendars/monthly`; statutory enablement is platform-only. |
 
 Global (platform-wide, not tenant-scoped) — `PLATFORM_ADMIN`/SUPER_ADMIN only:
 

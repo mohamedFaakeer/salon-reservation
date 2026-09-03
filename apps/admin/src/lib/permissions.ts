@@ -128,6 +128,11 @@ export function canManageIncentives(roles: string[]): boolean {
   return roles.some((r) => r === "OWNER" || r === "MANAGER");
 }
 
+/** Mirrors MANAGE_PAYROLL (OWNER, MANAGER only) — employment profiles, pay calendars, and payroll runs. */
+export function canManagePayroll(roles: string[]): boolean {
+  return roles.some((r) => r === "OWNER" || r === "MANAGER");
+}
+
 /** Mirrors MANAGE_GIFT_CARDS (OWNER, MANAGER only) — issuing and voiding, not redeeming. */
 export function canManageGiftCards(roles: string[]): boolean {
   return roles.some((r) => r === "OWNER" || r === "MANAGER");
@@ -188,6 +193,7 @@ export const MODULES: Array<{ label: string; can: (roles: string[]) => boolean }
   { label: "Services", can: canManageServices },
   { label: "Staff & availability", can: canManageStaff },
   { label: "Incentives", can: canManageIncentives },
+  { label: "Payroll", can: canManagePayroll },
   { label: "Gift cards", can: canManageGiftCards },
   { label: "Service packages", can: canManageServicePackages },
   { label: "Retail inventory", can: canManageInventory },
