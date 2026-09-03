@@ -1,9 +1,12 @@
 /**
  * Thin typed fetch wrappers over the NestJS API — no client-side business
  * logic (CLAUDE.md): every value here is exactly what the server returned.
- * Every authenticated call attaches `Authorization: Bearer`; a 401 calls the
- * registered `onUnauthorized` handler (wired by AuthContext) instead of
- * being handled ad hoc per call site.
+ * Every authenticated call attaches `Authorization: Bearer`; a 401 first
+ * tries one silent refresh via the refresh-token cookie (`fetchWithAuthRetry`)
+ * so an expired 15-minute access token doesn't force a sign-out while the
+ * user is still active — only a failed refresh calls the registered
+ * `onUnauthorized` handler (wired by AuthContext), instead of either being
+ * handled ad hoc per call site.
  */
 
 export interface AuthUser {
@@ -535,6 +538,73 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
   unauthorizedHandler = handler;
 }
 
+let sessionRefreshedListener: ((session: LoginResponse) => void) | null = null;
+/**
+ * Wired once by AuthContext on mount — persists a silently-renewed session
+ * (sessionStorage + in-memory user state) the same way a real login does, so
+ * a background token refresh is invisible to the rest of the app.
+ */
+export function setSessionRefreshedListener(handler: ((session: LoginResponse) => void) | null): void {
+  sessionRefreshedListener = handler;
+}
+
+let refreshInFlight: Promise<boolean> | null = null;
+/**
+ * Attempts one silent access-token renewal via the refresh-token cookie,
+ * de-duplicating concurrent 401s (several requests can fire around the same
+ * moment the 15-minute access token expires) into a single `/auth/refresh`
+ * call. Returns whether the session was renewed.
+ */
+async function trySilentRefresh(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      try {
+        const res = await fetch(`${apiBaseUrl()}/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          return false;
+        }
+        const session = (await res.json()) as LoginResponse;
+        setAuthToken(session.accessToken);
+        sessionRefreshedListener?.(session);
+        return true;
+      } catch {
+        return false;
+      } finally {
+        refreshInFlight = null;
+      }
+    })();
+  }
+  return refreshInFlight;
+}
+
+/**
+ * Retries a request once after a silent refresh when it 401s — an expired
+ * access token during otherwise-active use shouldn't force a sign-out
+ * (SECURITY.md: "expired access token -> 401 + refresh flow works"). Shared
+ * by the JSON `request()` wrapper and the multipart upload helpers below,
+ * which can't go through `request()` because it always sets
+ * `Content-Type: application/json`.
+ */
+async function fetchWithAuthRetry(doFetch: () => Promise<Response>, skipAuthRedirect?: boolean): Promise<Response> {
+  let res = await doFetch();
+  if (res.status === 401 && !skipAuthRedirect) {
+    const renewed = await trySilentRefresh();
+    if (renewed) {
+      res = await doFetch();
+    }
+  }
+  if (res.status === 401 && !skipAuthRedirect) {
+    unauthorizedHandler?.();
+  }
+  return res;
+}
+
 let currentToken: string | null = null;
 export function setAuthToken(token: string | null): void {
   currentToken = token;
@@ -544,23 +614,23 @@ async function request<T>(
   path: string,
   init?: RequestInit & { idempotencyKey?: string; skipAuthRedirect?: boolean },
 ): Promise<T> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (currentToken) {
-    headers.Authorization = `Bearer ${currentToken}`;
-  }
-  if (init?.idempotencyKey) {
-    headers["Idempotency-Key"] = init.idempotencyKey;
-  }
+  const doFetch = () => {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (currentToken) {
+      headers.Authorization = `Bearer ${currentToken}`;
+    }
+    if (init?.idempotencyKey) {
+      headers["Idempotency-Key"] = init.idempotencyKey;
+    }
+    return fetch(`${apiBaseUrl()}${path}`, {
+      ...init,
+      headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) },
+      credentials: "include",
+      cache: "no-store",
+    });
+  };
 
-  const res = await fetch(`${apiBaseUrl()}${path}`, {
-    ...init,
-    headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) },
-    cache: "no-store",
-  });
-
-  if (res.status === 401 && !init?.skipAuthRedirect) {
-    unauthorizedHandler?.();
-  }
+  const res = await fetchWithAuthRetry(doFetch, init?.skipAuthRedirect);
 
   if (!res.ok) {
     let body: { code?: string; message?: string; details?: Record<string, unknown> } = {};
@@ -601,6 +671,20 @@ export function completeFirstLogin(changeToken: string, newPassword: string): Pr
 
 export function logout(): Promise<{ ok: true }> {
   return request<{ ok: true }>("/auth/logout", { method: "POST", body: JSON.stringify({}) });
+}
+
+/**
+ * Renews the access token via the refresh-token cookie right now, rather than
+ * waiting for the next request to 401 into `trySilentRefresh` — used by the
+ * idle-warning dialog's "Stay signed in" action, so clicking it visibly
+ * extends the session instead of merely resetting the idle clock.
+ */
+export function refreshSession(): Promise<LoginResponse> {
+  return request<LoginResponse>("/auth/refresh", {
+    method: "POST",
+    body: JSON.stringify({}),
+    skipAuthRedirect: true,
+  });
 }
 
 export function fetchTenantMe(): Promise<TenantMe> {
@@ -667,14 +751,13 @@ export async function uploadTenantLogo(file: File): Promise<TenantSettingsView> 
   const form = new FormData();
   form.append("file", file);
 
-  const headers: Record<string, string> = {};
-  if (currentToken) {
-    headers.Authorization = `Bearer ${currentToken}`;
-  }
-  const res = await fetch(`${apiBaseUrl()}/tenant/me/logo`, { method: "POST", headers, body: form, cache: "no-store" });
-  if (res.status === 401) {
-    unauthorizedHandler?.();
-  }
+  const res = await fetchWithAuthRetry(() => {
+    const headers: Record<string, string> = {};
+    if (currentToken) {
+      headers.Authorization = `Bearer ${currentToken}`;
+    }
+    return fetch(`${apiBaseUrl()}/tenant/me/logo`, { method: "POST", headers, body: form, credentials: "include", cache: "no-store" });
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}) as { code?: string; message?: string });
     throw new ApiRequestError(res.status, body.code ?? "UNKNOWN_ERROR", body.message ?? "Something went wrong. Please try again.");
@@ -2738,14 +2821,13 @@ export function fetchVariantBatches(variantId: string): Promise<StockBatchRecord
 async function uploadImageFile<T>(path: string, file: File): Promise<T> {
   const form = new FormData();
   form.append("file", file);
-  const headers: Record<string, string> = {};
-  if (currentToken) {
-    headers.Authorization = `Bearer ${currentToken}`;
-  }
-  const res = await fetch(`${apiBaseUrl()}${path}`, { method: "POST", headers, body: form, cache: "no-store" });
-  if (res.status === 401) {
-    unauthorizedHandler?.();
-  }
+  const res = await fetchWithAuthRetry(() => {
+    const headers: Record<string, string> = {};
+    if (currentToken) {
+      headers.Authorization = `Bearer ${currentToken}`;
+    }
+    return fetch(`${apiBaseUrl()}${path}`, { method: "POST", headers, body: form, credentials: "include", cache: "no-store" });
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}) as { code?: string; message?: string });
     throw new ApiRequestError(res.status, body.code ?? "UNKNOWN_ERROR", body.message ?? "Something went wrong. Please try again.");
@@ -2776,14 +2858,13 @@ export interface ImportSummary {
 export async function importProducts(file: File): Promise<ImportSummary> {
   const form = new FormData();
   form.append("file", file);
-  const headers: Record<string, string> = {};
-  if (currentToken) {
-    headers.Authorization = `Bearer ${currentToken}`;
-  }
-  const res = await fetch(`${apiBaseUrl()}/products/import`, { method: "POST", headers, body: form, cache: "no-store" });
-  if (res.status === 401) {
-    unauthorizedHandler?.();
-  }
+  const res = await fetchWithAuthRetry(() => {
+    const headers: Record<string, string> = {};
+    if (currentToken) {
+      headers.Authorization = `Bearer ${currentToken}`;
+    }
+    return fetch(`${apiBaseUrl()}/products/import`, { method: "POST", headers, body: form, credentials: "include", cache: "no-store" });
+  });
   if (!res.ok) {
     let body: { code?: string; message?: string; details?: Record<string, unknown> } = {};
     try {

@@ -9,6 +9,7 @@ import { UserStatus } from "../../enums/user-status.enum";
 import { PasswordService } from "./password.service";
 import { SessionService } from "./session.service";
 import { TokenService } from "./token.service";
+import { parseDurationMs } from "./duration";
 // AuditService must stay a VALUE import: NestJS resolves constructor
 // injection via design:paramtypes metadata at runtime; `import type` would
 // erase it and break DI.
@@ -268,6 +269,7 @@ export class AuthService {
       ip,
       userAgent,
       ttlMs: refreshTtlMs(),
+      absoluteSessionMaxMs: absoluteSessionMaxMs(),
     });
     return {
       accessToken: await this.tokens.sign(rotated.sessionUser),
@@ -290,15 +292,17 @@ export class AuthService {
 }
 
 function refreshTtlMs(): number {
-  const ttl = process.env.JWT_REFRESH_TTL ?? "7d";
-  const m = /^(\d+)([smhd])$/.exec(ttl);
-  const mult: Record<string, number> = {
-    s: 1000,
-    m: 60_000,
-    h: 3_600_000,
-    d: 86_400_000,
-  };
-  const n = m ? Number(m[1]) : 7;
-  const u = m ? m[2] : "d";
-  return n * mult[u];
+  return parseDurationMs(process.env.JWT_REFRESH_TTL, "7d");
+}
+
+/**
+ * Session-timeout policy (DECISIONS.md): even a continuously-active,
+ * legitimately rotating refresh token is cut off this long after its
+ * original login — one shift by default — so a stolen refresh-token cookie
+ * can't stay useful indefinitely just by being replayed/rotated. Idle
+ * timeout (enforced client-side, since the server can't see mouse activity)
+ * is a separate, shorter limit layered on top of this one.
+ */
+function absoluteSessionMaxMs(): number {
+  return parseDurationMs(process.env.JWT_ABSOLUTE_SESSION_MAX, "12h");
 }

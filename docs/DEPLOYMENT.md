@@ -89,6 +89,7 @@ Browser (any device)
    |---|---|---|
    | `JWT_ACCESS_TTL` | `15m` | Access-token lifetime |
    | `JWT_REFRESH_TTL` | `7d` | Refresh-token lifetime |
+   | `JWT_ABSOLUTE_SESSION_MAX` | `12h` | Absolute session cap from original login, regardless of activity (DECISIONS.md #62) |
    | `RATE_LIMIT_MAX` | `100` | Requests per window, per IP |
    | `RATE_LIMIT_WINDOW_MS` | `60000` | Rate-limit window |
    | `ARGON2_MEMORY_KB` | see `password.service.ts` | Password-hash cost — lower only if Render's 512 MB tier struggles |

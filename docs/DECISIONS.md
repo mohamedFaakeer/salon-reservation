@@ -2923,3 +2923,65 @@ Next version's static-exports guide, found by reading the actual build
 error), title/canonical/meta description/H1/`<main>` all appear exactly
 once, and zero accidental `noindex`.
 
+## 62. Admin session-timeout policy — silent refresh, idle logout, absolute cap (2026-09-03)
+
+**Motivation.** A user-reported bug (clicking a payslip link logged the admin
+out) traced back to a bigger gap than the link itself: `apps/admin` never
+called `POST /auth/refresh` at all, so every staff member was hard-logged-out
+exactly 15 minutes after login — active or not — even though the backend
+already had a full token/refresh design built for this (§5, "Security
+Decisions — Token Sessions"). Asked what the industry-standard behavior
+should be instead, and decided on three explicit, independent policies
+rather than leaving the 15-minute cliff in place:
+
+1. **Silent refresh, wired up for real.** `apps/admin`'s `request()` now
+   sends `credentials: "include"` (the missing half of the cookie flow — the
+   API's CORS already had `credentials: true`) and, on a `401`, attempts one
+   `POST /auth/refresh` before giving up; concurrent 401s de-dupe into a
+   single in-flight refresh (`fetchWithAuthRetry`/`trySilentRefresh` in
+   `api-client.ts`). The three multipart-upload call sites that bypass
+   `request()` (logo, product image, product CSV import) got the same
+   treatment rather than being left as a known inconsistency — leaving them
+   on the old immediate-401-logout path would have reintroduced exactly the
+   "sometimes it logs me out, sometimes it doesn't" bug this change exists to
+   fix.
+2. **Idle (inactivity) timeout: 30 minutes, client-side.** The server has no
+   visibility into mouse movement, so this is enforced in the browser
+   (`use-idle-timeout.ts`) — the same shape virtually every SPA uses (Auth0,
+   AWS Amplify, etc.). 30 minutes was chosen over 15 (too strict for a
+   receptionist mid-service) and 60 (too loose given this app holds payment
+   records and customer PII on often-shared front-desk devices). A warning
+   dialog (`IdleWarningDialog`) appears in the last 60 seconds with a
+   countdown and a "Stay signed in" button, so nobody silently loses an
+   unsaved appointment or drawer form. An idle timeout revokes the
+   server-side session (routes through the existing `logout()`, which already
+   calls `POST /auth/logout`) — it doesn't just clear local UI state.
+3. **Absolute session cap: 12 hours, server-side, independent of activity.**
+   Even a continuously-active, legitimately-rotating refresh token is cut off
+   12 hours after its original login (`JWT_ABSOLUTE_SESSION_MAX`), bounding
+   how long a stolen refresh-token cookie stays useful no matter how often
+   it's replayed/rotated — the one limit idle-timeout and per-token TTL can't
+   provide on their own. `refresh_session` gained `familyId`/
+   `familyStartedAt` columns (migration `RefreshSessionFamily1750002700000`):
+   set at first login and carried forward unchanged on every rotation, so
+   `SessionService.rotate` can measure "how long has this login been alive"
+   without walking `replacedBySessionId` history. Breaching the cap revokes
+   the whole family (a new `SessionService.revokeFamily`, narrower than
+   `revokeAllForUser` — a different device's unrelated login is left
+   untouched) and throws `401 SESSION_EXPIRED`, audited as
+   `SESSION_ABSOLUTE_CAP_REACHED`, matching the existing reuse-detection
+   precedent's shape.
+
+**Scope.** `apps/admin` and the shared staff-auth backend
+(`apps/api/src/auth/**`) only. `apps/web`'s customer session
+(`CustomerRefreshSession`) is a fully separate system by design (§section on
+customer accounts) and was not touched. Not made per-tenant configurable —
+the 30-minute/12-hour values are a platform security policy, not a business
+rule a salon owner would reasonably need to tune.
+
+**Small dedup along the way**: the duration-string parser (`"15m"`, `"7d"`)
+that `AuthService.refreshTtlMs()` had inlined was pulled out to a shared
+`parseDurationMs()` (`apps/api/src/auth/services/duration.ts`) so the new
+`JWT_ABSOLUTE_SESSION_MAX` knob parses identically rather than copying the
+regex a third time.
+
