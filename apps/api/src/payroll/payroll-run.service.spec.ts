@@ -1,5 +1,5 @@
 import type { ObjectLiteral, Repository } from "typeorm";
-import { PayFrequency, PayrollRunStatus } from "@salon/shared";
+import { PayFrequency, PayrollPaymentMethod, PayrollRunStatus } from "@salon/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PayrollRunService } from "./payroll-run.service";
 import type { PayrollRun } from "../entities/payroll-run.entity";
@@ -192,7 +192,25 @@ describe("PayrollRunService", () => {
 
     it("markPaid requires APPROVED", async () => {
       vi.mocked(runs.findOne).mockResolvedValue(reloadedRun({ status: PayrollRunStatus.SUBMITTED }));
-      await expect(service.markPaid("tenant-1", "run-1", "user-1")).rejects.toMatchObject({ code: "PAYROLL_RUN_NOT_APPROVED" });
+      await expect(
+        service.markPaid("tenant-1", "run-1", "user-1", { paymentMethod: PayrollPaymentMethod.CASH }),
+      ).rejects.toMatchObject({ code: "PAYROLL_RUN_NOT_APPROVED" });
+    });
+
+    it("markPaid records how the money moved", async () => {
+      vi.mocked(runs.findOne).mockResolvedValue(reloadedRun({ status: PayrollRunStatus.APPROVED }));
+      await service.markPaid("tenant-1", "run-1", "user-2", {
+        paymentMethod: PayrollPaymentMethod.BANK_TRANSFER,
+        reference: "Batch #4471",
+      });
+      expect(runs.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: PayrollRunStatus.PAID,
+          paidBy: "user-2",
+          paymentMethod: PayrollPaymentMethod.BANK_TRANSFER,
+          paymentReference: "Batch #4471",
+        }),
+      );
     });
 
     it("void refuses an already-void run", async () => {

@@ -53,7 +53,10 @@ export interface PayrollRunLine {
   `("status" <> 'VOID') OR ("voidedAt" IS NOT NULL AND "voidedBy" IS NOT NULL AND "voidReason" IS NOT NULL)`,
 )
 @Check("CHK_payroll_run_approved_has_timestamp", `("status" = 'SUBMITTED') OR ("approvedAt" IS NOT NULL AND "approvedBy" IS NOT NULL)`)
-@Check("CHK_payroll_run_paid_has_timestamp", `("status" <> 'PAID') OR ("paidAt" IS NOT NULL AND "paidBy" IS NOT NULL)`)
+@Check(
+  "CHK_payroll_run_paid_has_timestamp",
+  `("status" <> 'PAID') OR ("paidAt" IS NOT NULL AND "paidBy" IS NOT NULL AND "paymentMethod" IS NOT NULL)`,
+)
 export class PayrollRun {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
@@ -112,6 +115,14 @@ export class PayrollRun {
 
   @Column({ type: "timestamptz", nullable: true })
   paidAt!: Date | null;
+
+  /** How the money actually moved. Set together with `paidAt`/`paidBy`, never before. */
+  @Column({ type: "varchar", length: 20, nullable: true })
+  paymentMethod!: string | null;
+
+  /** A bank batch reference, or a free-text cash acknowledgement note — whatever the person marking this paid typed. */
+  @Column({ type: "varchar", length: 255, nullable: true })
+  paymentReference!: string | null;
 
   @Column({ type: "uuid", nullable: true })
   voidedBy!: string | null;

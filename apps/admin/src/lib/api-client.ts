@@ -2491,6 +2491,8 @@ export interface PayrollRunView {
   approvedAt: string | null;
   paidByName: string | null;
   paidAt: string | null;
+  paymentMethod: PayrollPaymentMethod | null;
+  paymentReference: string | null;
   voidedByName: string | null;
   voidedAt: string | null;
   voidReason: string | null;
@@ -2524,8 +2526,13 @@ export function approvePayrollRun(id: string): Promise<PayrollRunView> {
   return request<PayrollRunView>(`/payroll/runs/${id}/approve`, { method: "PATCH" });
 }
 
-export function markPayrollRunPaid(id: string): Promise<PayrollRunView> {
-  return request<PayrollRunView>(`/payroll/runs/${id}/paid`, { method: "PATCH" });
+export type PayrollPaymentMethod = "CASH" | "BANK_TRANSFER" | "MIXED";
+
+export function markPayrollRunPaid(
+  id: string,
+  input: { paymentMethod: PayrollPaymentMethod; reference?: string },
+): Promise<PayrollRunView> {
+  return request<PayrollRunView>(`/payroll/runs/${id}/paid`, { method: "PATCH", body: JSON.stringify(input) });
 }
 
 export function voidPayrollRun(id: string, reason: string): Promise<PayrollRunView> {

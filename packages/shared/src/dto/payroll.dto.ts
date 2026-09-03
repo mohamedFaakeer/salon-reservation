@@ -15,7 +15,7 @@ import {
   MinLength,
   ValidateNested,
 } from "class-validator";
-import { PayFrequency } from "../enums";
+import { PayFrequency, PayrollPaymentMethod } from "../enums";
 
 /**
  * POST /payroll/employment/:staffId and POST /payroll/employment/:staffId/change
@@ -170,4 +170,21 @@ export class VoidPayrollRunDto {
   @MinLength(3)
   @MaxLength(500)
   reason!: string;
+}
+
+/**
+ * PATCH /payroll/runs/:id/paid — how the money actually moved. `reference`
+ * is a bank batch reference or a free-text cash acknowledgement note,
+ * whatever the person marking this paid types — not validated further
+ * (spec §15: no digital-signature capture in v1, just a real record
+ * instead of none).
+ */
+export class MarkPayrollRunPaidDto {
+  @IsEnum(PayrollPaymentMethod)
+  paymentMethod!: PayrollPaymentMethod;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  reference?: string;
 }

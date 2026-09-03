@@ -8,6 +8,7 @@ import {
   markPayrollRunPaid,
   runPayroll,
   voidPayrollRun,
+  type PayrollPaymentMethod,
   type PayrollRunLine,
   type PayrollRunView,
 } from "../../../../lib/api-client";
@@ -29,6 +30,12 @@ const STATUS_STYLE: Record<PayrollRunView["status"], { fill: string; fg: string;
   APPROVED: { fill: "#CCFBF1", fg: "#0F766E", label: "Approved" },
   PAID: { fill: "#D1FAE5", fg: "#065F46", label: "Paid" },
   VOID: { fill: "#E2E8F0", fg: "#475569", label: "Void" },
+};
+
+const PAYMENT_METHOD_LABEL: Record<PayrollPaymentMethod, string> = {
+  CASH: "cash",
+  BANK_TRANSFER: "bank transfer",
+  MIXED: "mixed methods",
 };
 
 export default function PayrollRunsPageGated() {
@@ -53,6 +60,9 @@ function PayrollRunsPage() {
   const [busy, setBusy] = useState(false);
   const [voiding, setVoiding] = useState(false);
   const [voidReason, setVoidReason] = useState("");
+  const [markingPaid, setMarkingPaid] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PayrollPaymentMethod>("BANK_TRANSFER");
+  const [paymentReference, setPaymentReference] = useState("");
 
   const load = useCallback(() => {
     setLoading(true);
@@ -70,6 +80,8 @@ function PayrollRunsPage() {
     setPeriodEnd(todayLocalDate());
     setVoiding(false);
     setVoidReason("");
+    setMarkingPaid(false);
+    setPaymentReference("");
     setPanelOpen(true);
   }
 
@@ -77,6 +89,8 @@ function PayrollRunsPage() {
     setActiveRun(run);
     setVoiding(false);
     setVoidReason("");
+    setMarkingPaid(false);
+    setPaymentReference("");
     setPanelOpen(true);
   }
 
@@ -128,12 +142,17 @@ function PayrollRunsPage() {
     }
   }
 
-  async function markPaid(): Promise<void> {
+  async function confirmMarkPaid(): Promise<void> {
     if (!activeRun) return;
     setBusy(true);
     try {
-      const updated = await markPayrollRunPaid(activeRun.id);
+      const updated = await markPayrollRunPaid(activeRun.id, {
+        paymentMethod,
+        reference: paymentReference.trim() || undefined,
+      });
       setActiveRun(updated);
+      setMarkingPaid(false);
+      setPaymentReference("");
       toast.success("Marked paid");
       load();
     } catch (err) {
@@ -240,7 +259,17 @@ function PayrollRunsPage() {
           onSubmit={() => void submit()}
           busy={busy}
           onApprove={() => void approve()}
-          onMarkPaid={() => void markPaid()}
+          markingPaid={markingPaid}
+          paymentMethod={paymentMethod}
+          onPaymentMethodChange={setPaymentMethod}
+          paymentReference={paymentReference}
+          onPaymentReferenceChange={setPaymentReference}
+          onStartMarkPaid={() => setMarkingPaid(true)}
+          onCancelMarkPaid={() => {
+            setMarkingPaid(false);
+            setPaymentReference("");
+          }}
+          onConfirmMarkPaid={() => void confirmMarkPaid()}
           voiding={voiding}
           voidReason={voidReason}
           onVoidReasonChange={setVoidReason}
@@ -267,7 +296,14 @@ function RunPanel({
   onSubmit,
   busy,
   onApprove,
-  onMarkPaid,
+  markingPaid,
+  paymentMethod,
+  onPaymentMethodChange,
+  paymentReference,
+  onPaymentReferenceChange,
+  onStartMarkPaid,
+  onCancelMarkPaid,
+  onConfirmMarkPaid,
   voiding,
   voidReason,
   onVoidReasonChange,
@@ -285,7 +321,14 @@ function RunPanel({
   onSubmit: () => void;
   busy: boolean;
   onApprove: () => void;
-  onMarkPaid: () => void;
+  markingPaid: boolean;
+  paymentMethod: PayrollPaymentMethod;
+  onPaymentMethodChange: (v: PayrollPaymentMethod) => void;
+  paymentReference: string;
+  onPaymentReferenceChange: (v: string) => void;
+  onStartMarkPaid: () => void;
+  onCancelMarkPaid: () => void;
+  onConfirmMarkPaid: () => void;
   voiding: boolean;
   voidReason: string;
   onVoidReasonChange: (v: string) => void;
@@ -314,7 +357,7 @@ function RunPanel({
                   : run.status === "APPROVED"
                     ? "Approved — ready to mark paid once the money has actually gone out."
                     : run.status === "PAID"
-                      ? "Paid out in full."
+                      ? `Paid out in full${run.paymentMethod ? ` via ${PAYMENT_METHOD_LABEL[run.paymentMethod]}` : ""}${run.paymentReference ? ` (${run.paymentReference})` : ""}.`
                       : `Voided${run.voidReason ? ` — ${run.voidReason}` : ""}.`
                 : "Choose a period. Covers every staff member with pay set up. Running it again for an unchanged period is safe."}
             </p>
@@ -384,12 +427,50 @@ function RunPanel({
                   { label: "Commission", align: "right" },
                   { label: "Statutory", align: "right" },
                   { label: "Net", align: "right" },
+                  { label: "Payslip", srOnly: true },
                 ]}
               >
                 {run.lines.map((line) => (
-                  <LineRow key={line.staffId} line={line} />
+                  <LineRow key={line.staffId} line={line} runId={run.id} payslipReady={run.status === "APPROVED" || run.status === "PAID"} />
                 ))}
               </DataTable>
+
+              {markingPaid ? (
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => onPaymentMethodChange(e.target.value as PayrollPaymentMethod)}
+                    className="min-h-10 rounded border border-slate-300 px-2 text-sm"
+                  >
+                    <option value="BANK_TRANSFER">Bank transfer</option>
+                    <option value="CASH">Cash</option>
+                    <option value="MIXED">Mixed methods</option>
+                  </select>
+                  <input
+                    value={paymentReference}
+                    onChange={(e) => onPaymentReferenceChange(e.target.value)}
+                    placeholder="Reference or note (optional)"
+                    className="min-h-10 flex-1 rounded border border-slate-300 px-3 text-sm"
+                  />
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={onConfirmMarkPaid}
+                    className="min-h-10 rounded bg-teal-600 px-3 text-sm font-medium text-white disabled:opacity-60"
+                  >
+                    <BusyLabel busy={busy} busyText="…">
+                      Confirm paid
+                    </BusyLabel>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onCancelMarkPaid}
+                    className="min-h-10 rounded border border-slate-300 px-3 text-sm font-medium text-slate-600"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : null}
 
               {voiding ? (
                 <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -420,7 +501,7 @@ function RunPanel({
           ) : null}
         </div>
 
-        {run && !voiding ? (
+        {run && !voiding && !markingPaid ? (
           <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-6 py-4">
             {run.status !== "PAID" && run.status !== "VOID" ? (
               <button type="button" onClick={onStartVoid} className="text-sm font-medium text-red-600 hover:underline">
@@ -452,13 +533,10 @@ function RunPanel({
               {run.status === "APPROVED" ? (
                 <button
                   type="button"
-                  disabled={busy}
-                  onClick={onMarkPaid}
-                  className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
+                  onClick={onStartMarkPaid}
+                  className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700"
                 >
-                  <BusyLabel busy={busy} busyText="…">
-                    Mark paid
-                  </BusyLabel>
+                  Mark paid
                 </button>
               ) : null}
             </div>
@@ -478,7 +556,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function LineRow({ line }: { line: PayrollRunLine }) {
+function LineRow({ line, runId, payslipReady }: { line: PayrollRunLine; runId: string; payslipReady: boolean }) {
   return (
     <Row>
       <Cell>
@@ -511,6 +589,17 @@ function LineRow({ line }: { line: PayrollRunLine }) {
       </Cell>
       <Cell align="right" className="font-semibold text-slate-900">
         {formatPriceCents(line.netCents)}
+      </Cell>
+      <Cell align="right">
+        {payslipReady ? (
+          <Link
+            href={`/payroll/runs/${runId}/payslip/${line.staffId}`}
+            target="_blank"
+            className="text-xs font-medium text-teal-700 hover:underline"
+          >
+            Payslip
+          </Link>
+        ) : null}
       </Cell>
     </Row>
   );

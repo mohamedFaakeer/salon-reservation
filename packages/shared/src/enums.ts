@@ -305,6 +305,19 @@ export enum PayrollRunStatus {
 }
 
 /**
+ * How a payroll run was actually paid out — deliberately its own narrow
+ * enum rather than reusing `PaymentMethod` (spec §15), which is customer-
+ * payment-shaped (CARD_CAPTURED, QR, GATEWAY, GIFT_CARD, ...) and mostly
+ * meaningless for paying staff. MIXED covers "some cash, some bank" without
+ * needing a per-staff payment-method breakdown in v1.
+ */
+export enum PayrollPaymentMethod {
+  CASH = "CASH",
+  BANK_TRANSFER = "BANK_TRANSFER",
+  MIXED = "MIXED",
+}
+
+/**
  * Sri Lanka's 9 administrative provinces. A fixed, real-world geographic
  * list — unlike `Customer.title`/`clientSource`, which are tenant-editable
  * free text, this has no per-tenant customization mechanism, the same

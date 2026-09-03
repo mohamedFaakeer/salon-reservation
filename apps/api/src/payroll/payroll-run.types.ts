@@ -16,6 +16,8 @@ export interface PayrollRunView {
   approvedAt: string | null;
   paidByName: string | null;
   paidAt: string | null;
+  paymentMethod: string | null;
+  paymentReference: string | null;
   voidedByName: string | null;
   voidedAt: string | null;
   voidReason: string | null;

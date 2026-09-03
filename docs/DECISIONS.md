@@ -3282,3 +3282,47 @@ phase starts.
 Phase 5 continues: payslip documents and cash/bank payment recording are
 still ahead.
 
+## 68. Payroll module — Phase 5, payslips and payment recording (2026-09-03)
+
+Closes out the two remaining pieces of Phase 5.
+
+**Payment recording**: "Mark paid" previously flipped a run's status with no
+record of how the money actually moved (spec §15). Added
+`paymentMethod` (`CASH|BANK_TRANSFER|MIXED` — a new, narrow
+`PayrollPaymentMethod` enum, not the existing customer-facing
+`PaymentMethod`, which is mostly meaningless for paying staff: CARD_CAPTURED,
+QR, GATEWAY, GIFT_CARD don't apply) and a free-text `paymentReference` to
+`PayrollRun`, required together with `paidAt`/`paidBy` whenever a run is
+marked paid. Deliberately not a full cash-drawer reconciliation or
+digital-signature capture — a typed reference/note is what "mark paid"
+already implied trusting the caller to get right; this just gives that
+trust a real, visible record instead of none.
+
+**Payslips**: no new backend endpoint — `GET /payroll/runs/:id` already
+returns every line, so the payslip page reads that plus the existing
+`GET /tenant/me` (already used elsewhere in the admin app) for the salon
+name, and renders client-side. Built as a printable document exactly the
+way `RetailSaleReceipt`/`InvoiceDocument` already are: plain HTML with
+`print:` Tailwind utilities so Ctrl-P produces a clean PDF, no new PDF
+library. Reused the established Invoice-receipt document pattern directly
+rather than treating this as new visual design needing its own
+mockup-approval round — it's an implementation detail filling in the
+already-approved Payroll mockup, not a new surface.
+
+Deliberately narrower than spec §16: English only (no reviewed Sinhala/
+Tamil translations exist), no year-to-date totals (would need aggregating
+every run a staff member has ever appeared in, not built), no allowances/
+deductions lines (don't exist yet, §67). Employer EPF/ETF appear as
+clearly-labelled informational lines ("paid by your salon, not deducted
+from your pay"), never folded into the employee's own net-pay deduction —
+spec's own explicit warning against misrepresenting them.
+
+A payslip is only shown for a run that's `APPROVED` or `PAID` — a still-
+`SUBMITTED` run is a plan awaiting review, not yet a fact worth handing to
+a stylist as an official record of their pay.
+
+This closes Phase 5. Phase 6 (allowances/deductions, per the user's
+decision after reviewing the Phase 5 mockup) is next; Phase 7 (reports &
+accounting mapping) and Phase 8 (hardening) follow, renumbered down one
+each from the original §62 plan.
+

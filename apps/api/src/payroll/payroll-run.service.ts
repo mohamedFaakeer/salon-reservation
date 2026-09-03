@@ -5,7 +5,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 // erase them and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { DataSource, Not, Repository } from "typeorm";
-import { ApiError, PayrollRunStatus, type PayrollRunQueryDto, type RunPayrollDto } from "@salon/shared";
+import { ApiError, PayrollRunStatus, type MarkPayrollRunPaidDto, type PayrollRunQueryDto, type RunPayrollDto } from "@salon/shared";
 import { PayrollRun, type PayrollRunLine } from "../entities/payroll-run.entity";
 import { Tenant } from "../entities/tenant.entity";
 // EmploymentService, PayrollPreviewService, StatutoryRuleSetService, and
@@ -188,7 +188,7 @@ export class PayrollRunService {
     return this.get(tenantId, id);
   }
 
-  async markPaid(tenantId: string, id: string, actorUserId: string): Promise<PayrollRunView> {
+  async markPaid(tenantId: string, id: string, actorUserId: string, dto: MarkPayrollRunPaidDto): Promise<PayrollRunView> {
     const run = await this.findOwned(tenantId, id);
     if (run.status !== PayrollRunStatus.APPROVED) {
       throw new ApiError({ statusCode: 409, code: "PAYROLL_RUN_NOT_APPROVED", message: "A run must be approved before it can be marked paid." });
@@ -197,6 +197,8 @@ export class PayrollRunService {
     run.status = PayrollRunStatus.PAID;
     run.paidAt = new Date();
     run.paidBy = actorUserId;
+    run.paymentMethod = dto.paymentMethod;
+    run.paymentReference = dto.reference?.trim() ?? null;
     await this.runs.save(run);
 
     await this.audit.record({
@@ -205,7 +207,12 @@ export class PayrollRunService {
       action: "PAYROLL_RUN_PAID",
       entityType: "PayrollRun",
       entityId: run.id,
-      metadata: { periodStart: run.periodStart, periodEnd: run.periodEnd, totalNetCents: run.totalNetCents },
+      metadata: {
+        periodStart: run.periodStart,
+        periodEnd: run.periodEnd,
+        totalNetCents: run.totalNetCents,
+        paymentMethod: dto.paymentMethod,
+      },
     });
 
     return this.get(tenantId, id);
@@ -275,6 +282,8 @@ function toView(run: PayrollRun): PayrollRunView {
     approvedAt: run.approvedAt?.toISOString() ?? null,
     paidByName: run.paidByUser?.name ?? null,
     paidAt: run.paidAt?.toISOString() ?? null,
+    paymentMethod: run.paymentMethod,
+    paymentReference: run.paymentReference,
     voidedByName: run.voidedByUser?.name ?? null,
     voidedAt: run.voidedAt?.toISOString() ?? null,
     voidReason: run.voidReason,

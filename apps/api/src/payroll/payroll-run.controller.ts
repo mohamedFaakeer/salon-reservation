@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 // DTOs must stay VALUE imports: ValidationPipe resolves them via
 // design:paramtypes metadata at runtime; `import type` would erase them.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import { PayrollRunQueryDto, RunPayrollDto, VoidPayrollRunDto } from "@salon/shared";
+import { MarkPayrollRunPaidDto, PayrollRunQueryDto, RunPayrollDto, VoidPayrollRunDto } from "@salon/shared";
 import type { Request } from "express";
 import { getTenantContext } from "../tenant/tenant-context";
 import { Permissions } from "../common/authorization/permissions.decorator";
@@ -52,9 +52,9 @@ export class PayrollRunController {
 
   @Patch(":id/paid")
   @Permissions(Permission.MANAGE_PAYROLL)
-  markPaid(@Req() req: Request, @Param("id") id: string) {
+  markPaid(@Req() req: Request, @Param("id") id: string, @Body() dto: MarkPayrollRunPaidDto) {
     const ctx = getTenantContext(req);
-    return this.payrollRuns.markPaid(ctx.tenantId, id, ctx.userId);
+    return this.payrollRuns.markPaid(ctx.tenantId, id, ctx.userId, dto);
   }
 
   @Patch(":id/void")

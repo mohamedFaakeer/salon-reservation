@@ -394,7 +394,11 @@ deserializing jsonb, the same reason `invoice` duplicates its own totals.
 and submits a fresh one, same supersede-not-edit shape as `incentive_payout`.
 `CHK_payroll_run_void_has_reason`/`_approved_has_timestamp`/
 `_paid_has_timestamp` mirror `incentive_payout`'s own status-consistency
-checks.
+checks. Two more columns, `paymentMethod` (`CASH|BANK_TRANSFER|MIXED`) and
+`paymentReference` (free text — a bank batch reference or a cash
+acknowledgement note), record how a run was actually paid out; `paymentMethod`
+is required whenever `status = 'PAID'` (`CHK_payroll_run_paid_has_timestamp`
+now checks for it too) — DECISIONS.md §68.
 
 ---
 
