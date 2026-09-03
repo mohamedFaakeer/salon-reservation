@@ -101,6 +101,61 @@
         ],
         "createdAt": "2026-08-23T11:21:17.524Z",
         "reason": "Pre-existing Active/Discontinued status pill, unmodified by this session's edits (same as gift-cards page precedent) — muted background, not a colored surface."
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "bg-slate-100 text-slate-700",
+        "files": [
+          "apps/admin/src/app/(app)/notifications/page.tsx"
+        ],
+        "createdAt": "2026-08-27T21:56:01.906Z"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "scratchpad/zelyraone-landing-mockup.html"
+        ],
+        "createdAt": "2026-08-31T11:19:16.077Z",
+        "reason": "Deliberate lit-vanity-mirror world: glows represent real light sources (bulbs, a confirmation-lock indicator, a travelling signal) that are the signature interaction itself, not decorative chrome. Mockup-scoped, not a project-wide exception."
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "text-teal-700 bg-teal-50",
+        "files": [
+          "apps/admin/src/components/convert-custom-line-drawer.tsx"
+        ],
+        "createdAt": "2026-09-01T17:11:17.645Z"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "text-slate-600 hover:bg-red-50 hover:text-red-700",
+        "files": [
+          "apps/admin/src/components/bundle-drawer.tsx"
+        ],
+        "createdAt": "2026-09-01T19:50:11.444Z",
+        "reason": "pre-existing code, unrelated to this edit; text turns red on the same hover that turns the background red, never gray-on-red simultaneously"
+      },
+      {
+        "rule": "bounce-easing",
+        "value": "cubic-bezier(0.34, 1.56, 0.64, 1)",
+        "files": [
+          "apps/marketing/src/app/globals.css"
+        ],
+        "createdAt": "2026-09-02T08:32:18.366Z",
+        "reason": "pre-existing slot-lock-in confirmation animation, unrelated to this session's hero/founding-banner change; the overshoot is a deliberate 'booking pill snaps into place' micro-interaction, not accidental bounce"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/components/tour-launcher.tsx 65",
+        "createdAt": "2026-09-03T19:02:07.097Z",
+        "reason": "hover:text-teal-700 overrides text-slate-500 on the same button; no state actually renders gray text on the teal-50 hover background"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/components/tour-launcher.tsx 110",
+        "createdAt": "2026-09-03T19:02:07.540Z",
+        "reason": "decorative aria-hidden status glyph (slate-500 on slate-100, ~3.9:1) — state is also conveyed by the row's Start/Review button text, not by this icon alone"
       }
     ]
   }
