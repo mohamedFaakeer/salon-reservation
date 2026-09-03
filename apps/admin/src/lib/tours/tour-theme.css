@@ -1,0 +1,152 @@
+/*
+ * Re-skins driver.js's default popover to the desk's own world (teal-600
+ * brand, slate neutrals, system-ui) instead of its stock light-grey look.
+ * Class names come from driver.js's own dist/driver.css — see engine.ts's
+ * `.driver-popover*` references.
+ */
+
+.salon-tour-popover.driver-popover {
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  max-width: 300px;
+  min-width: 280px;
+  border-radius: 12px;
+  padding: 16px 18px 14px;
+  box-shadow:
+    0 20px 44px -16px rgba(15, 23, 42, 0.4),
+    0 8px 18px -10px rgba(15, 23, 42, 0.22);
+}
+
+.salon-tour-popover .driver-popover-title {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: #0f172a;
+}
+
+.salon-tour-popover .driver-popover-description {
+  margin-top: 5px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: #475569;
+}
+
+/* The default "×" is hidden — every exit goes through our own Skip control
+   (see engine.ts's `allowClose: false`), so a second, ambiguous close
+   affordance would contradict that. */
+.salon-tour-popover .driver-popover-close-btn {
+  display: none;
+}
+
+.salon-tour-popover .driver-popover-footer {
+  margin-top: 14px;
+}
+
+.salon-tour-popover .driver-popover-progress-text {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.salon-tour-skip {
+  all: unset;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  padding: 6px 8px 6px 0;
+}
+
+.salon-tour-skip:hover {
+  color: #334155;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.salon-tour-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.salon-tour-step-count {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #0f766e;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.salon-tour-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.salon-tour-dots span {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.salon-tour-dots span.done {
+  background: #0d9488;
+}
+
+.salon-tour-dots span.now {
+  background: #0d9488;
+  width: 12px;
+  border-radius: 3px;
+}
+
+.salon-tour-popover .driver-popover-navigation-btns {
+  gap: 6px;
+}
+
+.salon-tour-popover .driver-popover-footer-btn {
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  padding: 7px 13px;
+  border-radius: 7px;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  background: #fff;
+}
+
+.salon-tour-popover .driver-popover-footer-btn:hover {
+  background: #f8fafc;
+  color: #334155;
+}
+
+.salon-tour-popover .driver-popover-next-btn,
+.salon-tour-popover .driver-popover-done-btn {
+  border-color: transparent;
+  background: #0d9488;
+  color: #fff;
+}
+
+.salon-tour-popover .driver-popover-next-btn:hover,
+.salon-tour-popover .driver-popover-done-btn:hover {
+  background: #0f766e;
+  color: #fff;
+}
+
+.salon-tour-popover .driver-popover-btn-disabled {
+  opacity: 0.4;
+}
+
+/* Spotlight ring — driver.js draws the cutout itself via the overlay SVG;
+   this just adds the same teal focus ring the mockup used. */
+.driver-active-element {
+  outline: 2px solid #0d9488;
+  outline-offset: 3px;
+  border-radius: 10px;
+}

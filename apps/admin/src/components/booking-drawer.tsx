@@ -23,6 +23,7 @@ import { useToast } from "./toast";
 import { errorCopy } from "../lib/error-copy";
 import { SlotsSkeleton } from "./loading-skeleton";
 import { BusyLabel } from "./spinner";
+import { TOUR_ANCHORS } from "../lib/tour-anchors";
 
 const SOURCES = ["WALK_IN", "PHONE", "WHATSAPP"] as const;
 type Source = (typeof SOURCES)[number];
@@ -232,25 +233,27 @@ export function BookingDrawer({
         />
         )}
 
-        {customer ? (
-          <div className="rounded border border-teal-200 bg-teal-50 p-3 text-sm">
-            <p className="font-medium text-teal-900">
-              {customer.firstName} {customer.lastName}
-            </p>
-            <p className="text-teal-700">{customer.phone}</p>
-            <button
-              type="button"
-              onClick={() => setCustomer(null)}
-              className="mt-1 text-xs text-teal-700 underline"
-            >
-              Change
-            </button>
-          </div>
-        ) : (
-          <CustomerSearch onSelect={setCustomer} />
-        )}
+        <div data-tour-id={TOUR_ANCHORS.bookingDrawer.customerField}>
+          {customer ? (
+            <div className="rounded border border-teal-200 bg-teal-50 p-3 text-sm">
+              <p className="font-medium text-teal-900">
+                {customer.firstName} {customer.lastName}
+              </p>
+              <p className="text-teal-700">{customer.phone}</p>
+              <button
+                type="button"
+                onClick={() => setCustomer(null)}
+                className="mt-1 text-xs text-teal-700 underline"
+              >
+                Change
+              </button>
+            </div>
+          ) : (
+            <CustomerSearch onSelect={setCustomer} />
+          )}
+        </div>
 
-        <div>
+        <div data-tour-id={TOUR_ANCHORS.bookingDrawer.servicesField}>
           <ServiceCombobox
             services={services}
             selectedIds={selectedServiceIds}
@@ -269,7 +272,7 @@ export function BookingDrawer({
 
         {isInquiry ? null : (
           <>
-        <div>
+        <div data-tour-id={TOUR_ANCHORS.bookingDrawer.staffSelect}>
           <label className="mb-2 block text-sm font-medium text-slate-700">Staff</label>
           <select
             data-testid="drawer-staff-select"
@@ -289,7 +292,7 @@ export function BookingDrawer({
           </select>
         </div>
 
-        <div>
+        <div data-tour-id={TOUR_ANCHORS.bookingDrawer.dateField}>
           <label className="mb-2 block text-sm font-medium text-slate-700">Date</label>
           <input
             data-testid="drawer-date"
@@ -303,7 +306,7 @@ export function BookingDrawer({
           />
         </div>
 
-        <div>
+        <div data-tour-id={TOUR_ANCHORS.bookingDrawer.timeSlots}>
           <p className="mb-2 text-sm font-medium text-slate-700">Time</p>
           <div role="status" aria-live="polite">
             {slotTakenNotice ? (
@@ -408,6 +411,7 @@ export function BookingDrawer({
         <button
           type="button"
           data-testid={isInquiry ? "drawer-submit-inquiry" : "drawer-submit"}
+          data-tour-id={TOUR_ANCHORS.bookingDrawer.submitButton}
           onClick={() => void (isInquiry ? handleLogInquiry() : handleSubmit())}
           /* An inquiry needs only somebody to call back. Services are optional
              and there is no slot to require. */
@@ -437,7 +441,11 @@ function ModeSwitch({ mode, onChange }: { mode: Mode; onChange: (next: Mode) => 
   ];
 
   return (
-    <fieldset className="grid grid-cols-2 gap-2" data-testid="drawer-mode">
+    <fieldset
+      className="grid grid-cols-2 gap-2"
+      data-testid="drawer-mode"
+      data-tour-id={TOUR_ANCHORS.bookingDrawer.modeSwitch}
+    >
       <legend className="mb-2 text-sm font-medium text-slate-700">What is this?</legend>
       {options.map((option) => {
         const selected = mode === option.value;

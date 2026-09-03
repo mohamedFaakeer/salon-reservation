@@ -15,6 +15,7 @@ import { AppTopbar } from "../../components/app-topbar";
 import { NotificationBell } from "../../components/notification-bell";
 import { isStaffOnly } from "../../lib/permissions";
 import { ModulesProvider } from "../../context/modules-context";
+import { TourProvider } from "../../context/tour-context";
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -127,6 +128,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     // it's an off-canvas drawer (docs/UX.md §5) opened via AppTopbar's
     // hamburger, rather than stacking the whole ~23-item nav above the page.
     <ModulesProvider value={{ modules, reportPanels }}>
+    <TourProvider>
       <div className="min-h-screen bg-slate-100 lg:flex">
         <NotificationBell />
         <AppTopbar
@@ -183,6 +185,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           </main>
         </div>
       </div>
+    </TourProvider>
     </ModulesProvider>
   );
 }
