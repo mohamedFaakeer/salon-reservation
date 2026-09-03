@@ -3175,3 +3175,59 @@ Phase 5 (approval workflow, payslips, payments) is next — the first phase
 with real UI, and the first that needs a mockup shown and approved before
 any screen is built, per this project's standing UI workflow.
 
+## 66. Payroll module — Phase 5 backend, the payroll run and maker-checker workflow (2026-09-03)
+
+The first persisted, real payroll document — everything before this phase
+was a live preview that saved nothing. A `PayrollRun` covers **every staff
+member with an employment profile for one period at once** (`SUBMITTED` →
+`APPROVED` → `PAID`, or `VOID` from any of those), unlike `IncentivePayout`,
+which is one row per staff member per period — this matches spec §13's own
+description of a run as a batch unit with period totals and an employee
+list, not thirteen separate single-person documents to review one at a time.
+
+**A genuine maker-checker separation isn't structurally enforced**, and
+that's a deliberate, considered choice rather than an oversight: `submit`
+and `approve` are both gated by the same `MANAGE_PAYROLL` permission,
+because splitting it into separate "prepare" and "approve" permissions
+would require a new role or sub-permission this project doesn't have yet.
+The tempting alternative — blocking an actor from approving their own
+submission — was considered and rejected: many of this platform's actual
+tenants are single-owner salons where the OWNER is the *only* person who
+will ever hold `MANAGE_PAYROLL`, and a hard block would make payroll
+literally unusable for exactly the salons this product is built for.
+Instead, `submittedBy` and `approvedBy` are tracked as genuinely distinct
+columns/actors regardless, so a salon with more than one manager can see
+whether the same person did both — informational, not a blocker.
+
+**Idempotent on the money**, the same shape as `IncentivePayoutService.run`:
+resubmitting a period with an unchanged total (gross, net, and staff count)
+returns the existing live run rather than a near-duplicate; a moved total
+voids the old run and submits a fresh one. Refuses outright to supersede a
+run that's already been marked `PAID` (`409 PAYROLL_RUN_ALREADY_PAID`) —
+correcting paid-out money needs a deliberate void with a reason, not a
+silent resubmission.
+
+**Statutory figures are computed inline in `PayrollRunService`, not by
+calling `StatutoryPreviewService`** — that service throws when a tenant
+isn't statutory-enabled, which is the correct behaviour for its own
+single-staff-member preview endpoint but wrong here: most tenants don't
+have statutory calculations on, and a run must still submit normally for
+them, simply with every line's `statutory` field `null`. The same
+`computeEpfEtf`/`computeApitForMonth` pure functions are reused either way,
+and a statutory line only appears when the tenant is enabled, a rule set is
+published, **and** the period is exactly one calendar month
+(`isFullCalendarMonth`, extracted from `statutory-preview.service.ts` into
+`payroll.domain.ts` so both services share the identical predicate rather
+than two copies quietly drifting apart).
+
+**Known v1 limitation, not a silent gap**: a run only includes staff members
+who currently have an *open* employment profile (`EmploymentService.listCurrent`)
+— someone who left partway through the period and whose profile was
+otherwise handled won't appear on that period's run. A real leaver/final-
+settlement workflow is spec territory this phase doesn't attempt (§11.4,
+already deferred in §65's gratuity note).
+
+Next in Phase 5: payslip documents, cash/bank payment recording, and — the
+first real UI screens for this whole module — a mockup, shown and approved,
+before any admin component is written.
+

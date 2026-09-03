@@ -13,6 +13,7 @@ import { Tenant } from "../entities/tenant.entity";
 import { PayrollPreviewService } from "./payroll-preview.service";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { StatutoryRuleSetService } from "./statutory-rule-set.service";
+import { isFullCalendarMonth } from "./payroll.domain";
 import { computeApitForMonth, computeEpfEtf } from "./statutory.domain";
 import type { StatutoryPreviewView } from "./statutory-preview.types";
 
@@ -81,21 +82,11 @@ export class StatutoryPreviewService {
 
 /** APIT is a monthly-only concept — refuse anything that isn't exactly one calendar month, rather than silently misapplying a monthly table to a partial figure. */
 function assertFullCalendarMonth(from: string, to: string): void {
-  const [year, month, day] = from.split("-").map(Number);
-  if (day !== 1) {
+  if (!isFullCalendarMonth(from, to)) {
     throw new ApiError({
       statusCode: 400,
       code: "INVALID_STATUTORY_PERIOD",
-      message: "APIT can only be calculated for one full calendar month at a time — 'from' must be the 1st of the month.",
-    });
-  }
-  const lastDayOfMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const expectedTo = `${year}-${String(month).padStart(2, "0")}-${String(lastDayOfMonth).padStart(2, "0")}`;
-  if (to !== expectedTo) {
-    throw new ApiError({
-      statusCode: 400,
-      code: "INVALID_STATUTORY_PERIOD",
-      message: `APIT can only be calculated for one full calendar month at a time — 'to' must be ${expectedTo}.`,
+      message: "APIT can only be calculated for one full calendar month at a time — 'from' must be the 1st and 'to' the last day of that same month.",
     });
   }
 }

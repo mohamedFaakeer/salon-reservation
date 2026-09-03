@@ -142,3 +142,32 @@ export class UpdateStatutoryPayrollEnabledDto {
   @IsBoolean()
   statutoryPayrollEnabled!: boolean;
 }
+
+/**
+ * POST /payroll/runs — submits a payroll run for a period, covering every
+ * staff member with an employment profile. Idempotent on the money, same
+ * shape as `RunIncentivePayoutDto`: an unchanged figure returns the
+ * existing run; a moved one voids the old run and submits a fresh one.
+ */
+export class RunPayrollDto {
+  @IsDateString()
+  periodStart!: string;
+
+  @IsDateString()
+  periodEnd!: string;
+}
+
+/** GET /payroll/runs — filters. */
+export class PayrollRunQueryDto {
+  @IsOptional()
+  @IsEnum(["SUBMITTED", "APPROVED", "PAID", "VOID"])
+  status?: "SUBMITTED" | "APPROVED" | "PAID" | "VOID";
+}
+
+/** PATCH /payroll/runs/:id/void — a manual correction, without resubmitting. */
+export class VoidPayrollRunDto {
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  reason!: string;
+}

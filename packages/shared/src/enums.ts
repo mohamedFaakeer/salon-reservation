@@ -289,6 +289,22 @@ export enum PayFrequency {
 }
 
 /**
+ * A payroll run's own lifecycle (DECISIONS.md §66) — the maker-checker
+ * shape spec §13 describes, simplified to what MANAGE_PAYROLL's current
+ * single permission can actually enforce: a real separate approval action
+ * is required, tracked by a distinct actor, but the same role may hold
+ * both permissions (a stronger prepare-vs-approve split is a possible
+ * future refinement, not built yet). VOID supersedes rather than edits —
+ * same reasoning as `IncentivePayoutStatus`.
+ */
+export enum PayrollRunStatus {
+  SUBMITTED = "SUBMITTED",
+  APPROVED = "APPROVED",
+  PAID = "PAID",
+  VOID = "VOID",
+}
+
+/**
  * Sri Lanka's 9 administrative provinces. A fixed, real-world geographic
  * list — unlike `Customer.title`/`clientSource`, which are tenant-editable
  * free text, this has no per-tenant customization mechanism, the same

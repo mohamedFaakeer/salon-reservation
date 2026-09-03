@@ -1,6 +1,6 @@
 import { PayFrequency } from "@salon/shared";
 import { describe, expect, it } from "vitest";
-import { dayBefore, resolvePayPeriod } from "./payroll.domain";
+import { dayBefore, isFullCalendarMonth, resolvePayPeriod } from "./payroll.domain";
 
 describe("resolvePayPeriod", () => {
   it("a DAILY period is just the one day", () => {
@@ -58,5 +58,26 @@ describe("dayBefore", () => {
 
   it("crosses a year boundary", () => {
     expect(dayBefore("2026-01-01")).toBe("2025-12-31");
+  });
+});
+
+describe("isFullCalendarMonth", () => {
+  it("true for the 1st through the last day of a 30-day, 31-day, and leap-February month", () => {
+    expect(isFullCalendarMonth("2026-09-01", "2026-09-30")).toBe(true);
+    expect(isFullCalendarMonth("2026-01-01", "2026-01-31")).toBe(true);
+    expect(isFullCalendarMonth("2028-02-01", "2028-02-29")).toBe(true);
+  });
+
+  it("false when it doesn't start on the 1st", () => {
+    expect(isFullCalendarMonth("2026-09-02", "2026-09-30")).toBe(false);
+  });
+
+  it("false when it doesn't end on the month's last day", () => {
+    expect(isFullCalendarMonth("2026-09-01", "2026-09-29")).toBe(false);
+    expect(isFullCalendarMonth("2026-09-01", "2026-10-01")).toBe(false);
+  });
+
+  it("ignores any tenant PayCalendar anchor — always the Gregorian calendar month", () => {
+    expect(isFullCalendarMonth("2026-09-21", "2026-10-20")).toBe(false);
   });
 });

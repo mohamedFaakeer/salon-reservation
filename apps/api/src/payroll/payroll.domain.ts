@@ -54,6 +54,21 @@ export function dayBefore(date: string): string {
   return addDays(date, -1);
 }
 
+/**
+ * Whether `[from, to]` is exactly one Gregorian calendar month — the 1st
+ * through the last day of the same month. APIT is a fixed calendar-tax-month
+ * concept regardless of a tenant's own `PayCalendar` cycle (DECISIONS.md
+ * §62/§66), so this deliberately ignores `monthlyAnchorDay` entirely.
+ */
+export function isFullCalendarMonth(from: string, to: string): boolean {
+  const { year, month, day } = parseDateOnly(from);
+  if (day !== 1) {
+    return false;
+  }
+  const lastDayOfMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return to === formatDateOnly(year, month, lastDayOfMonth);
+}
+
 function addDays(date: string, delta: number): string {
   const { year, month, day } = parseDateOnly(date);
   const d = new Date(Date.UTC(year, month - 1, day));

@@ -377,6 +377,25 @@ handful of times a year, not from a high-concurrency customer path.
 publishing a rule set (verified or not) never itself turns on real
 calculations for any tenant.
 
+**payroll_run** — `id (uuid PK)`, `tenantId (FK, CASCADE)`,
+`periodStart`/`periodEnd (date)`, `status` (`SUBMITTED|APPROVED|PAID|VOID`),
+`staffCount`, `totalGrossCents`, `totalNetCents`, `snapshot (jsonb — the
+frozen per-staff `PayrollRunLine[]`, each carrying base pay, incentive,
+optional statutory, and net)`, `submittedBy (FK user)`, `approvedBy`/
+`approvedAt`/`paidBy`/`paidAt`/`voidedBy`/`voidedAt`/`voidReason
+(nullable)`, `createdAt`. Unlike `incentive_payout` (one row per staff
+member per period), this is one row **per tenant per period**, covering
+every staff member at once — the maker-checker unit spec §13 describes.
+`totalGrossCents`/`totalNetCents`/`staffCount` are duplicated out of
+`snapshot` as real columns purely so a run list can sort/filter without
+deserializing jsonb, the same reason `invoice` duplicates its own totals.
+**Partial unique `(tenantId, periodStart, periodEnd) WHERE status <>
+'VOID'`** — one live run per exact period; a correction voids the old run
+and submits a fresh one, same supersede-not-edit shape as `incentive_payout`.
+`CHK_payroll_run_void_has_reason`/`_approved_has_timestamp`/
+`_paid_has_timestamp` mirror `incentive_payout`'s own status-consistency
+checks.
+
 ---
 
 ## 3. Concurrency Model — Double-Booking Protection
