@@ -83,6 +83,7 @@ export class StaffLeaveService {
         startDate: dto.startDate,
         endDate: dto.endDate,
         reason: dto.reason?.trim() ?? null,
+        paid: dto.paid ?? true,
         createdBy,
       }),
     );

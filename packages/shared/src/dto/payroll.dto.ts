@@ -1,4 +1,4 @@
-import { IsDateString, IsEnum, IsInt, IsOptional, Max, Min } from "class-validator";
+import { IsDateString, IsEnum, IsInt, IsOptional, IsUUID, Max, Min } from "class-validator";
 import { PayFrequency } from "../enums";
 
 /**
@@ -41,4 +41,21 @@ export class UpsertPayCalendarDto {
   @Min(1)
   @Max(28)
   monthlyAnchorDay?: number;
+}
+
+/**
+ * GET /payroll/base-pay/preview — a live, unsaved base-pay figure for one
+ * staff member over a range, built from their real Employment/Attendance/
+ * StaffLeave records. Nothing here is persisted — the same "preview, not a
+ * run" shape `IncentivePreviewQueryDto` already uses.
+ */
+export class BasePayPreviewQueryDto {
+  @IsUUID("4")
+  staffId!: string;
+
+  @IsDateString()
+  from!: string;
+
+  @IsDateString()
+  to!: string;
 }

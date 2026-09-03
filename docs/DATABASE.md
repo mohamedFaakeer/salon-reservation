@@ -40,7 +40,7 @@
 
 **working_schedule** — `id (uuid PK)`, `staffId (FK)`, `tenantId (FK)`, `dayOfWeek (0=Mon..6=Sun)`, `startMin (int, minutes since midnight)`, `endMin (int)`, `breakStartMin (int, nullable)`, `breakEndMin (int, nullable)`. Weekly-recurring. A row's absence = day off. Unique `(staffId, dayOfWeek)`.
 
-**staff_leave** — `id (uuid PK)`, `staffId (FK)`, `tenantId (FK)`, `startDate (date)`, `endDate (date)`, `reason`, `createdBy (FK user)`, `createdAt`. **Note:** leave affects future appointments; adding leave triggers the "N appointments affected" flow (§24, PRD §3.9). Overlapping leave rows are allowed but the availability engine treats any overlap as unavailable.
+**staff_leave** — `id (uuid PK)`, `staffId (FK)`, `tenantId (FK)`, `startDate (date)`, `endDate (date)`, `reason`, `paid (boolean, default true)`, `createdBy (FK user)`, `createdAt`. **Note:** leave affects future appointments; adding leave triggers the "N appointments affected" flow (§24, PRD §3.9). Overlapping leave rows are allowed but the availability engine treats any overlap as unavailable. `paid` was added for Payroll (§2.15, DECISIONS.md §62) — whether an `ON_LEAVE` day earns pay; every pre-existing row was backfilled `true` so nothing already approved was retroactively docked, and there is no admin UI to set it `false` yet.
 
 **closure** — `id (uuid PK)`, `tenantId (FK)`, `startDate (date)`, `endDate (date)`, `name` (e.g. "Poya day"), `createdAt`. Salon-wide closure.
 
@@ -329,6 +329,19 @@ configured gets the calendar-month default in code
 shape `resolveModules`/`resolveLimits` already use for entitlements, so a
 row only exists for a tenant that has actually customised it. Daily pay
 periods need no calendar at all — a day is a day.
+
+**Phase 2 (base pay)** added no new tables — `GET /payroll/base-pay/preview`
+is a pure read assembled at request time from `employment`, the existing
+Attendance report (`AttendanceService.report`, unmodified), and
+`staff_leave.paid` (§2.11 above). See
+`apps/api/src/payroll/base-pay.domain.ts` for the day-by-day earning rules
+(confirmed with the product owner, DECISIONS.md §62): a MONTHLY day earns
+`baseRateCents ÷ 30` unless it's a confirmed unpaid absence (`ABSENT`); a
+DAILY day earns the full rate if worked or covered by paid leave, and
+nothing otherwise — a salon-closure day for a DAILY employee is
+deliberately left unresolved rather than guessed, since Sri Lankan
+paid-holiday entitlement for daily-rated workers needs its own statutory
+verification, same as EPF/ETF/APIT.
 
 ---
 

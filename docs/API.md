@@ -118,7 +118,7 @@ All auth routes are unauthenticated in the sense that they need no bearer token;
 | Method | Path | Roles | Description |
 |---|---|---|---|
 | GET/POST/PATCH | `/schedules` | read all · write OWNER, MANAGER | Weekly working schedules + breaks (per staff) |
-| POST | `/staff/:id/leave` | OWNER, MANAGER | Add leave → response includes `{ affectedAppointments: n }`; UI then offers reassign / reschedule / cancel per appointment (POST `/appointments/:id/reschedule` etc.) |
+| POST | `/staff/:id/leave` | OWNER, MANAGER | Add leave `{ startDate, endDate, reason?, paid? }` (`paid` defaults `true` if omitted — DECISIONS.md §62) → response includes `{ affectedAppointments: n }`; UI then offers reassign / reschedule / cancel per appointment (POST `/appointments/:id/reschedule` etc.) |
 | POST | `/closures` | OWNER, MANAGER | Salon closure |
 
 ### Payments
@@ -287,6 +287,7 @@ statutory calculation yet — see DECISIONS.md §62 for the phased build.
 | POST | `/payroll/employment/:staffId` | MANAGE_PAYROLL | `{ payFrequency, baseRateCents, effectiveFrom }`. Creates the opening version, or — if one is already open — supersedes it: the old version is closed the day before the new one starts, never edited in place. `400 INVALID_EFFECTIVE_DATE` if `effectiveFrom` doesn't come after the currently open version's own start. |
 | GET | `/payroll/pay-calendars/monthly` | MANAGE_PAYROLL | The tenant's monthly pay-period cycle (`monthlyAnchorDay`), defaulting to an ordinary calendar month if never configured. |
 | PUT | `/payroll/pay-calendars/monthly` | MANAGE_PAYROLL | `{ monthlyAnchorDay? }` — 1-28. |
+| GET | `/payroll/base-pay/preview?staffId&from&to` | MANAGE_PAYROLL | A live, unsaved base-pay figure for one staff member over a range, built day-by-day from their Employment/Attendance/StaffLeave records — see DECISIONS.md §62 for the earning rules. Nothing here is persisted; it's a preview, the same shape `GET /incentive-plans/preview` already uses. |
 
 ### Ratings (public)
 

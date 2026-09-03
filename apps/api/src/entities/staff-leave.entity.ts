@@ -45,6 +45,19 @@ export class StaffLeave {
   @Column({ type: "varchar", length: 500, nullable: true })
   reason!: string | null;
 
+  /**
+   * Whether this leave is paid — added for the Payroll module (DECISIONS.md
+   * §62 Phase 2), which needs to know before it can treat an ON_LEAVE day as
+   * earning pay or not. Defaults `true` (and every row created before this
+   * column existed was backfilled `true`) so existing behaviour doesn't
+   * silently change: nothing was ever being docked for leave before Payroll
+   * existed, and this column only starts mattering once Payroll reads it.
+   * There is no admin UI to set this to `false` yet — that's its own
+   * mockup-approved screen change, not bundled into this backend addition.
+   */
+  @Column({ type: "boolean", default: true })
+  paid!: boolean;
+
   @Column({ type: "uuid" })
   createdBy!: string;
 

@@ -3019,3 +3019,62 @@ accounting integration, payslip languages, historical-data migration,
 record retention) that aren't blocking Phase 1 but need answers before
 their own phase starts.
 
+## 63. Payroll module — Phase 2, attendance-linked base pay (2026-09-03)
+
+Phase 2 of the plan from §62: turning `Employment` (Phase 1) and real
+Attendance/Leave records into a base-pay figure. Backend-only again, same
+reasoning as Phase 1 — this is a calculation preview, nothing persists yet,
+and no UI ships without its own mockup-approval pass.
+
+**Three business-rule gaps surfaced from inspecting the actual data before
+writing any calculation — asked rather than assumed, per this project's
+standing rule:**
+
+1. **How an unpaid absence reduces a MONTHLY salary.** Decided: divide the
+   monthly rate by a **fixed 30**, deducted once per confirmed unpaid day —
+   a real, common Sri Lankan payroll convention, and independent of the
+   period's actual day count (28/29/30/31 all divide by 30 the same way).
+   "Confirmed" maps directly onto the existing
+   `AttendanceDayStatus.ABSENT` — a day that's rostered, over, and has
+   nothing recorded is already a settled fact in this codebase, not a
+   pending review state, so no new "confirmation" workflow was needed.
+2. **`StaffLeave` had no paid/unpaid distinction.** Decided: add a real
+   `paid` column now (migration `1750002200000-StaffLeavePaidFlag.ts`),
+   defaulting `true` and backfilling every existing row `true` so nothing
+   already approved is retroactively docked. `CreateStaffLeaveDto.paid` is
+   optional for the same backward-compatibility reason — `apps/admin`
+   already has a live leave-creation screen (`rota-grid.tsx`) that doesn't
+   send this field, and making it required would have broken that screen
+   outright. There is deliberately no admin UI to set it `false` yet; that's
+   its own future mockup-approved change, not bundled into this backend
+   addition.
+3. **What makes a DAILY-wage day payable.** The user's answer distinguished
+   worked days, statutory/company-paid leave, eligible paid weekly
+   holidays, and Poya/public holidays — each with different legal footing.
+   Implemented the two resolvable cases (worked, and leave via the new
+   `paid` flag) and deliberately left holiday/closure-day payability
+   **unresolved** rather than guessing either way: `Closure` (this
+   codebase's existing "salon shut, e.g. a Poya day" entity) has no
+   statutory-pay semantics today, and Sri Lankan weekly/public-holiday pay
+   entitlement for daily-rated workers is real labour law this session
+   hasn't verified against official sources — the same "flag, don't invent"
+   treatment §62 already gave EPF/ETF/APIT. A DAILY employee's closure day
+   earns 0 in the total but is surfaced separately
+   (`unresolvedClosureDays`) so nobody mistakes silence for a considered
+   answer.
+
+**Implementation** (`apps/api/src/payroll/base-pay.domain.ts` +
+`base-pay.service.ts` + `base-pay.controller.ts`, route
+`GET /payroll/base-pay/preview?staffId&from&to`, `MANAGE_PAYROLL`): computed
+**day-by-day**, not by splitting the period into Employment segments — a
+pay-rate change or a MONTHLY→DAILY switch mid-period falls out for free
+this way, since each date just looks up whatever Employment version and
+Attendance status apply to it, with no separate segment-boundary logic to
+keep in sync with `Employment`'s own versioning. Reuses
+`AttendanceService.report` unmodified as the attendance source of truth
+(the same board/report every other screen already reads) rather than
+re-deriving day statuses — this project's "single source of truth" rule
+applied to a read, not just a write path.
+
+Phase 3 (folding Incentives under this Payroll umbrella) is next.
+
