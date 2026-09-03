@@ -19,6 +19,9 @@
 - **Password hashing:** `argon2id` (via `argon2` package) — memory/iteration parameters tuned to OWASP recommendation for the demo hardware; config via env.
 - **Access tokens:** short-lived JWT (15 min default) signed with HS256 using a secret from env (`JWT_SECRET`, ≥ 32 random bytes). Claims: `sub`, `tenantId`, `roles`, `branchId`, `sid` (session id).
 - **Refresh tokens:** opaque, stored hashed, bound to device/session (`sid`), rotating; httpOnly cookie (`Path=/api/v1/auth; HttpOnly; Secure; SameSite=Strict`), 7-day expiry; revocation on logout and on reuse detection.
+- **Silent refresh (`apps/admin`):** the admin frontend attaches a `credentials: "include"` fetch so the refresh cookie flows, and retries once through `POST /auth/refresh` on a `401` before treating it as a real sign-out — an expired 15-minute access token during otherwise-active use never forces a logout. Concurrent 401s are de-duplicated into a single in-flight refresh call.
+- **Absolute session cap:** independent of activity, a refresh-token *family* (the chain of rotations from one login) is force-ended `JWT_ABSOLUTE_SESSION_MAX` (default 12h) after its original login — `401 SESSION_EXPIRED`, distinct from `TOKEN_EXPIRED`. Bounds how long a stolen refresh-token cookie stays useful even if it's continuously replayed/rotated. Tracked via `refresh_session.familyId`/`familyStartedAt`, carried forward unchanged on every rotation.
+- **Idle (inactivity) timeout (`apps/admin`, client-side):** 30 minutes with no real user activity (mouse/keyboard/touch) signs the user out — revoking the server-side session, not merely clearing local state — even if the access/refresh tokens are still valid. Enforced client-side because the server has no visibility into activity; a warning dialog with a countdown appears before it fires. Independent of, and shorter than, the absolute session cap above.
 - **CSRF:** state-changing requests to the API require a CSRF token (`X-CSRF-Token`) validated against the session; origin/host header checks on the API.
 - **Rate limiting:** auth login/refresh endpoints: per-IP + per-account throttling (sliding window); booking and payment creation endpoints: per-IP throttle. `429 RATE_LIMITED` with `Retry-After`.
 - **Password policy:** minimum 8 chars (NestJS DTO validated); no password storage beyond argon2 hash; no plaintext logging anywhere.
@@ -122,6 +125,7 @@ Rules:
 - Refresh token: httpOnly, `Secure` (prod), `Path=/api/v1/auth`, `SameSite=Strict`.
 - Cookies **never** store role/permission data (JWT does, signed).
 - Session rotation on privilege change; logout revokes `sid`.
+- Idle timeout (30 min, client-side) and absolute session cap (12h, server-side) both revoke the session, not just clear local UI state — see §2.
 
 ---
 
@@ -184,6 +188,8 @@ Audited actions (spec §36): appointment created/cancelled/rescheduled; payment 
 | S10 | Tampered JWT signature | 401 |
 | S11 | Expired access token | 401 + refresh flow works |
 | S12 | Invalid DTO (extra field, wrong enum, long string) | 400 `VALIDATION_ERROR` |
+| S13 | Refresh rotated beyond `JWT_ABSOLUTE_SESSION_MAX` from original login, even with a valid token | 401 `SESSION_EXPIRED`, whole family revoked |
+| S14 | Client idle past the 30-minute timeout | session revoked, redirected to `/login`, not merely a client-side redirect over a still-valid token |
 
 ---
 

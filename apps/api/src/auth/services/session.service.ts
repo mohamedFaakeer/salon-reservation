@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { Repository } from "typeorm";
 import { IsNull, LessThan, MoreThan } from "typeorm";
 import { RefreshSession } from "../../entities/refresh-session.entity";
@@ -56,6 +56,10 @@ export class SessionService {
     ip?: string;
     userAgent?: string;
     ttlMs: number;
+    /** Carried forward unchanged on rotation; a fresh login gets a new one. */
+    familyId?: string;
+    /** Carried forward unchanged on rotation; a fresh login starts the clock now. */
+    familyStartedAt?: Date;
   }): Promise<RefreshTokenPayload> {
     const token = randomBytes(32).toString("base64url");
     await this.refreshRepo.save(
@@ -65,6 +69,8 @@ export class SessionService {
         expiresAt: new Date(Date.now() + input.ttlMs),
         ipAddress: input.ip ?? null,
         userAgent: input.userAgent ?? null,
+        familyId: input.familyId ?? randomUUID(),
+        familyStartedAt: input.familyStartedAt ?? new Date(),
       }),
     );
     return { refreshToken: token, sid: this.hashToken(token) };
@@ -75,6 +81,8 @@ export class SessionService {
     ip?: string;
     userAgent?: string;
     ttlMs: number;
+    /** Absolute-session-cap policy (DECISIONS.md, session-timeout policy) — measured from `familyStartedAt`, not per-token. */
+    absoluteSessionMaxMs: number;
   }): Promise<{ sessionUser: SessionUser; sid: string; refreshToken: string }> {
     const tokenHash = this.hashToken(input.refreshToken);
     const session = await this.refreshRepo.findOne({
@@ -122,11 +130,37 @@ export class SessionService {
       });
     }
 
+    if (Date.now() - session.familyStartedAt.getTime() > input.absoluteSessionMaxMs) {
+      // Bounds how long a login can stay alive at all, even with continuous
+      // legitimate activity rotating it forever — the one limit idle-timeout
+      // and per-token TTL can't provide on their own (DECISIONS.md,
+      // session-timeout policy). Ends the whole family, matching the
+      // reuse-detection precedent above: once the cap is hit, everything
+      // descended from this login must re-authenticate, not just this token.
+      await this.revokeFamily(session.familyId);
+      await this.audit.record({
+        tenantId: null,
+        actorUserId: session.userId,
+        action: "SESSION_ABSOLUTE_CAP_REACHED",
+        entityType: "RefreshSession",
+        entityId: session.id,
+        ipAddress: input.ip ?? null,
+        userAgent: input.userAgent ?? null,
+      });
+      throw new ApiError({
+        statusCode: 401,
+        code: "SESSION_EXPIRED",
+        message: "Your session has reached its maximum length. Please sign in again.",
+      });
+    }
+
     const next = await this.createSession({
       userId: session.userId,
       ip: input.ip,
       userAgent: input.userAgent,
       ttlMs: input.ttlMs,
+      familyId: session.familyId,
+      familyStartedAt: session.familyStartedAt,
     });
 
     await this.refreshRepo.update(
@@ -159,6 +193,19 @@ export class SessionService {
   async revokeAllForUser(userId: string): Promise<void> {
     await this.refreshRepo.update(
       { userId, revokedAt: IsNull() },
+      { revokedAt: new Date() },
+    );
+  }
+
+  /**
+   * Kills every still-live session descended from one login (the absolute
+   * session cap, above) — narrower than `revokeAllForUser`: a different
+   * device's unrelated family (e.g. the same owner also signed in on their
+   * phone) is left untouched.
+   */
+  async revokeFamily(familyId: string): Promise<void> {
+    await this.refreshRepo.update(
+      { familyId, revokedAt: IsNull() },
       { revokedAt: new Date() },
     );
   }

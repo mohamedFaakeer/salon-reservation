@@ -59,7 +59,7 @@ All auth routes are unauthenticated in the sense that they need no bearer token;
 | Method | Path | Roles | Description |
 |---|---|---|---|
 | POST | `/auth/login` | — | `{ email, password }` → validates credentials, creates a `refresh_session`, sets httpOnly refresh cookie + returns `{ accessToken, user }` where `user = { userId, email, name, tenantId, branchId, roles }` |
-| POST | `/auth/refresh` | — | Body `{ refreshToken? }` (or refresh cookie). **Rotates the session:** verifies the current refresh token, revokes it (`revokedAt` + `replacedBySessionId`), issues a new refresh token + access token. Reuse of an already-rotated/revoked token revokes the entire token family (`401 UNAUTHENTICATED`). |
+| POST | `/auth/refresh` | — | Body `{ refreshToken? }` (or refresh cookie). **Rotates the session:** verifies the current refresh token, revokes it (`revokedAt` + `replacedBySessionId`), issues a new refresh token + access token. Reuse of an already-rotated/revoked token revokes the entire token family (`401 UNAUTHENTICATED`). Rejects with `401 SESSION_EXPIRED` once the *original* login is more than `JWT_ABSOLUTE_SESSION_MAX` (default 12h) old, regardless of how recently it was last rotated (DECISIONS.md #62). `apps/admin` calls this automatically on a `401` before treating it as a sign-out. |
 | POST | `/auth/logout` | — | Body `{ refreshToken? }` (or refresh cookie). Revokes the refresh session and clears the cookie. → `{ ok: true }` |
 
 ### Dashboard & Schedule
@@ -342,7 +342,7 @@ All checks enforced server-side (`RolesGuard` + `@Permissions`). Frontend hiding
 | HTTP | Codes | Meaning |
 |---|---|---|
 | 400 | `VALIDATION_ERROR`, `BAD_STATE`, `PAST_SLOT`, `OUTSIDE_BOOKING_WINDOW`, `BELOW_LEAD_TIME`, `INVALID_DATE_RANGE`, `DATE_RANGE_TOO_WIDE`, `DISCOUNT_TOO_LARGE`, `INVALID_TIME_RANGE` | Client error — actionable message |
-| 401 | `UNAUTHENTICATED`, `TOKEN_EXPIRED` | Login/refresh |
+| 401 | `UNAUTHENTICATED`, `TOKEN_EXPIRED`, `SESSION_EXPIRED` | Login/refresh — `SESSION_EXPIRED` is the absolute session cap (DECISIONS.md #62), distinct from a merely-expired refresh token |
 | 403 | `FORBIDDEN`, `DISCOUNT_CAP_EXCEEDED` | Role lacks permission; the cap message names what the caller may approve and who to ask |
 | 404 | `NOT_FOUND` | Salon/appointment/customer missing (also used for cross-tenant access — indistinguishable from 403) |
 | 409 | `SLOT_UNAVAILABLE`, `HOLD_EXPIRED`, `DUPLICATE_CUSTOMER`, `VERSION_CONFLICT`, `APPOINTMENT_NOT_CANCELLABLE`, `DISCOUNT_BELOW_PAID`, `TEAM_MEMBER_EXISTS`, `CANNOT_MODIFY_OWNER`, `CANNOT_MODIFY_SELF`, `INQUIRY_CUSTOMER_MISMATCH` | Business conflict — always states what happened + how to proceed |

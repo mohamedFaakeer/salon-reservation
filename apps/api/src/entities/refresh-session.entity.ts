@@ -46,6 +46,20 @@ export class RefreshSession {
   @Column({ type: "varchar", length: 255, nullable: true })
   userAgent!: string | null;
 
+  /**
+   * Identifies the chain of rotations descending from one login — set to this
+   * row's own id on a fresh login, then carried forward unchanged on every
+   * rotation. Lets `SessionService.rotate` answer "how long has this login
+   * been alive" without walking `replacedBySessionId` history.
+   */
+  @Index()
+  @Column({ type: "uuid" })
+  familyId!: string;
+
+  /** Fixed at the original login and copied forward on every rotation — the absolute-session-cap clock. */
+  @Column({ type: "timestamptz" })
+  familyStartedAt!: Date;
+
   @CreateDateColumn({ type: "timestamptz" })
   createdAt!: Date;
 }

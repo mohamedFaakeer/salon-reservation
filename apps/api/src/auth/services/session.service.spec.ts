@@ -72,6 +72,8 @@ describe("SessionService", () => {
         expiresAt: new Date(Date.now() + 60_000),
         revokedAt: null,
         replacedBySessionId: null,
+        familyId: "family-1",
+        familyStartedAt: new Date(),
         user: { id: "u1" },
       } as RefreshSession & { user: User };
       vi.mocked(refreshRepo.findOne).mockResolvedValue(oldRow);
@@ -87,6 +89,7 @@ describe("SessionService", () => {
       const result = await session.rotate({
         refreshToken: created.refreshToken,
         ttlMs: 60_000,
+        absoluteSessionMaxMs: 12 * 3_600_000,
       });
 
       expect(result.refreshToken).not.toBe(created.refreshToken);
@@ -96,6 +99,43 @@ describe("SessionService", () => {
           revokedAt: expect.any(Date),
           replacedBySessionId: result.sid,
         }),
+      );
+      // The new row carries the same family forward rather than starting a
+      // fresh one, so the absolute cap keeps measuring from the original login.
+      const savedNext = vi.mocked(refreshRepo.save).mock.calls.at(-1)?.[0] as RefreshSession;
+      expect(savedNext.familyId).toBe("family-1");
+      expect(savedNext.familyStartedAt).toBe(oldRow.familyStartedAt);
+    });
+
+    it("rejects rotation once the absolute session cap is reached, even for an otherwise-valid token", async () => {
+      const created = await session.createSession({ userId: "u1", ttlMs: 60_000 });
+      const oldRow = {
+        id: "sess-1",
+        userId: "u1",
+        tokenHash: created.sid,
+        expiresAt: new Date(Date.now() + 60_000),
+        revokedAt: null,
+        replacedBySessionId: null,
+        familyId: "family-1",
+        familyStartedAt: new Date(Date.now() - 13 * 3_600_000), // logged in 13h ago
+        user: { id: "u1" },
+      } as RefreshSession & { user: User };
+      vi.mocked(refreshRepo.findOne).mockResolvedValue(oldRow);
+
+      await expect(
+        session.rotate({
+          refreshToken: created.refreshToken,
+          ttlMs: 60_000,
+          absoluteSessionMaxMs: 12 * 3_600_000,
+        }),
+      ).rejects.toMatchObject({ code: "SESSION_EXPIRED" });
+
+      expect(refreshRepo.update).toHaveBeenCalledWith(
+        { familyId: "family-1", revokedAt: expect.objectContaining({ _type: "isNull" }) },
+        { revokedAt: expect.any(Date) },
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "SESSION_ABSOLUTE_CAP_REACHED", actorUserId: "u1" }),
       );
     });
 
@@ -115,7 +155,11 @@ describe("SessionService", () => {
       vi.mocked(refreshRepo.findOne).mockResolvedValue(oldRow);
 
       await expect(
-        real.rotate({ refreshToken: created.refreshToken, ttlMs: 60_000 }),
+        real.rotate({
+          refreshToken: created.refreshToken,
+          ttlMs: 60_000,
+          absoluteSessionMaxMs: 12 * 3_600_000,
+        }),
       ).rejects.toThrow(ApiError);
 
       // everything still-live for this user is revoked (revokedAt IS NULL)
@@ -148,7 +192,11 @@ describe("SessionService", () => {
       vi.mocked(refreshRepo.findOne).mockResolvedValue(oldRow);
 
       await expect(
-        session.rotate({ refreshToken: created.refreshToken, ttlMs: 60_000 }),
+        session.rotate({
+          refreshToken: created.refreshToken,
+          ttlMs: 60_000,
+          absoluteSessionMaxMs: 12 * 3_600_000,
+        }),
       ).rejects.toMatchObject({ code: "TOKEN_EXPIRED" });
     });
   });
