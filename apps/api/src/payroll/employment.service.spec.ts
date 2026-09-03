@@ -52,6 +52,19 @@ describe("EmploymentService", () => {
     service = new EmploymentService(employments, staff, audit as never, dataSource as never);
   });
 
+  describe("tenant isolation", () => {
+    it("history() refuses a staffId belonging to a different tenant, the same as an unknown one", async () => {
+      vi.mocked(staff.findOne).mockResolvedValue(null);
+      await expect(service.history("tenant-1", "another-tenants-staff-id")).rejects.toMatchObject({ code: "STAFF_NOT_FOUND" });
+      expect(staff.findOne).toHaveBeenCalledWith({ where: { tenantId: "tenant-1", id: "another-tenants-staff-id" } });
+    });
+
+    it("listCurrent() only ever queries the caller's own tenantId", async () => {
+      await service.listCurrent("tenant-1");
+      expect(employments.find).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ tenantId: "tenant-1" }) }));
+    });
+  });
+
   describe("upsert", () => {
     it("rejects an unknown staff member", async () => {
       vi.mocked(staff.findOne).mockResolvedValue(null);

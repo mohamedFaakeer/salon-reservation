@@ -46,6 +46,21 @@ describe("PayComponentService", () => {
     service = new PayComponentService(components, staff, audit as never);
   });
 
+  describe("tenant isolation", () => {
+    it("list() only ever queries the caller's own tenantId", async () => {
+      await service.list("tenant-1", "s1");
+      expect(components.find).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: "tenant-1", staffId: "s1" } }));
+    });
+
+    it("upsert() refuses a staffId belonging to a different tenant, the same as an unknown one", async () => {
+      vi.mocked(staff.findOne).mockResolvedValue(null);
+      await expect(
+        service.upsert("tenant-1", "another-tenants-staff-id", { type: PayComponentType.TRANSPORT, amountCents: 5_000_00 }, "user-1"),
+      ).rejects.toMatchObject({ code: "STAFF_NOT_FOUND" });
+      expect(staff.findOne).toHaveBeenCalledWith({ where: { tenantId: "tenant-1", id: "another-tenants-staff-id" } });
+    });
+  });
+
   describe("upsert", () => {
     it("rejects an unknown staff member", async () => {
       vi.mocked(staff.findOne).mockResolvedValue(null);

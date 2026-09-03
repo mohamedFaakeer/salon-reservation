@@ -3426,3 +3426,67 @@ professional sign-off gate before the statutory engine can ever be turned
 on for a real tenant) — everything else in the roadmap set at §62 has now
 shipped.
 
+## 71. Payroll module — Phase 8, hardening (2026-09-03)
+
+An audit pass over everything built in Phases 1–7, not new features. Two
+of the three things spec §27's hardening phase asks for are genuinely
+outside what a coding session can do, and are named here rather than
+quietly skipped:
+
+- **Parallel-run testing** (two real payroll cycles run alongside the
+  salon's existing/manual process, compared for discrepancies) needs real
+  salons, real staff, and real usage over real time — a business activity
+  for whoever operates this once it's live, not something buildable now.
+- **Professional sign-off** on the statutory configuration needs a
+  qualified Sri Lankan payroll/accounting/labour-law professional, which
+  this session has never claimed to be (§62's own framing throughout).
+  `Tenant.statutoryPayrollEnabled` stays off for every tenant until that
+  happens — nothing in this hardening pass changes that gate.
+
+**What this session could do, and did**: a systematic audit of every
+payroll controller and service built in Phases 1–7 for tenant isolation
+and role enforcement, per CLAUDE.md's security checklist and spec §26's
+test matrix.
+
+- Every tenant-scoped controller (`employment`, `pay-calendars`,
+  `pay-components`, `base-pay`, `preview`, `runs`, `settings`, `reports`,
+  `statutory`) carries both `@RequiresModule("payroll")` and
+  `@Permissions(MANAGE_PAYROLL)` on every route — verified directly against
+  the source, not assumed. The one controller without `@RequiresModule`
+  (`statutory-rule-sets`) is deliberately platform-only (`PLATFORM_ADMIN`),
+  which is correct: it has no tenant context to gate.
+- Every service method that accepts a client-suppliable ID (a `staffId`, a
+  run `id`, a pay-component `id`) resolves it through a query that also
+  filters by `tenantId` derived from the caller's own JWT — never trusts an
+  ID alone. Confirmed by reading every `find`/`findOne` call across the
+  module's services, not by assuming the pattern held.
+- The two places a lookup omits `tenantId` (`EmploymentService.upsert`'s
+  reload of a just-created row, `PayrollRunService.run`'s equivalent) are
+  safe, not overlooked: the row was inserted moments earlier inside the
+  same tenant-scoped transaction, and a UUID collision across tenants is
+  not a real risk — the identical, pre-existing pattern
+  `IncentivePayoutService.reload` already uses.
+- `Tenant.statutoryPayrollEnabled` has exactly one write site in the whole
+  codebase (`SuperAdminService.setStatutoryPayrollEnabled`, `PLATFORM_ADMIN`-
+  gated); `StatutoryRuleSet.verified` is likewise only ever set inside the
+  same `PLATFORM_ADMIN`-gated publish flow. No tenant-side route can flip
+  either — confirmed by grep across the entire backend, not by re-reading
+  the two services that were expected to be the only ones.
+
+**New tests, not just a read-through**: this codebase had zero automated
+tests pinning down which roles hold which permission — `role-permissions.ts`
+being correct relied entirely on reading it by hand. Added
+`role-permissions.spec.ts` asserting OWNER/MANAGER hold `MANAGE_PAYROLL`
+and RECEPTIONIST/STAFF/SUPER_ADMIN don't — the first such test in the
+project, scoped to payroll rather than backfilling the entire pre-existing
+matrix. Also added explicit "tenant isolation" test blocks to
+`EmploymentService`, `PayComponentService`, `PayrollRunService`, and
+`PayrollReportService` proving each read/write is scoped by the caller's
+own `tenantId` — properties that were already incidentally true and
+covered by other tests' mock assertions, now named and asserted directly
+as what they are: a security guarantee, not a side effect of a "not found"
+test.
+
+No defects were found in this audit. That is itself worth recording,
+distinctly from "nothing was checked."
+

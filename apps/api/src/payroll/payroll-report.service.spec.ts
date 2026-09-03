@@ -103,4 +103,10 @@ describe("PayrollReportService", () => {
     const call = vi.mocked(runs.find).mock.calls[0][0] as { where: { status: unknown } };
     expect(call.where.status).not.toBe(PayrollRunStatus.VOID);
   });
+
+  it("scopes the query to the caller's own tenantId — a cost report can never sum another tenant's runs", async () => {
+    vi.mocked(runs.find).mockResolvedValue([]);
+    await service.summary("tenant-1", "2026-01-01", "2026-12-31");
+    expect(runs.find).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ tenantId: "tenant-1" }) }));
+  });
 });

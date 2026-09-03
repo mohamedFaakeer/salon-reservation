@@ -109,6 +109,19 @@ describe("PayrollRunService", () => {
     );
   });
 
+  describe("tenant isolation", () => {
+    it("get() scopes the lookup by tenantId, so another tenant's run id is not found", async () => {
+      vi.mocked(runs.findOne).mockResolvedValue(null);
+      await expect(service.get("tenant-1", "someone-elses-run")).rejects.toMatchObject({ code: "PAYROLL_RUN_NOT_FOUND" });
+      expect(runs.findOne).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: "tenant-1", id: "someone-elses-run" } }));
+    });
+
+    it("list() only ever queries the caller's own tenantId, never a client-suppliable value", async () => {
+      await service.list("tenant-1", {});
+      expect(runs.find).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ tenantId: "tenant-1" }) }));
+    });
+  });
+
   describe("run", () => {
     it("rejects an end date before the start date", async () => {
       await expect(service.run("tenant-1", { periodStart: "2026-09-30", periodEnd: "2026-09-01" }, "user-1", false)).rejects.toMatchObject({
