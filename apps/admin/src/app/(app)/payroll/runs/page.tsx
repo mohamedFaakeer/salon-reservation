@@ -602,7 +602,6 @@ function LineRow({ line, runId, payslipReady }: { line: PayrollRunLine; runId: s
         {payslipReady ? (
           <Link
             href={`/payroll/runs/${runId}/payslip/${line.staffId}`}
-            target="_blank"
             className="text-xs font-medium text-teal-700 hover:underline"
           >
             Payslip
