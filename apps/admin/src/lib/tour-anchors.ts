@@ -155,4 +155,21 @@ export const TOUR_ANCHORS = {
     reasonField: "floor-request-form.reason-field",
     sendButton: "floor-request-form.send-button",
   },
+  customers: {
+    searchField: "customers.search-field",
+    addButton: "customers.add-button",
+    /** Shared by every row's name link — opens the customer detail page. */
+    rowLink: "customers.row-link",
+  },
+  customerFormDrawer: {
+    nameFields: "customer-form-drawer.name-fields",
+    phoneField: "customer-form-drawer.phone-field",
+    saveButton: "customer-form-drawer.save-button",
+  },
+  customerDetail: {
+    profileCard: "customer-detail.profile-card",
+    editButton: "customer-detail.edit-button",
+    historyStats: "customer-detail.history-stats",
+    bookingHistoryTable: "customer-detail.booking-history-table",
+  },
 } as const;

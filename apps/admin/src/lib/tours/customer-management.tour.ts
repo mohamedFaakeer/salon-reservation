@@ -1,0 +1,87 @@
+import { TOUR_ANCHORS } from "../tour-anchors";
+import type { TourDef } from "./types";
+
+export const customerManagementTour: TourDef = {
+  id: "customerManagement",
+  title: "Customers",
+  description: "Search, add, edit, and check a customer's history.",
+  roles: ["OWNER", "MANAGER", "RECEPTIONIST"],
+  shell: "app",
+  completionTitle: "Tour complete",
+  completionMessage: "You've searched, added, and opened a customer's history — the same profile every booking links back to.",
+  steps: [
+    {
+      anchor: TOUR_ANCHORS.customers.searchField,
+      title: "Find a customer",
+      body: "Search by name or phone — this is the exact same lookup used inside the booking form.",
+      route: "/customers",
+      advanceOn: "next-click",
+    },
+    {
+      anchor: TOUR_ANCHORS.customers.addButton,
+      title: "Add one manually",
+      body: "Most customers are added automatically the first time they book — use this for someone you want on file before that, like a phone inquiry.",
+      advanceOn: "element-event",
+      eventType: "click",
+    },
+    {
+      anchor: TOUR_ANCHORS.customerFormDrawer.nameFields,
+      title: "Name",
+      body: "Title is optional. Last name is just below this.",
+      placement: "bottom",
+      waitForAnchorMs: 5000,
+      advanceOn: "next-click",
+    },
+    {
+      anchor: TOUR_ANCHORS.customerFormDrawer.phoneField,
+      title: "Phone number",
+      body: "It's checked against existing customers as you type — a duplicate warns you before you create a second record for the same person.",
+      placement: "bottom",
+      advanceOn: "next-click",
+    },
+    {
+      anchor: TOUR_ANCHORS.customerFormDrawer.saveButton,
+      title: "Save it",
+      body: "This is the real Add — this tour stops here so it doesn't create a real customer record for you.",
+      placement: "top",
+      advanceOn: "next-click",
+    },
+    {
+      anchor: TOUR_ANCHORS.customers.rowLink,
+      title: "Open a profile",
+      body: "Click any name to see everything on file for that customer.",
+      placement: "bottom",
+      advanceOn: "element-event",
+      eventType: "click",
+    },
+    {
+      anchor: TOUR_ANCHORS.customerDetail.profileCard,
+      title: "Everything on file",
+      body: "Contact details, tags, notes, and their notification preferences — all in one place.",
+      placement: "bottom",
+      waitForAnchorMs: 5000,
+      advanceOn: "next-click",
+    },
+    {
+      anchor: TOUR_ANCHORS.customerDetail.editButton,
+      title: "Edit any time",
+      body: "Same form as Add, just pre-filled — this tour stops here so it doesn't change a real customer's details for you.",
+      placement: "bottom",
+      advanceOn: "next-click",
+    },
+    {
+      anchor: TOUR_ANCHORS.customerDetail.historyStats,
+      title: "What they're worth, and how reliable",
+      body: "Visits, spend, and no-show rate — every figure counts only what's actually concluded, never a booking that hasn't happened yet.",
+      placement: "top",
+      advanceOn: "next-click",
+    },
+    {
+      anchor: TOUR_ANCHORS.customerDetail.bookingHistoryTable,
+      title: "Every booking they've made",
+      body: "The full history at this salon, oldest problems and all — nothing here is ever hidden or rewritten after the fact.",
+      placement: "top",
+      advanceOn: "next-click",
+    },
+  ],
+};

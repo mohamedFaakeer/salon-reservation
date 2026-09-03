@@ -20,6 +20,7 @@ import { DrawerShell } from "./drawer-shell";
 import { BusyLabel, Spinner } from "./spinner";
 import { TagMultiselect } from "./tag-multiselect";
 import { useToast } from "./toast";
+import { TOUR_ANCHORS } from "../lib/tour-anchors";
 
 const BUILT_IN_TITLES = ["Mr.", "Mrs.", "Ms.", "Dr."];
 const BUILT_IN_SOURCES = ["Walk-in", "Web app", "Referral"];
@@ -232,7 +233,7 @@ export function CustomerFormDrawer({
   return (
     <DrawerShell title={mode === "create" ? "Add customer" : "Edit customer"} onClose={onClose}>
       <div className="flex flex-col gap-4">
-        <div className="grid grid-cols-[7rem_1fr] gap-3">
+        <div className="grid grid-cols-[7rem_1fr] gap-3" data-tour-id={TOUR_ANCHORS.customerFormDrawer.nameFields}>
           <div className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-slate-700">Title</span>
             <SelectWithAddNew
@@ -266,7 +267,7 @@ export function CustomerFormDrawer({
           />
         </label>
 
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1 text-sm" data-tour-id={TOUR_ANCHORS.customerFormDrawer.phoneField}>
           <span className="font-medium text-slate-700">Mobile number</span>
           <span className="relative flex items-center">
             <input
@@ -460,6 +461,7 @@ export function CustomerFormDrawer({
           <button
             type="button"
             data-testid="customer-save"
+            data-tour-id={TOUR_ANCHORS.customerFormDrawer.saveButton}
             onClick={() => void handleSubmit()}
             disabled={!canSubmit || submitting}
             className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"

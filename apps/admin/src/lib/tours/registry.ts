@@ -3,6 +3,7 @@ import { staffRecordsTour } from "./staff-records.tour";
 import { skillsMatrixTour } from "./skills-matrix.tour";
 import { weeklyRotaTour } from "./weekly-rota.tour";
 import { staffLoginsTour } from "./staff-logins.tour";
+import { customerManagementTour } from "./customer-management.tour";
 import { bookingCreateTour } from "./booking-create.tour";
 import { bookingEditTour } from "./booking-edit.tour";
 import { bookingStatusLifecycleTour } from "./booking-status-lifecycle.tour";
@@ -30,6 +31,7 @@ export const TOUR_REGISTRY: TourDef[] = [
   skillsMatrixTour,
   weeklyRotaTour,
   staffLoginsTour,
+  customerManagementTour,
   bookingCreateTour,
   bookingEditTour,
   bookingStatusLifecycleTour,
