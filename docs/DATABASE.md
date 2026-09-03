@@ -351,6 +351,32 @@ routes are untouched (DECISIONS.md §64): a tenant can have Incentives
 without Payroll, or Payroll without Incentives, and each behaves correctly
 on its own.
 
+**Phase 4 (statutory engine, DECISIONS.md §65)** added:
+
+**`tenant.statutoryPayrollEnabled`** (boolean, default `false`) — the
+per-tenant compliance gate. Not a plan-tier entitlement like
+`payroll`/`incentives` in `tenant-entitlements.ts`; a platform admin flips
+it only once a tenant's configuration has been professionally reviewed
+(`PATCH /super-admin/tenants/:id/statutory-payroll`, SUPER_ADMIN only —
+same shape as `customerBookingEnabled` above).
+
+**statutory_rule_set** — `id (uuid PK)`, `effectiveFrom`/`effectiveTo
+(date, nullable — same "NULL = currently open" versioning as `employment`,
+§2.15)`, `epfEmployeePercent`/`epfEmployerPercent`/`etfEmployerPercent
+(int, 0-100)`, `apitMonthlyFreeThresholdCents (int)`, `apitBands (jsonb —
+an ordered array of `{ uptoCents: int|null, ratePercent: int }`, the last
+entry's `uptoCents` `null` meaning "and above")`, `verified (boolean,
+default false)`, `sourceNote (text — citation of the official source used,
+spec §31)`, `createdBy (FK user)`, `createdAt`. **Global — no `tenantId`
+column**: these are facts about Sri Lankan law, not a per-salon policy,
+configured by `PLATFORM_ADMIN` only. "Exactly one open version at a time"
+is enforced in `StatutoryRuleSetService`, not a database constraint —
+unlike `employment`, this table is edited by trusted platform staff a
+handful of times a year, not from a high-concurrency customer path.
+`verified` and `tenant.statutoryPayrollEnabled` are two independent gates:
+publishing a rule set (verified or not) never itself turns on real
+calculations for any tenant.
+
 ---
 
 ## 3. Concurrency Model — Double-Booking Protection

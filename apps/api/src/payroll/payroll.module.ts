@@ -3,8 +3,10 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import { Employment } from "../entities/employment.entity";
 import { IncentivePayout } from "../entities/incentive-payout.entity";
 import { PayCalendar } from "../entities/pay-calendar.entity";
+import { StatutoryRuleSet } from "../entities/statutory-rule-set.entity";
 import { Staff } from "../entities/staff.entity";
 import { StaffLeave } from "../entities/staff-leave.entity";
+import { Tenant } from "../entities/tenant.entity";
 import { AuditModule } from "../audit/audit.module";
 import { AttendanceModule } from "../attendance/attendance.module";
 import { IncentiveModule } from "../incentive/incentive.module";
@@ -16,16 +18,34 @@ import { PayCalendarController } from "./pay-calendar.controller";
 import { PayCalendarService } from "./pay-calendar.service";
 import { PayrollPreviewController } from "./payroll-preview.controller";
 import { PayrollPreviewService } from "./payroll-preview.service";
+import { StatutoryPreviewController } from "./statutory-preview.controller";
+import { StatutoryPreviewService } from "./statutory-preview.service";
+import { StatutoryRuleSetController } from "./statutory-rule-set.controller";
+import { StatutoryRuleSetService } from "./statutory-rule-set.service";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Employment, PayCalendar, Staff, StaffLeave, IncentivePayout]),
+    TypeOrmModule.forFeature([Employment, PayCalendar, Staff, StaffLeave, IncentivePayout, StatutoryRuleSet, Tenant]),
     AuditModule,
     AttendanceModule,
     IncentiveModule,
   ],
-  controllers: [EmploymentController, PayCalendarController, BasePayController, PayrollPreviewController],
-  providers: [EmploymentService, PayCalendarService, BasePayService, PayrollPreviewService],
-  exports: [EmploymentService, PayCalendarService, BasePayService, PayrollPreviewService],
+  controllers: [
+    EmploymentController,
+    PayCalendarController,
+    BasePayController,
+    PayrollPreviewController,
+    StatutoryRuleSetController,
+    StatutoryPreviewController,
+  ],
+  providers: [
+    EmploymentService,
+    PayCalendarService,
+    BasePayService,
+    PayrollPreviewService,
+    StatutoryRuleSetService,
+    StatutoryPreviewService,
+  ],
+  exports: [EmploymentService, PayCalendarService, BasePayService, PayrollPreviewService, StatutoryRuleSetService],
 })
 export class PayrollModule {}

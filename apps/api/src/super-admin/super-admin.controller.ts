@@ -9,6 +9,7 @@ import {
   ProvisionTenantDto,
   UpdateTenantEntitlementsDto,
   UpdateTenantVisibilityDto,
+  UpdateStatutoryPayrollEnabledDto,
 } from "@salon/shared";
 import type { AuthenticatedRequest } from "../tenant/tenant-context";
 import { Permissions } from "../common/authorization/permissions.decorator";
@@ -82,6 +83,17 @@ export class SuperAdminController {
     @Body() dto: UpdateTenantVisibilityDto,
   ) {
     return this.superAdmin.setCustomerVisibility(tenantId, dto, req.user.sub);
+  }
+
+  /** Enable/disable this salon's Payroll statutory (EPF/ETF/APIT) calculations — off by default until professionally reviewed (DECISIONS.md §62/§65). */
+  @Patch(":tenantId/statutory-payroll")
+  @Permissions(Permission.PLATFORM_ADMIN)
+  setStatutoryPayrollEnabled(
+    @Req() req: AuthenticatedRequest,
+    @Param("tenantId", ParseUUIDPipe) tenantId: string,
+    @Body() dto: UpdateStatutoryPayrollEnabledDto,
+  ) {
+    return this.superAdmin.setStatutoryPayrollEnabled(tenantId, dto, req.user.sub);
   }
 
   /**

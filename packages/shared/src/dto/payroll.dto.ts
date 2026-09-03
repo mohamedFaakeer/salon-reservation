@@ -1,4 +1,20 @@
-import { IsDateString, IsEnum, IsInt, IsOptional, IsUUID, Max, Min } from "class-validator";
+import { Type } from "class-transformer";
+import {
+  ArrayMinSize,
+  IsArray,
+  IsBoolean,
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+  ValidateNested,
+} from "class-validator";
 import { PayFrequency } from "../enums";
 
 /**
@@ -58,4 +74,71 @@ export class BasePayPreviewQueryDto {
 
   @IsDateString()
   to!: string;
+}
+
+/** One band of the progressive APIT table. `uptoCents: null` means "and above" — must be the last entry. */
+export class ApitBandDto {
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  uptoCents!: number | null;
+
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  ratePercent!: number;
+}
+
+/**
+ * POST /super-admin/statutory-rule-sets — SUPER_ADMIN only (`PLATFORM_ADMIN`).
+ *
+ * Global, not tenant-scoped — these are facts about Sri Lankan law, not a
+ * per-salon policy (StatutoryRuleSet's own doc). `verified` defaults to
+ * `false` server-side if omitted; publishing a rule set never itself turns
+ * on real calculations for any tenant — that's the separate, per-tenant
+ * `Tenant.statutoryPayrollEnabled` gate.
+ */
+export class UpsertStatutoryRuleSetDto {
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  epfEmployeePercent!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  epfEmployerPercent!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  etfEmployerPercent!: number;
+
+  @IsInt()
+  @Min(0)
+  apitMonthlyFreeThresholdCents!: number;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => ApitBandDto)
+  apitBands!: ApitBandDto[];
+
+  @IsDateString()
+  effectiveFrom!: string;
+
+  @IsString()
+  @MinLength(10)
+  @MaxLength(2000)
+  sourceNote!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  verified?: boolean;
+}
+
+/** PATCH /super-admin/tenants/:tenantId/statutory-payroll — SUPER_ADMIN only. */
+export class UpdateStatutoryPayrollEnabledDto {
+  @IsBoolean()
+  statutoryPayrollEnabled!: boolean;
 }

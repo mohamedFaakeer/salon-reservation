@@ -3120,3 +3120,58 @@ two modules to physically merge.
 
 Phase 4 (the statutory engine, shipped flagged off per §62) is next.
 
+## 65. Payroll module — Phase 4, statutory engine infrastructure (flagged off) (2026-09-03)
+
+Built the EPF/ETF/APIT calculation infrastructure per §62's decision that it
+ships inert until a qualified Sri Lankan payroll/accounting professional
+reviews it. Two independent gates, deliberately, neither a stand-in for the
+other:
+
+1. **`Tenant.statutoryPayrollEnabled`** (default `false`, every tenant,
+   including PRO) — a compliance sign-off, not a plan-tier feature.
+   SUPER_ADMIN-only to flip (`PATCH
+   /super-admin/tenants/:id/statutory-payroll`), same shape as the existing
+   `customerBookingEnabled` toggle: a salon owner can enable Payroll itself,
+   but cannot self-certify their own statutory configuration.
+2. **`StatutoryRuleSet.verified`** (default `false`) — whether the rate
+   table itself has been professionally confirmed. Publishing a rule set,
+   verified or not, never turns on real calculations for any tenant on its
+   own; that still needs gate 1.
+
+**Rates are global, not per-tenant** (`statutory_rule_set` carries no
+`tenantId`) — EPF/ETF/APIT are facts about Sri Lankan law, not a salon's
+own policy, and are configured by `PLATFORM_ADMIN` only (spec §21: "restricted
+to platform/authorized compliance role"). Effective-dated the same
+close-old/open-new shape as `employment` (§62), so a payroll run finalized
+under one rate table stays reproducible after IRD publishes a new one
+(CLAUDE.md §7). No rule set is seeded by this migration — the table starts
+empty. Seeding one with real-looking numbers via a migration would have
+asserted them more confidently than a manually reviewed draft should;
+instead, `POST /super-admin/statutory-rule-sets` exists for a platform admin
+(or a future session, on request) to publish one deliberately, with its
+`sourceNote` recording exactly which official document and retrieval date
+it came from, per spec §31's own requirement.
+
+**Two calculation functions** (`statutory.domain.ts`, pure and unit-tested):
+`computeEpfEtf` — flat percentages of gross, safe on any period since
+neither EPF nor ETF is progressive; `computeApitForMonth` — a progressive
+band table applied only to one full calendar tax month, per §62's finding
+that IRD's own APIT Table 01 has no daily/weekly/fortnightly equivalent.
+`StatutoryPreviewService` (`GET /payroll/statutory/preview`) refuses any
+period that isn't exactly the 1st through the last day of one calendar
+month (`400 INVALID_STATUTORY_PERIOD`) — this is a fixed Gregorian tax
+month regardless of a tenant's own internal `PayCalendar` cycle, which can
+use a different anchor day for its own payroll periods.
+
+**Gratuity deliberately has no code yet**, not even a stub. The spec's own
+§11.4 requires a real separation/termination workflow, a confirmed
+continuous-service start date, and applicability rules this session hasn't
+built or verified — a placeholder function would either do nothing useful
+or imply more support than exists. Deferred to whichever later phase adds
+final-settlement/termination handling, with a real employment-start-date
+question resolved at that time rather than guessed now.
+
+Phase 5 (approval workflow, payslips, payments) is next — the first phase
+with real UI, and the first that needs a mockup shown and approved before
+any screen is built, per this project's standing UI workflow.
+

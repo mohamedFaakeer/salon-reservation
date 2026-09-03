@@ -289,6 +289,16 @@ statutory calculation yet — see DECISIONS.md §62 for the phased build.
 | PUT | `/payroll/pay-calendars/monthly` | MANAGE_PAYROLL | `{ monthlyAnchorDay? }` — 1-28. |
 | GET | `/payroll/base-pay/preview?staffId&from&to` | MANAGE_PAYROLL | A live, unsaved base-pay figure for one staff member over a range, built day-by-day from their Employment/Attendance/StaffLeave records — see DECISIONS.md §62 for the earning rules. Nothing here is persisted; it's a preview, the same shape `GET /incentive-plans/preview` already uses. |
 | GET | `/payroll/preview?staffId&from&to` | MANAGE_PAYROLL | The real payroll-run figure: base pay plus this period's commission. The commission component is an already-finalized `IncentivePayout` for this exact period if one exists, otherwise a live estimate (clearly labelled `LIVE_ESTIMATE` vs `FINALIZED_PAYOUT`) — and `null` entirely if the tenant doesn't have the Incentives module enabled. Reads the Incentives module as-is (DECISIONS.md §64); doesn't touch or duplicate it. |
+| GET | `/payroll/statutory/preview?staffId&from&to` | MANAGE_PAYROLL | EPF/ETF/APIT against this staff member's gross for one full calendar month (`from` must be the 1st, `to` the last day of the same month — `400 INVALID_STATUTORY_PERIOD` otherwise; APIT has no daily/weekly/fortnightly equivalent, DECISIONS.md §62). `403 STATUTORY_PAYROLL_NOT_ENABLED` unless a platform admin has turned this on for the tenant; `409 NO_STATUTORY_RULE_SET` if none has ever been published. Response always includes `verified` and `ruleSetId` so the figure is never read as more certain than it is. |
+
+Global (platform-wide, not tenant-scoped) — `PLATFORM_ADMIN`/SUPER_ADMIN only:
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| GET | `/super-admin/statutory-rule-sets` | PLATFORM_ADMIN | Every EPF/ETF/APIT rate table ever published, newest first. |
+| GET | `/super-admin/statutory-rule-sets/current` | PLATFORM_ADMIN | The version currently in force, or `null` if none has ever been published. |
+| POST | `/super-admin/statutory-rule-sets` | PLATFORM_ADMIN | `{ epfEmployeePercent, epfEmployerPercent, etfEmployerPercent, apitMonthlyFreeThresholdCents, apitBands, effectiveFrom, sourceNote, verified? }`. Publishes a new version, superseding whichever one is open — never edited in place. `verified` defaults `false`; publishing never itself turns on calculations for any tenant. |
+| PATCH | `/super-admin/tenants/:tenantId/statutory-payroll` | PLATFORM_ADMIN | `{ statutoryPayrollEnabled }` — the per-tenant compliance gate. Off by default for every tenant, including PRO. |
 
 ### Ratings (public)
 

@@ -81,6 +81,23 @@ export class Tenant {
   @Column({ type: "boolean", default: true })
   customerBookingEnabled!: boolean;
 
+  /**
+   * Whether Payroll's EPF/ETF/APIT statutory engine may compute real
+   * figures for this tenant, as opposed to leaving them as manual entry.
+   * Defaults `false` for every tenant, including PRO — this isn't a
+   * plan-tier feature gate like `payroll`/`incentives` in
+   * `tenant-entitlements.ts`, it's a compliance gate: the engine exists and
+   * is fully testable once Payroll is enabled, but produces figures nobody
+   * has authority to assert are legally correct until a qualified Sri
+   * Lankan payroll/accounting professional has reviewed this tenant's
+   * configuration (DECISIONS.md §62/§65). Only a platform admin can turn it
+   * on (`PATCH /super-admin/tenants/:id/statutory-payroll`), the same
+   * SUPER_ADMIN-only shape `customerBookingEnabled` above already uses —
+   * never a self-service owner toggle.
+   */
+  @Column({ type: "boolean", default: false })
+  statutoryPayrollEnabled!: boolean;
+
   @Column({ type: "varchar", length: 3, default: "LKR" })
   currency!: string;
 

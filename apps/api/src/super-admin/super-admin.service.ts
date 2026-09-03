@@ -16,6 +16,7 @@ import {
   type TenantEntitlements,
   type UpdateTenantEntitlementsDto,
   type UpdateTenantVisibilityDto,
+  type UpdateStatutoryPayrollEnabledDto,
   type ProvisionTenantDto,
 } from "@salon/shared";
 import { Appointment } from "../entities/appointment.entity";
@@ -305,6 +306,35 @@ export class SuperAdminService {
     });
 
     return { id: tenant.id, customerBookingEnabled: tenant.customerBookingEnabled };
+  }
+
+  /**
+   * The Payroll statutory-engine switch (DECISIONS.md §62/§65) — off by
+   * default for every tenant, including PRO, since it's a compliance
+   * sign-off rather than a plan-tier feature. Deliberately SUPER_ADMIN-only,
+   * same shape as `setCustomerVisibility`: a salon owner can enable Payroll
+   * itself (an entitlement), but cannot self-certify that their statutory
+   * configuration has been professionally reviewed.
+   */
+  async setStatutoryPayrollEnabled(
+    tenantId: string,
+    dto: UpdateStatutoryPayrollEnabledDto,
+    actorUserId: string,
+  ): Promise<Pick<Tenant, "id" | "statutoryPayrollEnabled">> {
+    const tenant = await this.findOwned(tenantId);
+    tenant.statutoryPayrollEnabled = dto.statutoryPayrollEnabled;
+    await this.tenants.save(tenant);
+
+    await this.audit.record({
+      tenantId,
+      actorUserId,
+      action: "TENANT_STATUTORY_PAYROLL_UPDATED",
+      entityType: "Tenant",
+      entityId: tenantId,
+      metadata: { statutoryPayrollEnabled: dto.statutoryPayrollEnabled },
+    });
+
+    return { id: tenant.id, statutoryPayrollEnabled: tenant.statutoryPayrollEnabled };
   }
 
   private async findOwned(tenantId: string): Promise<Tenant> {
