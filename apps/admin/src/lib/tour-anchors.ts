@@ -101,4 +101,35 @@ export const TOUR_ANCHORS = {
     datesField: "closure-drawer.dates-field",
     saveButton: "closure-drawer.save-button",
   },
+  appointments: {
+    /** Shared by every row's date/time link — opens AppointmentDetailDrawer. */
+    openRowButton: "appointments.open-row-button",
+  },
+  appointmentDetail: {
+    statusBadge: "appointment-detail.status-badge",
+    actionCheckIn: "appointment-detail.action-check-in",
+    actionInService: "appointment-detail.action-in-service",
+    actionComplete: "appointment-detail.action-complete",
+    actionCancel: "appointment-detail.action-cancel",
+    cancelReasonField: "appointment-detail.cancel-reason-field",
+    confirmCancelButton: "appointment-detail.confirm-cancel-button",
+    showAddServiceButton: "appointment-detail.show-add-service-button",
+    /** Shared by every option in the add-service picker. */
+    addServiceOption: "appointment-detail.add-service-option",
+    submitAddServiceButton: "appointment-detail.submit-add-service-button",
+    actionReschedule: "appointment-detail.action-reschedule",
+    /** Shared by every open-slot option in the reschedule picker. */
+    rescheduleSlotOption: "appointment-detail.reschedule-slot-option",
+    showRecordPaymentButton: "appointment-detail.show-record-payment-button",
+    recordPaymentAmountField: "appointment-detail.record-payment-amount-field",
+    recordPaymentMethodField: "appointment-detail.record-payment-method-field",
+    recordPaymentTypeField: "appointment-detail.record-payment-type-field",
+    submitRecordPaymentButton: "appointment-detail.submit-record-payment-button",
+  },
+  invoicePanel: {
+    root: "invoice-panel.root",
+    issueButton: "invoice-panel.issue-button",
+    viewButton: "invoice-panel.view-button",
+    sendButton: "invoice-panel.send-button",
+  },
 } as const;

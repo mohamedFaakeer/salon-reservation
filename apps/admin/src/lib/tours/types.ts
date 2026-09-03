@@ -8,6 +8,8 @@
  * would bypass all of that and could silently point at nothing in production.
  */
 
+import type { ModuleKey } from "../api-client";
+
 export type TourRole = "OWNER" | "MANAGER" | "RECEPTIONIST" | "STAFF";
 
 export interface TourStepDef {
@@ -46,6 +48,8 @@ export interface TourDef {
   description: string;
   roles: TourRole[];
   shell: "app" | "floor";
+  /** Hidden entirely when the tenant's plan doesn't include this module — checked alongside `roles`. */
+  module?: ModuleKey;
   steps: TourStepDef[];
   /** Shown as a success toast the moment the tour is actually finished (not on skip) — the same confirmation pattern the rest of the app uses for a completed action, so a tour ending reads as clearly "done" as any other. */
   completionTitle: string;

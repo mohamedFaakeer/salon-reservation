@@ -4,6 +4,11 @@ import { skillsMatrixTour } from "./skills-matrix.tour";
 import { weeklyRotaTour } from "./weekly-rota.tour";
 import { staffLoginsTour } from "./staff-logins.tour";
 import { bookingCreateTour } from "./booking-create.tour";
+import { bookingEditTour } from "./booking-edit.tour";
+import { bookingStatusLifecycleTour } from "./booking-status-lifecycle.tour";
+import { paymentRecordingTour } from "./payment-recording.tour";
+import { invoiceManagementTour } from "./invoice-management.tour";
+import { bookingCancelTour } from "./booking-cancel.tour";
 import { leaveConfigurationTour } from "./leave-configuration.tour";
 import { closureConfigurationTour } from "./closure-configuration.tour";
 import type { TourDef, TourRole } from "./types";
@@ -23,6 +28,11 @@ export const TOUR_REGISTRY: TourDef[] = [
   weeklyRotaTour,
   staffLoginsTour,
   bookingCreateTour,
+  bookingEditTour,
+  bookingStatusLifecycleTour,
+  paymentRecordingTour,
+  invoiceManagementTour,
+  bookingCancelTour,
   leaveConfigurationTour,
   closureConfigurationTour,
 ];

@@ -43,6 +43,7 @@ import { BillDiscount } from "./bill-discount";
 import { InvoicePanel } from "./invoice-panel";
 import { useToast } from "./toast";
 import { errorCopy } from "../lib/error-copy";
+import { TOUR_ANCHORS } from "../lib/tour-anchors";
 
 const PAYMENT_METHODS: PaymentMethod[] = ["CASH", "BANK_TRANSFER", "CARD_CAPTURED", "GIFT_CARD", "PACKAGE_CREDIT"];
 const PAYMENT_TYPES: PaymentType[] = ["ADVANCE", "FULL", "BALANCE"];
@@ -484,7 +485,11 @@ export function AppointmentDetailDrawer({
               {appointment.staff.name}
             </p>
             <p className="mt-1">
-              <StatusBadge status={appointment.status} testId="detail-status" />
+              <StatusBadge
+                status={appointment.status}
+                testId="detail-status"
+                tourId={TOUR_ANCHORS.appointmentDetail.statusBadge}
+              />
             </p>
           </div>
 
@@ -593,6 +598,7 @@ export function AppointmentDetailDrawer({
                           <button
                             type="button"
                             data-testid={`add-service-option-${s.id}`}
+                            data-tour-id={TOUR_ANCHORS.appointmentDetail.addServiceOption}
                             onClick={() =>
                               setSelectedServiceIds((prev) =>
                                 prev.includes(s.id)
@@ -629,6 +635,7 @@ export function AppointmentDetailDrawer({
                     <button
                       type="button"
                       data-testid="submit-add-service"
+                      data-tour-id={TOUR_ANCHORS.appointmentDetail.submitAddServiceButton}
                       disabled={addServiceSubmitting || selectedServiceIds.length === 0}
                       onClick={() => void submitAddService()}
                       className="flex-1 rounded bg-teal-600 px-2 py-1 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-60"
@@ -643,6 +650,7 @@ export function AppointmentDetailDrawer({
                 <button
                   type="button"
                   data-testid="show-add-service"
+                  data-tour-id={TOUR_ANCHORS.appointmentDetail.showAddServiceButton}
                   onClick={() => void openAddService()}
                   className="mt-2 rounded border border-teal-600 px-3 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50"
                 >
@@ -777,6 +785,7 @@ export function AppointmentDetailDrawer({
                     <input
                       type="number"
                       data-testid="record-payment-amount"
+                      data-tour-id={TOUR_ANCHORS.appointmentDetail.recordPaymentAmountField}
                       value={recordAmount}
                       onChange={(e) => setRecordAmount(e.target.value)}
                       className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm"
@@ -791,6 +800,7 @@ export function AppointmentDetailDrawer({
                     Method
                     <select
                       data-testid="record-payment-method"
+                      data-tour-id={TOUR_ANCHORS.appointmentDetail.recordPaymentMethodField}
                       value={recordMethod}
                       onChange={(e) => setRecordMethod(e.target.value as PaymentMethod)}
                       className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm"
@@ -832,6 +842,7 @@ export function AppointmentDetailDrawer({
                     Type
                     <select
                       data-testid="record-payment-type"
+                      data-tour-id={TOUR_ANCHORS.appointmentDetail.recordPaymentTypeField}
                       value={recordType}
                       onChange={(e) => setRecordType(e.target.value as PaymentType)}
                       className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm"
@@ -859,6 +870,7 @@ export function AppointmentDetailDrawer({
                     <button
                       type="button"
                       data-testid="submit-record-payment"
+                      data-tour-id={TOUR_ANCHORS.appointmentDetail.submitRecordPaymentButton}
                       disabled={recordSubmitting}
                       onClick={() => void submitRecordPayment()}
                       className="flex-1 rounded bg-teal-600 px-2 py-1 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-60"
@@ -873,6 +885,7 @@ export function AppointmentDetailDrawer({
                 <button
                   type="button"
                   data-testid="show-record-payment"
+                  data-tour-id={TOUR_ANCHORS.appointmentDetail.showRecordPaymentButton}
                   onClick={() => setShowRecordForm(true)}
                   className="mt-2 rounded border border-teal-600 px-3 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50"
                 >
@@ -908,6 +921,7 @@ export function AppointmentDetailDrawer({
                 <input
                   type="text"
                   data-testid="drawer-cancel-reason"
+                  data-tour-id={TOUR_ANCHORS.appointmentDetail.cancelReasonField}
                   value={cancelReason}
                   onChange={(e) => setCancelReason(e.target.value)}
                   className="mt-1 w-full rounded border border-red-300 px-2 py-1 text-sm"
@@ -929,6 +943,7 @@ export function AppointmentDetailDrawer({
                 <button
                   type="button"
                   data-testid="drawer-confirm-cancel"
+                  data-tour-id={TOUR_ANCHORS.appointmentDetail.confirmCancelButton}
                   disabled={cancelSubmitting || !cancelReason.trim()}
                   onClick={() => void submitCancel()}
                   className="flex-1 rounded bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-60"
@@ -970,6 +985,7 @@ export function AppointmentDetailDrawer({
                       key={`${slot.staffId}-${slot.start}`}
                       type="button"
                       data-testid="drawer-reschedule-slot-option"
+                      data-tour-id={TOUR_ANCHORS.appointmentDetail.rescheduleSlotOption}
                       disabled={rescheduleSubmitting}
                       onClick={() => void submitReschedule(slot)}
                       className="rounded border border-slate-200 px-2 py-1 text-xs hover:border-teal-400 disabled:opacity-60"
@@ -1034,6 +1050,7 @@ export function AppointmentDetailDrawer({
               <button
                 type="button"
                 data-testid="action-check-in"
+                data-tour-id={TOUR_ANCHORS.appointmentDetail.actionCheckIn}
                 disabled={acting}
                 onClick={() => void runAction(() => checkIn(appointment.id), "Checked in")}
                 className="rounded bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
@@ -1046,6 +1063,7 @@ export function AppointmentDetailDrawer({
               <button
                 type="button"
                 data-testid="action-in-service"
+                data-tour-id={TOUR_ANCHORS.appointmentDetail.actionInService}
                 disabled={acting}
                 onClick={() => void runAction(() => inService(appointment.id), "Service started")}
                 className="rounded bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
@@ -1058,6 +1076,7 @@ export function AppointmentDetailDrawer({
               <button
                 type="button"
                 data-testid="action-complete"
+                data-tour-id={TOUR_ANCHORS.appointmentDetail.actionComplete}
                 disabled={acting}
                 onClick={() => void runAction(() => complete(appointment.id), "Appointment completed")}
                 className="rounded bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
@@ -1084,6 +1103,7 @@ export function AppointmentDetailDrawer({
                 <button
                   type="button"
                   data-testid="action-reschedule"
+                  data-tour-id={TOUR_ANCHORS.appointmentDetail.actionReschedule}
                   onClick={() => {
                     setShowRescheduleForm(true);
                     void loadRescheduleSlots(rescheduleDate);
@@ -1095,6 +1115,7 @@ export function AppointmentDetailDrawer({
                 <button
                   type="button"
                   data-testid="action-cancel"
+                  data-tour-id={TOUR_ANCHORS.appointmentDetail.actionCancel}
                   onClick={() => setShowCancelForm(true)}
                   className="flex-1 rounded border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
                 >

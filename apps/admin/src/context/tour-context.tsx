@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./auth-context";
+import { useModules } from "./modules-context";
 import { useToast } from "../components/toast";
 import { toursForRoles, getTour, type TourDef } from "../lib/tours/registry";
 import { getTourProgress, setTourProgress, type TourProgressStatus } from "../lib/tour-progress";
@@ -27,6 +28,7 @@ const TourContext = createContext<TourContextValue | null>(null);
  */
 export function TourProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const { modules } = useModules();
   const router = useRouter();
   const toast = useToast();
   const [activeTourId, setActiveTourId] = useState<string | null>(null);
@@ -34,10 +36,14 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // rather than reading a value captured before the write happened.
   const [progressVersion, setProgressVersion] = useState(0);
 
-  const toursForCurrentUser = useMemo(
-    () => (user ? toursForRoles(user.roles) : []),
-    [user],
-  );
+  const toursForCurrentUser = useMemo(() => {
+    if (!user) {
+      return [];
+    }
+    return toursForRoles(user.roles).filter(
+      (tour) => !tour.module || !modules || modules[tour.module],
+    );
+  }, [user, modules]);
 
   const statusOf = useCallback(
     (tourId: string): TourProgressStatus | "not-started" => {
