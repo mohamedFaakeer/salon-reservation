@@ -41,6 +41,12 @@ export class MonitoringController {
     return this.monitoring.tenantUsage(query);
   }
 
+  @Get("service-status")
+  @Permissions(Permission.PLATFORM_ADMIN)
+  serviceStatus() {
+    return this.monitoring.serviceStatus();
+  }
+
   @Get("errors")
   @Permissions(Permission.PLATFORM_ADMIN)
   listErrors(@Query() query: MonitoringErrorQueryDto) {

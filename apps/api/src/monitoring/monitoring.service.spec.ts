@@ -1,9 +1,11 @@
 import type { ObjectLiteral, Repository } from "typeorm";
 import { MonitoringService } from "./monitoring.service";
 import type { AuditService } from "../audit/audit.service";
+import type { CloudinaryService } from "../cloudinary/cloudinary.service";
 import type { Appointment } from "../entities/appointment.entity";
 import type { AuditLog } from "../entities/audit-log.entity";
 import type { ErrorLog } from "../entities/error-log.entity";
+import type { Notification } from "../entities/notification.entity";
 import type { NotificationQuota } from "../entities/notification-quota.entity";
 import type { Payment } from "../entities/payment.entity";
 import type { SecurityEventReview } from "../entities/security-event-review.entity";
@@ -18,10 +20,12 @@ type MockedRepo<T extends ObjectLiteral> = Repository<T> & {
     andWhere: ReturnType<typeof vi.fn>;
     groupBy: ReturnType<typeof vi.fn>;
     addGroupBy: ReturnType<typeof vi.fn>;
+    orderBy: ReturnType<typeof vi.fn>;
     innerJoin: ReturnType<typeof vi.fn>;
     getCount: ReturnType<typeof vi.fn>;
     getRawMany: ReturnType<typeof vi.fn>;
     getRawOne: ReturnType<typeof vi.fn>;
+    getOne: ReturnType<typeof vi.fn>;
   };
 };
 
@@ -33,10 +37,12 @@ function mockRepo<T extends ObjectLiteral>(overrides: Partial<Record<string, unk
     andWhere: vi.fn().mockReturnThis(),
     groupBy: vi.fn().mockReturnThis(),
     addGroupBy: vi.fn().mockReturnThis(),
+    orderBy: vi.fn().mockReturnThis(),
     innerJoin: vi.fn().mockReturnThis(),
     getCount: vi.fn(async () => 0),
     getRawMany: vi.fn(async () => []),
     getRawOne: vi.fn(async () => undefined),
+    getOne: vi.fn(async () => null),
   };
   return {
     find: vi.fn(async () => []),
@@ -67,7 +73,10 @@ describe("MonitoringService", () => {
   let quotas: MockedRepo<NotificationQuota>;
   let errorLogs: MockedRepo<ErrorLog>;
   let reviews: MockedRepo<SecurityEventReview>;
+  let notifications: MockedRepo<Notification>;
+  let dataSource: { query: ReturnType<typeof vi.fn> };
   let audit: AuditService;
+  let cloudinary: { isConfigured: boolean };
   let service: MonitoringService;
 
   beforeEach(() => {
@@ -78,7 +87,10 @@ describe("MonitoringService", () => {
     quotas = mockRepo<NotificationQuota>();
     errorLogs = mockRepo<ErrorLog>();
     reviews = mockRepo<SecurityEventReview>();
+    notifications = mockRepo<Notification>();
+    dataSource = { query: vi.fn(async () => [{ "?column?": 1 }]) };
     audit = mockAudit();
+    cloudinary = { isConfigured: true };
     service = new MonitoringService(
       tenants,
       appointments,
@@ -87,7 +99,10 @@ describe("MonitoringService", () => {
       quotas,
       errorLogs,
       reviews,
+      notifications,
+      dataSource as never,
       audit,
+      cloudinary as CloudinaryService,
     );
   });
 
@@ -271,6 +286,119 @@ describe("MonitoringService", () => {
       expect(reviews.save).toHaveBeenCalledWith(
         expect.objectContaining({ status: "RESOLVED", reviewedByUserId: "admin-2" }),
       );
+    });
+  });
+
+  describe("serviceStatus", () => {
+    const ENV_KEYS = ["BREVO_API_KEY", "SMTP_HOST", "TEXTLK_API_TOKEN", "TEXTLK_SENDER_ID"] as const;
+    let original: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>>;
+
+    beforeEach(() => {
+      original = {};
+      for (const key of ENV_KEYS) {
+        original[key] = process.env[key];
+        delete process.env[key];
+      }
+    });
+
+    afterEach(() => {
+      for (const key of ENV_KEYS) {
+        if (original[key] === undefined) delete process.env[key];
+        else process.env[key] = original[key];
+      }
+    });
+
+    function entryFor(data: Awaited<ReturnType<MonitoringService["serviceStatus"]>>["data"], id: string) {
+      const entry = data.find((e) => e.id === id);
+      if (!entry) throw new Error(`no entry for ${id}`);
+      return entry;
+    }
+
+    it("reports the database healthy when the query succeeds", async () => {
+      const result = await service.serviceStatus();
+      expect(entryFor(result.data, "database")).toMatchObject({ status: "healthy", origin: null });
+    });
+
+    it("classifies a database credential rejection as ours", async () => {
+      dataSource.query.mockRejectedValueOnce({ code: "28P01", message: "password authentication failed" });
+      const result = await service.serviceStatus();
+      expect(entryFor(result.data, "database")).toMatchObject({ status: "down", origin: "ours" });
+    });
+
+    it("classifies a generic database failure as the provider's", async () => {
+      dataSource.query.mockRejectedValueOnce(new Error("connect ETIMEDOUT"));
+      const result = await service.serviceStatus();
+      expect(entryFor(result.data, "database")).toMatchObject({ status: "down", origin: "provider" });
+    });
+
+    it("reports Cloudinary not configured when credentials are missing", async () => {
+      cloudinary.isConfigured = false;
+      const result = await service.serviceStatus();
+      expect(entryFor(result.data, "cloudinary")).toMatchObject({ status: "not_configured", origin: "ours" });
+    });
+
+    it("reports Cloudinary healthy when configured with no recent upload failures", async () => {
+      errorLogs.__queryBuilder.getOne.mockResolvedValueOnce(null);
+      const result = await service.serviceStatus();
+      expect(entryFor(result.data, "cloudinary")).toMatchObject({ status: "healthy", origin: null });
+    });
+
+    it("reports Cloudinary degraded, provider-side, after a recent upload failure", async () => {
+      errorLogs.__queryBuilder.getOne.mockResolvedValueOnce({
+        code: "LOGO_UPLOAD_FAILED",
+        createdAt: new Date(),
+      } as never);
+      const result = await service.serviceStatus();
+      expect(entryFor(result.data, "cloudinary")).toMatchObject({ status: "degraded", origin: "provider" });
+    });
+
+    it("reports email not configured when no transport is set up", async () => {
+      const result = await service.serviceStatus();
+      expect(entryFor(result.data, "email")).toMatchObject({ status: "not_configured", origin: "ours" });
+    });
+
+    it("reports email healthy when configured with no recent failed sends", async () => {
+      process.env.BREVO_API_KEY = "test-key";
+      notifications.__queryBuilder.getOne.mockResolvedValueOnce(null);
+      const result = await service.serviceStatus();
+      expect(entryFor(result.data, "email")).toMatchObject({ status: "healthy", origin: null });
+    });
+
+    it("classifies an auth-flavored email failure as ours", async () => {
+      process.env.BREVO_API_KEY = "test-key";
+      notifications.__queryBuilder.getOne.mockResolvedValueOnce({
+        lastError: "401 Unauthorized — invalid API key",
+        updatedAt: new Date(),
+      } as never);
+      const result = await service.serviceStatus();
+      expect(entryFor(result.data, "email")).toMatchObject({ status: "degraded", origin: "ours" });
+    });
+
+    it("classifies a generic email failure as the provider's", async () => {
+      process.env.BREVO_API_KEY = "test-key";
+      notifications.__queryBuilder.getOne.mockResolvedValueOnce({
+        lastError: "connect ETIMEDOUT to api.brevo.com",
+        updatedAt: new Date(),
+      } as never);
+      const result = await service.serviceStatus();
+      expect(entryFor(result.data, "email")).toMatchObject({ status: "degraded", origin: "provider" });
+    });
+
+    it("does not degrade SMS status for a bad-recipient data issue, not a gateway problem", async () => {
+      process.env.TEXTLK_API_TOKEN = "token";
+      process.env.TEXTLK_SENDER_ID = "SalonApp";
+      notifications.__queryBuilder.getOne.mockResolvedValueOnce({
+        lastError: "Text.lk rejected a send: Invalid recipient number",
+        updatedAt: new Date(),
+      } as never);
+      const result = await service.serviceStatus();
+      expect(entryFor(result.data, "sms")).toMatchObject({ status: "healthy", origin: null });
+    });
+
+    it("always reports hosting and payments as not applicable", async () => {
+      const result = await service.serviceStatus();
+      expect(entryFor(result.data, "hosting").status).toBe("not_applicable");
+      expect(entryFor(result.data, "payments").status).toBe("not_applicable");
     });
   });
 });

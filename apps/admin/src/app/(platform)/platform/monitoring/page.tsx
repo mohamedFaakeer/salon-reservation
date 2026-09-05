@@ -19,6 +19,7 @@ import {
 import { Pager } from "../../../../components/pager";
 import { EventCard } from "../../../../components/monitoring/event-card";
 import { OverviewPanel } from "../../../../components/monitoring/overview-panel";
+import { ServiceStatusTab } from "../../../../components/monitoring/service-status-tab";
 import { TenantUsageTable } from "../../../../components/monitoring/tenant-usage-table";
 import { ResetLockedAccountModal } from "../../../../components/reset-locked-account-modal";
 import { formatRelativeTime } from "../../../../lib/format";
@@ -26,7 +27,7 @@ import { formatRelativeTime } from "../../../../lib/format";
 /**
  * Platform-wide usage, error, and security monitoring — SUPER_ADMIN only.
  *
- * One page, four tabs, the same shape as the notifications page's own tab
+ * One page, five tabs, the same shape as the notifications page's own tab
  * convention. Severity and plain-language explanation lead every flagged
  * row (user's explicit requirement: a non-technical super admin must be
  * able to tell what happened and whether it needs attention right now,
@@ -35,7 +36,7 @@ import { formatRelativeTime } from "../../../../lib/format";
  */
 
 const PAGE_SIZE = 25;
-type Tab = "overview" | "tenants" | "security" | "errors";
+type Tab = "overview" | "tenants" | "security" | "errors" | "services";
 
 export default function MonitoringPage() {
   const [tab, setTab] = useState<Tab>("overview");
@@ -45,7 +46,7 @@ export default function MonitoringPage() {
       <div>
         <h1 className="text-xl font-semibold text-white">Monitoring</h1>
         <p className="mt-0.5 text-sm text-slate-400">
-          Usage, errors, and security across every salon on this deployment.
+          Usage, errors, security, and live dependency status across every salon on this deployment.
         </p>
       </div>
 
@@ -56,6 +57,7 @@ export default function MonitoringPage() {
             ["tenants", "Tenant usage"],
             ["security", "Security events"],
             ["errors", "Error log"],
+            ["services", "Service status"],
           ] as const
         ).map(([key, label]) => (
           <button
@@ -76,6 +78,7 @@ export default function MonitoringPage() {
       {tab === "tenants" ? <TenantsTab /> : null}
       {tab === "security" ? <SecurityTab /> : null}
       {tab === "errors" ? <ErrorsTab /> : null}
+      {tab === "services" ? <ServiceStatusTab /> : null}
     </div>
   );
 }
