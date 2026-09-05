@@ -1,0 +1,85 @@
+# Render Blueprint — versions the deployed configuration in git instead of
+# only in the Render dashboard (resilience audit, docs/INFRASTRUCTURE_
+# RESILIENCE_AUDIT.md §5/§6). Mirrors docs/DEPLOYMENT.md §4-§6 exactly;
+# treat that doc as the source of truth if the two ever disagree.
+#
+# This does NOT auto-apply to already-running dashboard-created services.
+# To adopt it: Render dashboard → New + → Blueprint → point at this repo.
+# Render will offer to match each service below against an existing one by
+# name (salon-api / salon-web / salon-admin) — review the match before
+# confirming, since a mismatched name creates a duplicate service instead of
+# adopting the existing one. Every `sync: false` var must still be entered
+# by hand in the dashboard on first sync; nothing secret lives in this file.
+#
+# apps/marketing is intentionally absent — it deploys to Cloudflare Pages,
+# not Render (docs/DECISIONS.md #61).
+
+services:
+  - type: web
+    name: salon-api
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci --include=dev && npm run build -w apps/api
+    startCommand: npm run start -w apps/api
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Secrets and per-environment values — set once in the dashboard,
+      # never written here. See docs/DEPLOYMENT.md §4 for what each does.
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: SUPER_ADMIN_PASSWORD
+        sync: false
+      - key: SUPER_ADMIN_EMAIL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: TEXTLK_API_TOKEN
+        sync: false
+      - key: TEXTLK_SENDER_ID
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: DEMO_OWNER_PASSWORD
+        sync: false
+
+  - type: web
+    name: salon-web
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci --include=dev && npm run build -w apps/web
+    startCommand: npm run start -w apps/web
+    envVars:
+      # https://salon-api.onrender.com/api/v1 (or the API's actual host) —
+      # not auto-derived: Render's fromService only exposes a bare host,
+      # and this needs the https:// scheme and /api/v1 suffix added too.
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
+
+  - type: web
+    name: salon-admin
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci --include=dev && npm run build -w apps/admin
+    startCommand: npm run start -w apps/admin
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
+      - key: AUTH_COOKIE_NAME
+        value: salon_session
+      - key: NEXT_PUBLIC_CUSTOMER_APP_URL
+        sync: false
