@@ -1,17 +1,18 @@
 import "reflect-metadata";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import type { Repository } from "typeorm";
+import type { ObjectLiteral, Repository } from "typeorm";
 import { NotificationEvaluatorService } from "./notification-evaluator.service";
 import { TemplateRendererService } from "./template-renderer.service";
 import type { NotificationService } from "../notification.service";
-import { NotificationRule } from "../../entities/notification-rule.entity";
-import { NotificationTemplate } from "../../entities/notification-template.entity";
+import type { NotificationRule } from "../../entities/notification-rule.entity";
+import type { NotificationTemplate } from "../../entities/notification-template.entity";
 import { AppointmentStatus, NotificationEvent } from "@salon/shared";
 import type { Appointment } from "../../entities/appointment.entity";
+import type { Staff } from "../../entities/staff.entity";
 import type { Customer } from "../../entities/customer.entity";
 import type { Tenant } from "../../entities/tenant.entity";
 
-function mockRepo<T>() {
+function mockRepo<T extends ObjectLiteral>() {
   return {
     find: vi.fn(async () => [] as T[]),
     findOne: vi.fn(async () => null as T | null),
@@ -59,8 +60,7 @@ describe("NotificationEvaluatorService", () => {
       startTime: new Date(Date.now() + 24 * 60 * 60 * 1000),
       status: AppointmentStatus.CONFIRMED,
       bookingReference: "REF-123",
-      staff: { name: "Staff Member" } as any,
-      lines: [{ service: { name: "Haircut" } }] as any,
+      staff: { name: "Staff Member" } as unknown as Staff,
     };
     const customer: Partial<Customer> = {
       id: "cust-1",

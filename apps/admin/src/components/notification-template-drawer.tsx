@@ -11,6 +11,8 @@ import {
   type UpdateNotificationTemplateInput,
 } from "../lib/api-client";
 
+type NotificationChannel = "console" | "email" | "sms" | "whatsapp";
+
 const EVENT_OPTIONS = [
   { value: "BOOKING_CONFIRMATION", label: "Booking Confirmation" },
   { value: "APPOINTMENT_REMINDER", label: "Appointment Reminder" },
@@ -57,7 +59,7 @@ export function NotificationTemplateDrawer({
 
   const [name, setName] = useState("");
   const [eventType, setEventType] = useState("BOOKING_CONFIRMATION");
-  const [channel, setChannel] = useState<"console" | "email" | "sms" | "whatsapp">("email");
+  const [channel, setChannel] = useState<NotificationChannel>("email");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [saving, setSaving] = useState(false);
@@ -169,7 +171,7 @@ export function NotificationTemplateDrawer({
               <select
                 disabled={isEditing}
                 value={channel}
-                onChange={(e) => setChannel(e.target.value as any)}
+                onChange={(e) => setChannel(e.target.value as NotificationChannel)}
                 className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-teal-600 focus:outline-none disabled:bg-slate-100"
               >
                 {CHANNELS.map((ch) => (

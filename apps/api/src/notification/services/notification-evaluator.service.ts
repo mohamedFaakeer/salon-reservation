@@ -8,6 +8,7 @@ import type { Notification } from "../../entities/notification.entity";
 import type { Appointment } from "../../entities/appointment.entity";
 import type { Customer } from "../../entities/customer.entity";
 import type { Tenant } from "../../entities/tenant.entity";
+import { AppointmentStatus } from "@salon/shared";
 // TemplateRendererService must stay a VALUE import: NestJS resolves
 // constructor injection via design:paramtypes metadata at runtime;
 // `import type` would erase it and break DI.
@@ -415,7 +416,9 @@ export class NotificationEvaluatorService {
     const serviceNames = "Service";
 
     // Build URLs (these would be configured per tenant)
-    const baseUrl = (tenant.settings as any)?.publicBookingUrl || "https://salon.example.com";
+    const baseUrl =
+      (tenant.settings as unknown as { publicBookingUrl?: string })?.publicBookingUrl ||
+      "https://salon.example.com";
     const cancelUrl = `${baseUrl}/cancel/${appointment.bookingReference}`;
     const rescheduleUrl = `${baseUrl}/reschedule/${appointment.bookingReference}`;
     const reviewUrl = `${baseUrl}/review/${appointment.bookingReference}`;
@@ -539,7 +542,7 @@ export class NotificationEvaluatorService {
       totalCents: dto.mockData?.totalCents ? Number(dto.mockData.totalCents) : 5000,
       bookingReference: dto.mockData?.bookingReference as string || "TEST-123",
       source: dto.mockData?.source as string || "web",
-      status: "CONFIRMED" as any,
+      status: AppointmentStatus.CONFIRMED,
       customer: null,
     } as unknown as Appointment;
 
@@ -567,7 +570,7 @@ export class NotificationEvaluatorService {
       id: "test-rule",
       tenantId,
       name: "Test Rule",
-      timingType: "DAY_OF_APPT" as any,
+      timingType: "DAY_OF_APPT",
       timingValue: {},
       channels: dto.channels,
       targeting: {},
