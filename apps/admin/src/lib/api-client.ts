@@ -3333,3 +3333,21 @@ export function updateMonitoringErrorStatus(
     body: JSON.stringify({ status }),
   });
 }
+
+export type DependencyStatus = "healthy" | "degraded" | "down" | "not_configured" | "not_applicable";
+export type IssueOrigin = "ours" | "provider" | null;
+
+/** One dependency's live state (monitoring.service.ts's `serviceStatus()`) — best-effort, from real but imperfect signals, never a guarantee. */
+export interface ServiceStatusEntry {
+  id: "database" | "cloudinary" | "email" | "sms" | "hosting" | "payments";
+  label: string;
+  status: DependencyStatus;
+  origin: IssueOrigin;
+  message: string;
+  lastCheckedAt: string;
+  lastErrorAt: string | null;
+}
+
+export function fetchServiceStatus(): Promise<{ data: ServiceStatusEntry[] }> {
+  return request<{ data: ServiceStatusEntry[] }>("/super-admin/monitoring/service-status");
+}

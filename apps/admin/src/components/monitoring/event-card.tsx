@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { MonitoringItemStatus, MonitoringSeverity } from "../../lib/api-client";
+import type { DependencyStatus, MonitoringItemStatus, MonitoringSeverity } from "../../lib/api-client";
 import { Spinner } from "../spinner";
 
 /**
@@ -41,6 +41,38 @@ export function StatusPill({ status }: { status: MonitoringItemStatus }) {
   return (
     <span className={`rounded-full border px-2.5 py-0.5 text-[10.5px] font-semibold ${s.className}`}>
       {s.label}
+    </span>
+  );
+}
+
+const DEPENDENCY_STATUS_STYLE: Record<DependencyStatus, { label: string; className: string; dot: string }> = {
+  healthy: { label: "Healthy", className: "border-emerald-500 bg-emerald-400/10 text-emerald-300", dot: "bg-emerald-400" },
+  degraded: { label: "Degraded", className: "border-amber-700 bg-amber-950 text-amber-200", dot: "bg-amber-400" },
+  down: { label: "Down", className: "border-red-700 bg-red-950 text-red-200", dot: "bg-red-500" },
+  not_configured: { label: "Not configured", className: "border-slate-600 bg-slate-800 text-slate-300", dot: "bg-slate-400" },
+  not_applicable: { label: "N/A", className: "border-slate-700 bg-slate-900 text-slate-500", dot: "bg-slate-600" },
+};
+
+/** Up/degraded/down for an external dependency — distinct from `StatusPill`'s NEW/ACKNOWLEDGED/RESOLVED review workflow. */
+export function DependencyStatusPill({ status }: { status: DependencyStatus }) {
+  const s = DEPENDENCY_STATUS_STYLE[status];
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10.5px] font-bold uppercase tracking-wide ${s.className}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} aria-hidden="true" />
+      {s.label}
+    </span>
+  );
+}
+
+/** "Our side" / "Provider side" — shown next to a DependencyStatusPill only when a status has a known cause. */
+export function OriginTag({ origin }: { origin: "ours" | "provider" }) {
+  const style =
+    origin === "ours" ? "border-amber-900 bg-slate-900 text-amber-300" : "border-red-900 bg-slate-900 text-red-300";
+  return (
+    <span className={`rounded-md border px-2 py-0.5 text-[10.5px] font-semibold ${style}`}>
+      {origin === "ours" ? "Our side" : "Provider side"}
     </span>
   );
 }

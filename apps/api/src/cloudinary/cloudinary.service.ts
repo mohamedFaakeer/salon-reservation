@@ -17,6 +17,11 @@ import { ApiError } from "@salon/shared";
 export class CloudinaryService {
   private configured = false;
 
+  /** Whether credentials are present — not whether Cloudinary is actually reachable. */
+  get isConfigured(): boolean {
+    return this.configured;
+  }
+
   constructor(config: ConfigService) {
     const cloudName = config.get<string>("CLOUDINARY_CLOUD_NAME");
     const apiKey = config.get<string>("CLOUDINARY_API_KEY");

@@ -1,13 +1,14 @@
 import { Injectable } from "@nestjs/common";
-import { InjectRepository } from "@nestjs/typeorm";
-// Repository must stay a VALUE import: NestJS resolves constructor
+import { InjectDataSource, InjectRepository } from "@nestjs/typeorm";
+// Repository/DataSource must stay VALUE imports: NestJS resolves constructor
 // injection via design:paramtypes metadata at runtime; `import type` would
 // erase it and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import { Between, In, LessThanOrEqual, MoreThanOrEqual, Not, Repository } from "typeorm";
+import { Between, DataSource, In, LessThanOrEqual, MoreThanOrEqual, Not, Repository } from "typeorm";
 import {
   ApiError,
   AppointmentStatus,
+  NotificationStatus,
   PaymentStatus,
   SECURITY_EVENT_ACTIONS,
   type MonitoringErrorQueryDto,
@@ -17,19 +18,30 @@ import {
 } from "@salon/shared";
 import { Appointment } from "../entities/appointment.entity";
 import { ErrorLog } from "../entities/error-log.entity";
+import { Notification } from "../entities/notification.entity";
 import { NotificationQuota } from "../entities/notification-quota.entity";
 import { Payment } from "../entities/payment.entity";
 import { SecurityEventReview } from "../entities/security-event-review.entity";
 import { Tenant } from "../entities/tenant.entity";
 import { User } from "../entities/user.entity";
 import { TenantStatus } from "../enums/tenant-status.enum";
-// AuditService must stay a VALUE import: NestJS resolves constructor
-// injection via design:paramtypes metadata at runtime; `import type` would
-// erase it and break DI.
+// AuditService/CloudinaryService must stay VALUE imports: NestJS resolves
+// constructor injection via design:paramtypes metadata at runtime;
+// `import type` would erase them and break DI.
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { AuditService } from "../audit/audit.service";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { CloudinaryService } from "../cloudinary/cloudinary.service";
+import { resolveEmailTransport } from "../notification/providers/resolve-email-transport";
 import { classifyErrorLogSeverity, classifySecurityEventSeverity } from "./classify-severity";
 import { explainErrorLog, explainSecurityEvent } from "./explain-event";
+import {
+  classifyDatabaseError,
+  classifyNotificationFailure,
+  RECENT_FAILURE_WINDOW_MS,
+  sanitizeMessage,
+  type ServiceStatusEntry,
+} from "./service-status";
 
 /** Mirrors NOT_A_LIVE_BOOKING in super-admin.service.ts — what an active booking actually counts as, platform-wide. */
 const NOT_A_LIVE_BOOKING: AppointmentStatus[] = [
@@ -72,7 +84,10 @@ export class MonitoringService {
     @InjectRepository(NotificationQuota) private readonly quotas: Repository<NotificationQuota>,
     @InjectRepository(ErrorLog) private readonly errorLogs: Repository<ErrorLog>,
     @InjectRepository(SecurityEventReview) private readonly reviews: Repository<SecurityEventReview>,
+    @InjectRepository(Notification) private readonly notifications: Repository<Notification>,
+    @InjectDataSource() private readonly dataSource: DataSource,
     private readonly audit: AuditService,
+    private readonly cloudinary: CloudinaryService,
   ) {}
 
   async overview(): Promise<MonitoringOverview> {
@@ -386,5 +401,190 @@ export class MonitoringService {
       await this.reviews.save(this.reviews.create({ auditLogId, status, reviewedByUserId }));
     }
     return { auditLogId, status };
+  }
+
+  /**
+   * "Service status" tab (resilience audit follow-up): each dependency's
+   * current state, plus whether a problem looks like ours to fix or the
+   * provider's to wait out. Deliberately reads only data already being
+   * written today — no new outbound call to Cloudinary/Brevo/Text.lk, so no
+   * new cost, rate-limit exposure, or attack surface on any of them. The
+   * database is the one real live check (a cheap, bounded `SELECT 1`),
+   * since that's the one dependency with no existing failure-history table
+   * to read instead.
+   */
+  async serviceStatus(): Promise<{ data: ServiceStatusEntry[] }> {
+    const now = new Date();
+    const [database, cloudinary, email, sms] = await Promise.all([
+      this.checkDatabase(now),
+      this.checkCloudinary(now),
+      this.checkNotificationChannel("email", "Email (Brevo)", resolveEmailTransport() !== null, now),
+      this.checkNotificationChannel(
+        "sms",
+        "SMS (Text.lk)",
+        Boolean(process.env.TEXTLK_API_TOKEN?.trim() && process.env.TEXTLK_SENDER_ID?.trim()),
+        now,
+      ),
+    ]);
+
+    // Neither has a live external call today (ManualProvider makes none;
+    // PayHere is an unused stub) and the API can't self-report on its own
+    // host — both stay permanently informational rather than pretending to
+    // check something that doesn't exist yet.
+    const hosting: ServiceStatusEntry = {
+      id: "hosting",
+      label: "Hosting (Render)",
+      status: "not_applicable",
+      origin: null,
+      message: "This page loading at all already proves the API is up — it can't meaningfully report on its own host.",
+      lastCheckedAt: now.toISOString(),
+      lastErrorAt: null,
+    };
+    const payments: ServiceStatusEntry = {
+      id: "payments",
+      label: "Payments",
+      status: "not_applicable",
+      origin: null,
+      message: "No live payment gateway in use — payments are recorded manually, nothing external to check.",
+      lastCheckedAt: now.toISOString(),
+      lastErrorAt: null,
+    };
+
+    return { data: [database, cloudinary, email, sms, hosting, payments] };
+  }
+
+  private async checkDatabase(now: Date): Promise<ServiceStatusEntry> {
+    try {
+      await Promise.race([
+        this.dataSource.query("SELECT 1"),
+        new Promise((_resolve, reject) => {
+          setTimeout(() => reject(new Error("Database health check timed out")), 3_000);
+        }),
+      ]);
+      return {
+        id: "database",
+        label: "Database",
+        status: "healthy",
+        origin: null,
+        message: "Reachable.",
+        lastCheckedAt: now.toISOString(),
+        lastErrorAt: null,
+      };
+    } catch (err) {
+      const { origin, message } = classifyDatabaseError(err);
+      return {
+        id: "database",
+        label: "Database",
+        status: "down",
+        origin,
+        message,
+        lastCheckedAt: now.toISOString(),
+        lastErrorAt: now.toISOString(),
+      };
+    }
+  }
+
+  private async checkCloudinary(now: Date): Promise<ServiceStatusEntry> {
+    if (!this.cloudinary.isConfigured) {
+      return {
+        id: "cloudinary",
+        label: "Cloudinary (images)",
+        status: "not_configured",
+        origin: "ours",
+        message: "No Cloudinary credentials set — logo and photo uploads are disabled.",
+        lastCheckedAt: now.toISOString(),
+        lastErrorAt: null,
+      };
+    }
+
+    const since = new Date(now.getTime() - RECENT_FAILURE_WINDOW_MS);
+    const recentFailure = await this.errorLogs
+      .createQueryBuilder("e")
+      .where('e."createdAt" >= :since', { since })
+      .andWhere("(e.code LIKE :failed OR e.code LIKE :notConfigured)", {
+        failed: "%UPLOAD_FAILED",
+        notConfigured: "%UPLOAD_NOT_CONFIGURED",
+      })
+      .orderBy('e."createdAt"', "DESC")
+      .getOne();
+
+    if (recentFailure) {
+      return {
+        id: "cloudinary",
+        label: "Cloudinary (images)",
+        status: "degraded",
+        // A configured integration failing is most likely transient on
+        // their end — `error_log.message` here is our own user-facing
+        // string (never the raw SDK cause), so there's no finer-grained
+        // signal available to distinguish auth vs. network failure.
+        origin: "provider",
+        message: "An upload failed recently — likely a transient issue on Cloudinary's end.",
+        lastCheckedAt: now.toISOString(),
+        lastErrorAt: recentFailure.createdAt.toISOString(),
+      };
+    }
+
+    return {
+      id: "cloudinary",
+      label: "Cloudinary (images)",
+      status: "healthy",
+      origin: null,
+      message: "Configured, and no failed uploads in the last 30 minutes.",
+      lastCheckedAt: now.toISOString(),
+      lastErrorAt: null,
+    };
+  }
+
+  private async checkNotificationChannel(
+    channel: "email" | "sms",
+    label: string,
+    configured: boolean,
+    now: Date,
+  ): Promise<ServiceStatusEntry> {
+    if (!configured) {
+      return {
+        id: channel,
+        label,
+        status: "not_configured",
+        origin: "ours",
+        message: `No ${label} credentials set — falls back to console logging only.`,
+        lastCheckedAt: now.toISOString(),
+        lastErrorAt: null,
+      };
+    }
+
+    const since = new Date(now.getTime() - RECENT_FAILURE_WINDOW_MS);
+    const recentFailure = await this.notifications
+      .createQueryBuilder("n")
+      .where("n.channel = :channel", { channel })
+      .andWhere("n.status = :status", { status: NotificationStatus.FAILED })
+      .andWhere('n."updatedAt" >= :since', { since })
+      .orderBy('n."updatedAt"', "DESC")
+      .getOne();
+
+    if (recentFailure?.lastError) {
+      const { origin, skip } = classifyNotificationFailure(recentFailure.lastError);
+      if (!skip) {
+        return {
+          id: channel,
+          label,
+          status: "degraded",
+          origin,
+          message: sanitizeMessage(recentFailure.lastError),
+          lastCheckedAt: now.toISOString(),
+          lastErrorAt: recentFailure.updatedAt.toISOString(),
+        };
+      }
+    }
+
+    return {
+      id: channel,
+      label,
+      status: "healthy",
+      origin: null,
+      message: "Configured, and no failed sends in the last 30 minutes.",
+      lastCheckedAt: now.toISOString(),
+      lastErrorAt: null,
+    };
   }
 }
