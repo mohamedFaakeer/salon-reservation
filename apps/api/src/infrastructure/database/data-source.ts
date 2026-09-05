@@ -97,6 +97,12 @@ export const AppDataSource = new DataSource({
   synchronize: false,
   logging: false,
   ssl: isProduction ? { rejectUnauthorized: false } : false,
-  // Kept aligned with app.module.ts's runtime pool size — see the comment there.
-  extra: { max: 20 },
+  // Pool size kept aligned with app.module.ts — see the comment there.
+  // statement_timeout/query_timeout are deliberately NOT mirrored here: those
+  // protect a live request from a hung query, but a real migration can
+  // legitimately run longer than that on a big table, and killing it
+  // mid-alter is worse than a slow migration. connectionTimeoutMillis is
+  // safe to share — failing fast because the DB is unreachable is never
+  // wrong, for a migration run or a live request.
+  extra: { max: 20, connectionTimeoutMillis: 10_000 },
 });

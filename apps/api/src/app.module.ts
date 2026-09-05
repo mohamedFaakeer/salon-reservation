@@ -71,7 +71,17 @@ import { RequestLoggingMiddleware } from "./common/middleware/request-logging.mi
         // second connection from the same pool — with enough simultaneous
         // requests, every held connection ends up waiting on a pool that has
         // nothing left to hand out (found via P17's concurrency soak test).
-        extra: { max: 20 },
+        //
+        // None of these three had a bound before (resilience audit,
+        // 2026-09): a slow/unreachable Neon could hang a request
+        // indefinitely instead of failing cleanly. 10s mirrors the timeout
+        // already used for the equivalent SMTP-hang fix.
+        extra: {
+          max: 20,
+          connectionTimeoutMillis: 10_000,
+          statement_timeout: 10_000,
+          query_timeout: 10_000,
+        },
       }),
     }),
     AuthModule,

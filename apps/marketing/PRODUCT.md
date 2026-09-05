@@ -10,8 +10,10 @@ web
 
 Next.js 16 + Tailwind 4, new `apps/marketing` npm workspace — matches
 `apps/admin`/`apps/web` exactly (confirmed with the user, not delegated).
-Deploys as a 4th Render service, same 3-line build/start recipe, at the
-domain `zelyraone.lk`.
+Static export (`output: "export"`), deployed to Cloudflare Pages rather
+than a 4th Render service — no server/cold-start behavior, at $0, since
+this app has no API routes or dynamic routes to need one (see
+`docs/DECISIONS.md` #61). Domain: `zelyraone.lk`.
 
 ## Users
 

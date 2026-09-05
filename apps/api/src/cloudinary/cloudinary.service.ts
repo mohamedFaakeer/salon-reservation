@@ -123,6 +123,11 @@ export class CloudinaryService {
           folder,
           transformation,
           overwrite: true,
+          // Unset by default in the SDK (resilience audit, 2026-09) — a
+          // connection Cloudinary accepts but never responds on would
+          // otherwise hang this request indefinitely. Mirrors the same
+          // 10s bound already used for the equivalent SMTP-hang fix.
+          timeout: 10_000,
         },
         (error, uploadResult) => {
           if (error || !uploadResult) {
