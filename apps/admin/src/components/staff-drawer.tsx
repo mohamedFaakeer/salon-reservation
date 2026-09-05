@@ -18,6 +18,7 @@ import { useToast } from "./toast";
 import { errorCopy } from "../lib/error-copy";
 import { useAuth } from "../context/auth-context";
 import { canManageTeam } from "../lib/permissions";
+import { TOUR_ANCHORS } from "../lib/tour-anchors";
 
 /**
  * Calendar colours, offered as a fixed palette rather than a free hex field.
@@ -143,7 +144,7 @@ export function StaffDrawer({
           </p>
         )}
 
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1 text-sm" data-tour-id={TOUR_ANCHORS.staffDrawer.nameField}>
           <span className="font-medium text-slate-700">Name</span>
           <input
             data-testid="staff-name"
@@ -153,7 +154,7 @@ export function StaffDrawer({
           />
         </label>
 
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1 text-sm" data-tour-id={TOUR_ANCHORS.staffDrawer.phoneField}>
           <span className="font-medium text-slate-700">
             Phone <span className="font-normal text-slate-500">(optional)</span>
           </span>
@@ -296,6 +297,7 @@ export function StaffDrawer({
           <button
             type="button"
             data-testid="staff-save"
+            data-tour-id={TOUR_ANCHORS.staffDrawer.saveButton}
             onClick={() => void save()}
             disabled={!canSubmit || submitting}
             className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"

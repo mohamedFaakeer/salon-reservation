@@ -19,6 +19,7 @@ import { StatusBadge } from "../../../components/status-badge";
 import { AppointmentDetailDrawer } from "../../../components/appointment-detail-drawer";
 import { InquiriesPanel } from "../../../components/inquiries-panel";
 import { formatDate, formatPriceCents, formatTime, todayLocalDate } from "../../../lib/format";
+import { TOUR_ANCHORS } from "../../../lib/tour-anchors";
 
 const PAGE_SIZE = 25;
 const STATUS_OPTIONS = [
@@ -280,6 +281,7 @@ export default function AppointmentsPage() {
                   <button
                     type="button"
                     data-testid={`appointment-link-${appointment.id}`}
+                    data-tour-id={TOUR_ANCHORS.appointments.openRowButton}
                     onClick={() => setOpenAppointmentId(appointment.id)}
                     className="text-left font-medium text-teal-700 hover:underline"
                   >

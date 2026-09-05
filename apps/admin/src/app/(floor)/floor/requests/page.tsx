@@ -10,6 +10,7 @@ import {
 import { errorCopy } from "../../../../lib/error-copy";
 import { useToast } from "../../../../components/toast";
 import { EmptyState } from "../../../../components/empty-state";
+import { TOUR_ANCHORS } from "../../../../lib/tour-anchors";
 
 const STATUS_STYLE: Record<string, { fill: string; fg: string; label: string }> = {
   PENDING: { fill: "#FEF3C7", fg: "#92400E", label: "Pending" },
@@ -54,6 +55,7 @@ export default function FloorRequestsPage() {
         <h1 className="text-lg font-bold text-slate-900">My requests</h1>
         <Link
           href="/floor/requests/new"
+          data-tour-id={TOUR_ANCHORS.floorRequests.newButton}
           className="flex min-h-10 items-center rounded-xl bg-teal-600 px-3.5 text-[13px] font-bold text-white"
         >
           + New

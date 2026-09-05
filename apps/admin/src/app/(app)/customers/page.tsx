@@ -22,6 +22,7 @@ import { Cell, DataTable, Row } from "../../../components/data-table";
 import { Pager } from "../../../components/pager";
 import { CustomerFormDrawer } from "../../../components/customer-form-drawer";
 import { formatDate, formatPhone } from "../../../lib/format";
+import { TOUR_ANCHORS } from "../../../lib/tour-anchors";
 
 /**
  * Customers — the salon's address book.
@@ -132,6 +133,7 @@ export default function CustomersPage() {
       <div className="flex flex-wrap items-center gap-2.5">
         <input
           data-testid="customer-list-search"
+          data-tour-id={TOUR_ANCHORS.customers.searchField}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search by name or phone…"
@@ -222,6 +224,7 @@ export default function CustomersPage() {
                   <Link
                     href={`/customers/${customer.id}`}
                     data-testid={`customer-link-${customer.id}`}
+                    data-tour-id={TOUR_ANCHORS.customers.rowLink}
                     className="font-medium text-teal-700 hover:underline"
                   >
                     {customer.title ? `${customer.title} ` : ""}
@@ -353,6 +356,7 @@ function Header({ canManage, onAdd }: { canManage: boolean; onAdd: () => void })
         <button
           type="button"
           data-testid="customer-add-button"
+          data-tour-id={TOUR_ANCHORS.customers.addButton}
           onClick={onAdd}
           className="min-h-11 shrink-0 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700"
         >

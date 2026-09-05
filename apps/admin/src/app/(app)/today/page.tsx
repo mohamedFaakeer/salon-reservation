@@ -23,6 +23,7 @@ import {
   StatsSkeleton,
 } from "../../../components/loading-skeleton";
 import { BookingDrawer } from "../../../components/booking-drawer";
+import { TOUR_ANCHORS } from "../../../lib/tour-anchors";
 import { AppointmentDetailDrawer } from "../../../components/appointment-detail-drawer";
 import { DashboardStats } from "../../../components/dashboard-stats";
 import { StatusBadge } from "../../../components/status-badge";
@@ -157,6 +158,7 @@ export default function TodayPage() {
             <button
               type="button"
               data-testid="new-booking-button"
+              data-tour-id={TOUR_ANCHORS.today.newBookingButton}
               onClick={openNewBooking}
               className="min-h-11 rounded bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
             >

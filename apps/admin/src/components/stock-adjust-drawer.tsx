@@ -13,6 +13,7 @@ import {
 import { formatDate } from "../lib/format";
 import { DrawerShell } from "./drawer-shell";
 import { BusyLabel } from "./spinner";
+import { TOUR_ANCHORS } from "../lib/tour-anchors";
 
 const TYPE_OPTIONS: Array<{ value: StockAdjustmentType; label: string }> = [
   { value: "ADJUSTMENT", label: "Adjustment (stock take, found stock)" },
@@ -132,7 +133,7 @@ export function StockAdjustDrawer({ onClose, onAdjusted }: { onClose: () => void
               </select>
             </label>
 
-            <fieldset className="flex flex-col gap-2">
+            <fieldset className="flex flex-col gap-2" data-tour-id={TOUR_ANCHORS.stockAdjustDrawer.directionField}>
               <legend className="text-sm font-medium text-slate-700">Direction</legend>
               <div className="flex gap-2">
                 <button
@@ -207,6 +208,7 @@ export function StockAdjustDrawer({ onClose, onAdjusted }: { onClose: () => void
           <button
             type="button"
             data-testid="adjust-submit"
+            data-tour-id={TOUR_ANCHORS.stockAdjustDrawer.submitButton}
             disabled={!valid || submitting}
             onClick={() => void submit()}
             className="min-h-11 flex-1 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"

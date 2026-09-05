@@ -8,6 +8,7 @@ import { formatPriceCents } from "../../../lib/format";
 import { ModuleGate } from "../../../components/module-gate";
 import { BundleDrawer } from "../../../components/bundle-drawer";
 import { LoadingSkeleton } from "../../../components/loading-skeleton";
+import { TOUR_ANCHORS } from "../../../lib/tour-anchors";
 
 export default function BundlesPageGated() {
   return (
@@ -53,6 +54,7 @@ function BundlesPage() {
           <button
             type="button"
             data-testid="bundle-create-open"
+            data-tour-id={TOUR_ANCHORS.bundles.createButton}
             onClick={() => setShowCreate(true)}
             className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700"
           >

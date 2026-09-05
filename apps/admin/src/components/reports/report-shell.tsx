@@ -11,15 +11,18 @@ import type { ReactNode } from "react";
 export function Panel({
   title,
   note,
+  tourId,
   children,
 }: {
   title: string;
   /** Sits beside the heading rather than above it — this app has no eyebrows. */
   note?: string;
+  /** Anchor for the reportsOverview tour — only a handful of panels carry one. */
+  tourId?: string;
   children: ReactNode;
 }) {
   return (
-    <section className="mt-8 first:mt-0">
+    <section className="mt-8 first:mt-0" data-tour-id={tourId}>
       <h2 className="mb-2.5 text-[13px] font-semibold text-slate-900">
         {title}
         {note ? <span className="ml-2 font-normal text-slate-500">{note}</span> : null}

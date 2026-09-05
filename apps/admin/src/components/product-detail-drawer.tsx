@@ -25,6 +25,7 @@ import { BusyLabel } from "./spinner";
 import { LoadingSkeleton } from "./loading-skeleton";
 import { useToast } from "./toast";
 import { AttributeTags, ExpiryBadge, SerialBadge, classifyExpiryDate } from "./variant-badges";
+import { TOUR_ANCHORS } from "../lib/tour-anchors";
 
 function Swatch({ imageUrl, size = 40 }: { imageUrl: string | null; size?: number }) {
   return (
@@ -548,7 +549,10 @@ function AddVariantForm({
   }
 
   return (
-    <fieldset className="flex flex-col gap-2 border-t border-slate-200 pt-4">
+    <fieldset
+      className="flex flex-col gap-2 border-t border-slate-200 pt-4"
+      data-tour-id={TOUR_ANCHORS.productDetailDrawer.variantFields}
+    >
       <legend className="text-sm font-medium text-slate-700">Add a variant</legend>
       {error ? (
         <p role="alert" className="text-xs text-red-600">
@@ -690,6 +694,7 @@ function AddVariantForm({
       <button
         type="button"
         data-testid="variant-add-submit"
+        data-tour-id={TOUR_ANCHORS.productDetailDrawer.addVariantButton}
         disabled={!valid || submitting}
         onClick={() => void submit()}
         className="mt-1 min-h-9 self-start rounded border border-teal-600 px-3 text-xs font-semibold text-teal-700 hover:bg-teal-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-transparent disabled:text-slate-400"

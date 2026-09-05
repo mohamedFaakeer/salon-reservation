@@ -26,6 +26,7 @@ import { StatusBadge } from "../../../../components/status-badge";
 import { Pager } from "../../../../components/pager";
 import { CustomerFormDrawer } from "../../../../components/customer-form-drawer";
 import { formatCalendarDate, formatDate, formatPhone, formatPriceCents, formatTime } from "../../../../lib/format";
+import { TOUR_ANCHORS } from "../../../../lib/tour-anchors";
 
 const PROVINCE_LABELS: Record<string, string> = {
   WESTERN: "Western",
@@ -162,7 +163,10 @@ export default function CustomerDetailPage() {
     <div className="flex flex-col gap-4">
       <BackLink />
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <div
+        className="rounded-lg border border-slate-200 bg-white p-4"
+        data-tour-id={TOUR_ANCHORS.customerDetail.profileCard}
+      >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-50">
@@ -183,6 +187,7 @@ export default function CustomerDetailPage() {
           <button
             type="button"
             data-testid="customer-edit-button"
+            data-tour-id={TOUR_ANCHORS.customerDetail.editButton}
             onClick={() => setEditing(true)}
             className="min-h-9 shrink-0 rounded border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
@@ -290,7 +295,7 @@ export default function CustomerDetailPage() {
 
       {stats ? <CustomerHistory stats={stats} /> : null}
 
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3" data-tour-id={TOUR_ANCHORS.customerDetail.bookingHistoryTable}>
         <h2 className="text-sm font-semibold text-slate-900">Booking history</h2>
 
         {appointments.length === 0 ? (
@@ -389,7 +394,10 @@ function CustomerHistory({ stats }: { stats: CustomerStats }) {
   const concluded = stats.visits + stats.cancellations + stats.noShows;
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-4">
+    <section
+      className="rounded-lg border border-slate-200 bg-white p-4"
+      data-tour-id={TOUR_ANCHORS.customerDetail.historyStats}
+    >
       <h2 className="text-sm font-semibold text-slate-900">History at this salon</h2>
 
       {concluded === 0 ? (

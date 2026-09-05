@@ -15,6 +15,7 @@ import { InvoiceDocument } from "./invoice-document";
 import { BusyLabel } from "./spinner";
 import { useToast } from "./toast";
 import { useModules } from "../context/modules-context";
+import { TOUR_ANCHORS } from "../lib/tour-anchors";
 
 /**
  * The invoice for a finished visit: whether it went out, and how to send it
@@ -95,7 +96,7 @@ export function InvoicePanel({ appointment }: { appointment: AppointmentDetail }
   }
 
   return (
-    <div className="rounded border border-slate-200 p-3 text-sm">
+    <div className="rounded border border-slate-200 p-3 text-sm" data-tour-id={TOUR_ANCHORS.invoicePanel.root}>
       <p className="mb-1 text-sm font-medium text-slate-700">Invoice</p>
 
       {!live ? (
@@ -108,6 +109,7 @@ export function InvoicePanel({ appointment }: { appointment: AppointmentDetail }
           <button
             type="button"
             data-testid="issue-invoice"
+            data-tour-id={TOUR_ANCHORS.invoicePanel.issueButton}
             onClick={() => void issue()}
             disabled={busy}
             className="min-h-9 rounded border border-slate-300 px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
@@ -143,6 +145,7 @@ export function InvoicePanel({ appointment }: { appointment: AppointmentDetail }
             <button
               type="button"
               data-testid="view-invoice"
+              data-tour-id={TOUR_ANCHORS.invoicePanel.viewButton}
               onClick={() => setViewing(live)}
               className="min-h-9 rounded border border-slate-300 px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
             >
@@ -151,6 +154,7 @@ export function InvoicePanel({ appointment }: { appointment: AppointmentDetail }
             <button
               type="button"
               data-testid="resend-invoice"
+              data-tour-id={TOUR_ANCHORS.invoicePanel.sendButton}
               onClick={() => setSendingId(sendingId === live.id ? null : live.id)}
               className="min-h-9 rounded border border-slate-300 px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
             >

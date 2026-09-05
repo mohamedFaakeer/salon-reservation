@@ -5,6 +5,7 @@ import { ApiRequestError, createClosure } from "../lib/api-client";
 import { todayLocalDate } from "../lib/format";
 import { DrawerShell } from "./drawer-shell";
 import { BusyLabel } from "./spinner";
+import { TOUR_ANCHORS } from "../lib/tour-anchors";
 
 /** Salon-wide shutdown — a public holiday or refurbishment. Applies to everyone. */
 export function ClosureDrawer({
@@ -41,7 +42,7 @@ export function ClosureDrawer({
   return (
     <DrawerShell title="Add closure" onClose={onClose}>
       <div className="flex flex-col gap-4">
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1 text-sm" data-tour-id={TOUR_ANCHORS.closureDrawer.nameField}>
           <span className="font-medium text-slate-700">Name</span>
           <input
             data-testid="closure-name"
@@ -52,7 +53,7 @@ export function ClosureDrawer({
           />
         </label>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3" data-tour-id={TOUR_ANCHORS.closureDrawer.datesField}>
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-slate-700">From</span>
             <input
@@ -94,6 +95,7 @@ export function ClosureDrawer({
           <button
             type="button"
             data-testid="closure-save"
+            data-tour-id={TOUR_ANCHORS.closureDrawer.saveButton}
             onClick={() => void save()}
             disabled={!canSubmit || submitting}
             className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"

@@ -18,6 +18,7 @@ import { ProductImportDrawer } from "../../../components/product-import-drawer";
 import { ConvertCustomLineDrawer } from "../../../components/convert-custom-line-drawer";
 import { LoadingSkeleton } from "../../../components/loading-skeleton";
 import { useToast } from "../../../components/toast";
+import { TOUR_ANCHORS } from "../../../lib/tour-anchors";
 
 export default function ProductsPageGated() {
   return (
@@ -108,6 +109,7 @@ function ProductsPage() {
             <button
               type="button"
               data-testid="product-create-open"
+              data-tour-id={TOUR_ANCHORS.products.createButton}
               onClick={() => setShowCreate(true)}
               className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700"
             >
@@ -244,6 +246,7 @@ function ProductsPage() {
             <div
               key={product.id}
               data-testid={`product-row-${product.id}`}
+              data-tour-id={TOUR_ANCHORS.products.rowLink}
               role="button"
               tabIndex={0}
               onClick={() => setViewingId(product.id)}

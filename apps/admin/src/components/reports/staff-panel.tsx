@@ -1,5 +1,6 @@
 import type { StaffReportRow } from "../../lib/api-client";
 import { Card, Insight, LockedPanel, Panel, Quiet, Td, Th } from "./report-shell";
+import { TOUR_ANCHORS } from "../../lib/tour-anchors";
 
 /**
  * The stylist league table, with the honesty built in.
@@ -21,7 +22,11 @@ export function StaffPanel({ staff }: { staff: StaffReportRow[] | null }) {
   const active = staff.filter((s) => s.rosteredMinutes > 0 || s.completed > 0);
 
   return (
-    <Panel title="Stylists" note="jobs finished, how full the diary was, how it was rated, and late arrivals">
+    <Panel
+      title="Stylists"
+      note="jobs finished, how full the diary was, how it was rated, and late arrivals"
+      tourId={TOUR_ANCHORS.reports.staffPanel}
+    >
       <Card>
         {active.length === 0 ? (
           <Quiet>Nobody was rostered or finished a job in this period.</Quiet>

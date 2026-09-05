@@ -156,6 +156,60 @@
         "value": "apps/admin/src/components/tour-launcher.tsx 110",
         "createdAt": "2026-09-03T19:02:07.540Z",
         "reason": "decorative aria-hidden status glyph (slate-500 on slate-100, ~3.9:1) — state is also conveyed by the row's Start/Review button text, not by this icon alone"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/app/(app)/attendance/requests/page.tsx 86",
+        "createdAt": "2026-09-03T20:17:04.749Z",
+        "reason": "pre-existing ternary: bg-teal-600/text-white and border-slate-300/text-slate-600 are mutually exclusive tab states, not simultaneous gray-on-teal; not part of this session's change"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/app/(app)/attendance/requests/page.tsx 87",
+        "createdAt": "2026-09-03T20:18:13.352Z",
+        "reason": "pre-existing ternary: bg-teal-600/text-white and border-slate-300/text-slate-600 are mutually exclusive tab states, not simultaneous gray-on-teal; not part of this session's change (line shifted from 86 after adding an import)"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/components/tour-launcher.tsx 73",
+        "createdAt": "2026-09-03T20:26:08.954Z",
+        "reason": "same reviewed false-positive as before (hover:text-teal-700 overrides text-slate-500), line shifted after adding the dropDirection prop"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/components/tour-launcher.tsx 118",
+        "createdAt": "2026-09-03T20:26:09.155Z",
+        "reason": "same reviewed sanctioned exception as before (decorative status glyph), line shifted after adding the dropDirection prop"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/components/tour-launcher.tsx 122",
+        "createdAt": "2026-09-03T20:27:22.667Z",
+        "reason": "same reviewed sanctioned exception as before (decorative status glyph), line shifted after fixing conflicting left/right positioning utilities"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/app/(app)/bundles/page.tsx 140",
+        "createdAt": "2026-09-03T20:57:10.144Z",
+        "reason": "pre-existing ternary: emerald-100/emerald-700 (active) and slate-100/slate-500 (discontinued) are mutually exclusive status-pill states, not simultaneous; not part of this session's change"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/app/(app)/bundles/page.tsx 141",
+        "createdAt": "2026-09-03T20:57:29.457Z",
+        "reason": "same pre-existing false positive as before, line shifted by one after adding the create-button anchor"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/components/bundle-drawer.tsx 420",
+        "createdAt": "2026-09-03T20:58:01.443Z",
+        "reason": "pre-existing: hover:bg-red-50 pairs with hover:text-red-700 on the same button, base state is slate-600 on transparent bg -- not simultaneous gray-on-red; not part of this session's change"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/components/bundle-drawer.tsx 421",
+        "createdAt": "2026-09-03T20:58:44.370Z",
+        "reason": "same reviewed false-positive as before, line shifted by one after adding the component-picker anchor"
       }
     ]
   }

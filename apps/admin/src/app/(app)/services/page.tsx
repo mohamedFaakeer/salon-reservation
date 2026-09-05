@@ -15,6 +15,7 @@ import { Cell, DataTable, Row, RowActions } from "../../../components/data-table
 import { ServiceDrawer } from "../../../components/service-drawer";
 import { BusyLabel } from "../../../components/spinner";
 import { formatDurationMin, formatPriceCents } from "../../../lib/format";
+import { TOUR_ANCHORS } from "../../../lib/tour-anchors";
 
 /**
  * Each branch keeps its own complete class string rather than sharing one
@@ -105,6 +106,7 @@ export default function ServicesPage() {
           <button
             type="button"
             data-testid="new-service-button"
+            data-tour-id={TOUR_ANCHORS.services.newServiceButton}
             onClick={() => setCreating(true)}
             className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700"
           >
@@ -246,6 +248,7 @@ export default function ServicesPage() {
                   <button
                     type="button"
                     data-testid={`toggle-service-${service.id}`}
+                    data-tour-id={TOUR_ANCHORS.services.toggleServiceButton}
                     onClick={() => void toggleActive(service)}
                     disabled={togglingId === service.id}
                     className="min-h-11 rounded border border-slate-300 px-2.5 text-xs font-medium text-slate-700 hover:bg-white disabled:opacity-60"

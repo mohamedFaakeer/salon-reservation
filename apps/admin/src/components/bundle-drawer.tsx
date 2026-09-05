@@ -19,6 +19,7 @@ import { BusyLabel } from "./spinner";
 import { errorCopy } from "../lib/error-copy";
 import { formatPriceCents } from "../lib/format";
 import { AttributeTags } from "./variant-badges";
+import { TOUR_ANCHORS } from "../lib/tour-anchors";
 
 /** A component picked before the bundle exists yet — same shape as `BundleComponentView`, minus a real `id`. */
 interface DraftComponent {
@@ -223,7 +224,7 @@ export function BundleDrawer({
           </div>
         ) : null}
 
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1 text-sm" data-tour-id={TOUR_ANCHORS.bundleDrawer.nameField}>
           <span className="font-medium text-slate-700">Name</span>
           <input
             data-testid="bundle-name"
@@ -345,6 +346,7 @@ export function BundleDrawer({
             <button
               type="button"
               data-testid="bundle-submit"
+              data-tour-id={TOUR_ANCHORS.bundleDrawer.submitButton}
               disabled={!canCreate || submitting}
               onClick={() => void submitCreate()}
               className="min-h-11 flex-1 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"
@@ -455,7 +457,7 @@ function ComponentPicker({
   const visible = results.filter((v) => !excludeVariantIds.includes(v.id));
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2" data-tour-id={TOUR_ANCHORS.bundleDrawer.componentPicker}>
       <input
         data-testid="bundle-component-search"
         value={q}

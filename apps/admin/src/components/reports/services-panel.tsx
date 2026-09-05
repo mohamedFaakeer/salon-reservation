@@ -1,6 +1,7 @@
 import type { ServiceCount } from "../../lib/api-client";
 import { formatPriceCents } from "../../lib/format";
 import { Card, Insight, LockedPanel, Panel, Quiet } from "./report-shell";
+import { TOUR_ANCHORS } from "../../lib/tour-anchors";
 
 /**
  * Most booked beside most earned.
@@ -26,7 +27,7 @@ export function ServicesPanel({
   const { popular, byRevenue } = data;
   if (popular.length === 0) {
     return (
-      <Panel title="Services">
+      <Panel title="Services" tourId={TOUR_ANCHORS.reports.servicesPanel}>
         <Card>
           <Quiet>Nothing was booked in this period.</Quiet>
         </Card>
@@ -35,7 +36,11 @@ export function ServicesPanel({
   }
 
   return (
-    <Panel title="Services" note="the two lists disagreeing is the point">
+    <Panel
+      title="Services"
+      note="the two lists disagreeing is the point"
+      tourId={TOUR_ANCHORS.reports.servicesPanel}
+    >
       <div className="grid gap-4 lg:grid-cols-2">
         <Ranked
           heading="Most booked"

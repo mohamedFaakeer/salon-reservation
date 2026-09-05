@@ -11,6 +11,7 @@ import { StockAdjustDrawer } from "../../../components/stock-adjust-drawer";
 import { LoadingSkeleton } from "../../../components/loading-skeleton";
 import { useToast } from "../../../components/toast";
 import { AttributeTags, SerialBadge } from "../../../components/variant-badges";
+import { TOUR_ANCHORS } from "../../../lib/tour-anchors";
 
 export default function StockPageGated() {
   return (
@@ -76,6 +77,7 @@ function StockPage() {
             <button
               type="button"
               data-testid="stock-adjust-open"
+              data-tour-id={TOUR_ANCHORS.stock.adjustButton}
               onClick={() => setShowAdjust(true)}
               className="min-h-11 rounded border border-slate-300 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
@@ -84,6 +86,7 @@ function StockPage() {
             <button
               type="button"
               data-testid="stock-receive-open"
+              data-tour-id={TOUR_ANCHORS.stock.receiveButton}
               onClick={() => setShowReceive(true)}
               className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700"
             >

@@ -18,6 +18,7 @@ import { Cell, DataTable, Row, RowActions } from "../../../components/data-table
 import { StaffDrawer } from "../../../components/staff-drawer";
 import { SkillsMatrix } from "../../../components/skills-matrix";
 import { BusyLabel } from "../../../components/spinner";
+import { TOUR_ANCHORS } from "../../../lib/tour-anchors";
 
 type Tab = "team" | "matrix";
 
@@ -86,6 +87,7 @@ export default function StaffPage() {
           <button
             type="button"
             data-testid="add-staff-button"
+            data-tour-id={TOUR_ANCHORS.staff.addStaffButton}
             onClick={() => setCreating(true)}
             className="min-h-11 rounded bg-teal-600 px-4 text-sm font-medium text-white hover:bg-teal-700"
           >
@@ -105,6 +107,7 @@ export default function StaffPage() {
             key={key}
             type="button"
             data-testid={`tab-${key}`}
+            data-tour-id={key === "team" ? TOUR_ANCHORS.staff.teamTab : TOUR_ANCHORS.staff.matrixTab}
             onClick={() => setTab(key)}
             aria-current={tab === key ? "page" : undefined}
             className={`min-h-11 border-b-2 px-4 text-sm ${
@@ -207,6 +210,7 @@ export default function StaffPage() {
                     <button
                       type="button"
                       data-testid={`skills-staff-${member.id}`}
+                      data-tour-id={TOUR_ANCHORS.staff.skillsShortcutButton}
                       onClick={() => setTab("matrix")}
                       className={
                         blocked
@@ -219,6 +223,7 @@ export default function StaffPage() {
                     <button
                       type="button"
                       data-testid={`toggle-staff-${member.id}`}
+                      data-tour-id={TOUR_ANCHORS.staff.toggleStaffButton}
                       onClick={() => void toggleActive(member)}
                       disabled={togglingId === member.id}
                       className="min-h-11 rounded border border-slate-300 px-2.5 text-xs font-medium text-slate-700 hover:bg-white disabled:opacity-60"

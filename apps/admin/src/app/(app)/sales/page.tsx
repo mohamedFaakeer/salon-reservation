@@ -6,6 +6,7 @@ import { ApiRequestError, fetchRetailSales, type RetailSaleView } from "../../..
 import { formatDate, formatPriceCents, formatTime } from "../../../lib/format";
 import { ModuleGate } from "../../../components/module-gate";
 import { LoadingSkeleton } from "../../../components/loading-skeleton";
+import { TOUR_ANCHORS } from "../../../lib/tour-anchors";
 
 const STATUS_STYLE: Record<RetailSaleView["status"], { label: string; className: string }> = {
   COMPLETED: { label: "Completed", className: "bg-emerald-100 text-emerald-700" },
@@ -54,6 +55,7 @@ function SalesPage() {
       <div className="flex flex-wrap items-center gap-3">
         <input
           data-testid="sales-search"
+          data-tour-id={TOUR_ANCHORS.sales.searchField}
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => {
@@ -95,6 +97,7 @@ function SalesPage() {
                 key={sale.id}
                 href={`/sales/${sale.id}`}
                 data-testid={`sale-row-${sale.id}`}
+                data-tour-id={TOUR_ANCHORS.sales.rowLink}
                 className="grid grid-cols-1 gap-2 border-b border-slate-100 px-4 py-3 text-sm outline-none last:border-b-0 hover:bg-slate-50 focus-visible:bg-slate-50 sm:grid-cols-[1.1fr_1.1fr_0.7fr_0.8fr_0.9fr_0.6fr] sm:items-center sm:gap-3"
               >
                 <span className="min-w-0">

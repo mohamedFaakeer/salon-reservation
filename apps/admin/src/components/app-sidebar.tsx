@@ -23,6 +23,7 @@ import {
 } from "../lib/permissions";
 import { useModules } from "../context/modules-context";
 import type { ModuleKey } from "../lib/api-client";
+import { TourLauncher } from "./tour-launcher";
 
 /**
  * Primary navigation.
@@ -556,6 +557,7 @@ export function AppSidebar({
       <div
         className={`flex items-center justify-between gap-2 border-t border-slate-200 px-4 py-2 ${collapsed ? "lg:justify-center lg:px-2" : ""}`}
       >
+        <TourLauncher roles={roles} />
         <p
           data-testid="current-user"
           className={`min-w-0 truncate text-xs text-slate-600 ${collapsed ? "lg:hidden" : ""}`}

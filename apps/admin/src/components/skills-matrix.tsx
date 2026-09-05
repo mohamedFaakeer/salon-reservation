@@ -8,6 +8,7 @@ import {
   type StaffMember,
 } from "../lib/api-client";
 import { BusyLabel } from "./spinner";
+import { TOUR_ANCHORS } from "../lib/tour-anchors";
 
 /**
  * Staff × services coverage grid.
@@ -202,6 +203,7 @@ export function SkillsMatrix({
                 <tr
                   key={member.id}
                   data-testid={`matrix-row-${member.id}`}
+                  data-tour-id={TOUR_ANCHORS.skillsMatrix.row}
                   className={`border-b border-slate-100 last:border-b-0 ${
                     assigned.length === 0 ? "bg-amber-50/60" : ""
                   }`}
@@ -244,6 +246,7 @@ export function SkillsMatrix({
                     <button
                       type="button"
                       data-testid={`save-skills-${member.id}`}
+                      data-tour-id={TOUR_ANCHORS.skillsMatrix.saveButton}
                       onClick={() => void saveRow(member.id)}
                       disabled={!dirty || savingId === member.id}
                       className="min-h-11 rounded border border-slate-300 px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"

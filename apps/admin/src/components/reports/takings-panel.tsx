@@ -1,6 +1,7 @@
 import type { CollectionReport, TakingsLossSummary } from "../../lib/api-client";
 import { formatPriceCents } from "../../lib/format";
 import { Card, Figure, LockedPanel, Panel } from "./report-shell";
+import { TOUR_ANCHORS } from "../../lib/tour-anchors";
 
 /**
  * Money in, money back out, and money that never arrived.
@@ -46,7 +47,7 @@ export function TakingsPanel({
   const emptyChairs = losses.noShows + losses.cancellations;
 
   return (
-    <Panel title="Takings">
+    <Panel title="Takings" tourId={TOUR_ANCHORS.reports.takingsPanel}>
       <Card>
         <div className="grid grid-cols-2 lg:grid-cols-4">
           <Figure
