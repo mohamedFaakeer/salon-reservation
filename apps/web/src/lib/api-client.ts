@@ -327,8 +327,9 @@ export interface RetailSaleReceiptView {
   totalCents: number;
 }
 
-export function fetchRetailSaleReceipt(id: string): Promise<RetailSaleReceiptView> {
-  return request<RetailSaleReceiptView>(`/retail-sale-receipts/${id}`);
+/** `phone` proves ownership — same `?phone=` pattern `fetchBookingByReference` uses. */
+export function fetchRetailSaleReceipt(id: string, phone: string): Promise<RetailSaleReceiptView> {
+  return request<RetailSaleReceiptView>(`/retail-sale-receipts/${id}?phone=${encodeURIComponent(phone)}`);
 }
 
 /** Backs `/unsubscribe/[customerId]` — the public, no-login opt-out link carried in marketing messages. */

@@ -66,6 +66,14 @@ export class RetailSaleController {
     return this.retailSales.get(ctx.tenantId, id);
   }
 
+  /** The staff-facing "View receipt" action — same view `RetailReceiptController`'s public link renders, tenant-scoped instead of phone-verified. */
+  @Get(":id/receipt")
+  @Permissions(Permission.MANAGE_INVENTORY, Permission.RECORD_PAYMENT)
+  getReceipt(@Req() req: Request, @Param("id") id: string) {
+    const ctx = getTenantContext(req);
+    return this.retailSales.getReceipt(ctx.tenantId, id);
+  }
+
   /**
    * Every custom-sold line tenant-wide that hasn't been turned into a real
    * catalog product yet — MANAGE_INVENTORY only, the same gate every other

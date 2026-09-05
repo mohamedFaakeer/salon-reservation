@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, type FormEvent } from "react";
 import { useParams } from "next/navigation";
 import { ApiRequestError, fetchRetailSaleReceipt, type RetailSaleReceiptView } from "../../../lib/api-client";
 import { formatDateTime, formatPriceCents } from "../../../lib/format";
+import { BusyLabel } from "../../../components/spinner";
 
 const METHOD_LABELS: Record<string, string> = {
   CASH: "Cash",
@@ -22,54 +23,67 @@ function methodLabel(method: string): string {
 
 /**
  * What a "Share" button on the till texts to a customer. No login — the id
- * in the URL is the only credential, same pattern as `/booking/[reference]`.
- * Read mode: the visitor is here to see what they paid, nothing more.
+ * in the URL alone is not a credential: the phone the sale was rung up
+ * under proves ownership too, entered here rather than carried in the link
+ * (same `/booking/[reference]` pattern).
  */
 export default function ReceiptPage() {
   const { id } = useParams<{ id: string }>();
+  const [phone, setPhone] = useState("");
   const [receipt, setReceipt] = useState<RetailSaleReceiptView | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  async function handleSubmit(e: FormEvent): Promise<void> {
+    e.preventDefault();
     setLoading(true);
     setError(null);
-    fetchRetailSaleReceipt(id)
-      .then((view) => {
-        if (!cancelled) setReceipt(view);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setError(
-          err instanceof ApiRequestError && err.statusCode === 404
-            ? "We couldn't find that receipt. The link may be out of date."
-            : "Couldn't load this receipt. Please try again in a moment.",
-        );
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [id]);
-
-  if (loading) {
-    return (
-      <main className="mx-auto min-h-screen max-w-lg px-5 pb-16 pt-8">
-        <ReceiptSkeleton />
-      </main>
-    );
+    try {
+      setReceipt(await fetchRetailSaleReceipt(id, phone.trim()));
+    } catch (err) {
+      setError(
+        err instanceof ApiRequestError && err.statusCode === 404
+          ? "We couldn't find a receipt with that link and phone number."
+          : "Couldn't load this receipt. Please try again in a moment.",
+      );
+      setReceipt(null);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  if (error || !receipt) {
+  if (!receipt) {
     return (
       <main className="mx-auto min-h-screen max-w-lg px-5 pb-16 pt-8">
         <h1 className="text-2xl font-bold text-[var(--resist)]">Your receipt</h1>
-        <p role="alert" className="mt-4 text-[13px] font-semibold text-[#E4867F]">
-          {error ?? "Couldn't load this receipt."}
-        </p>
+        <p className="mt-1 text-[13px] text-[var(--resist-dim)]">Enter the phone number the sale was rung up under.</p>
+        <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-3">
+          <label className="flex flex-col gap-1 text-[13px] text-[var(--resist)]">
+            Phone number
+            <input
+              data-testid="receipt-lookup-phone"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              required
+              inputMode="tel"
+              className="min-h-12 rounded-[var(--radius-sm)] border-[1.5px] border-[rgba(240,231,214,0.24)] bg-transparent px-3.5 text-[15px] text-[var(--resist)] outline-none transition-colors duration-[var(--t-tap)] focus:border-[var(--bloom)]"
+            />
+          </label>
+          {error ? (
+            <p role="alert" className="text-[13px] font-semibold text-[#E4867F]">
+              {error}
+            </p>
+          ) : null}
+          <button
+            type="submit"
+            disabled={loading}
+            className="min-h-12 cursor-pointer rounded-full bg-[var(--dye)] px-6 text-sm font-bold text-[#022B27] transition-colors duration-[var(--t-tap)] hover:bg-[var(--dye-press)] disabled:cursor-not-allowed disabled:bg-[var(--dye-mid)] disabled:text-[var(--resist-dim)]"
+          >
+            <BusyLabel busy={loading} busyText="Looking up…">
+              View receipt
+            </BusyLabel>
+          </button>
+        </form>
       </main>
     );
   }
@@ -159,17 +173,5 @@ export default function ReceiptPage() {
         Thank you for shopping at <span className="font-semibold text-[var(--bloom)]">{receipt.salon.name}</span>.
       </p>
     </main>
-  );
-}
-
-/** Mirrors the loaded receipt's exact shape, per `BookingDetailSkeleton`'s own convention, so nothing jumps when it lands. */
-function ReceiptSkeleton() {
-  return (
-    <div role="status" aria-label="Loading your receipt">
-      <div className="h-7 w-40 rounded-md bg-[rgba(240,231,214,0.08)]" />
-      <div className="mt-2 h-4 w-56 rounded-md bg-[rgba(240,231,214,0.08)]" />
-      <div className="mt-6 h-20 rounded-[var(--radius)] bg-[rgba(240,231,214,0.06)]" />
-      <div className="mt-4 h-48 rounded-[var(--radius)] bg-[rgba(240,231,214,0.06)]" />
-    </div>
   );
 }
