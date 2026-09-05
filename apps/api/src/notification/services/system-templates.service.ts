@@ -1,6 +1,6 @@
-import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import { Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import type { Repository } from "typeorm";
 import { NotificationTemplate } from "../../entities/notification-template.entity";
 import { NotificationChannel, NotificationEvent } from "@salon/shared";
 

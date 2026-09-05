@@ -24,6 +24,8 @@ const EVENT_OPTIONS = [
   { value: "WINBACK_CAMPAIGN", label: "Win-back Campaign" },
 ];
 
+type TimingType = "BEFORE_APPT" | "DAY_OF_APPT" | "AFTER_BOOKING" | "AFTER_COMPLETION";
+
 const TIMING_OPTIONS = [
   { value: "BEFORE_APPT", label: "Before Appointment" },
   { value: "DAY_OF_APPT", label: "Day of Appointment (Morning)" },
@@ -68,7 +70,7 @@ export function NotificationRuleDrawer({
 
   const [name, setName] = useState("");
   const [eventType, setEventType] = useState("APPOINTMENT_REMINDER");
-  const [timingType, setTimingType] = useState<"BEFORE_APPT" | "DAY_OF_APPT" | "AFTER_BOOKING" | "AFTER_COMPLETION">("BEFORE_APPT");
+  const [timingType, setTimingType] = useState<TimingType>("BEFORE_APPT");
   const [offsetHours, setOffsetHours] = useState("24");
   const [delayMinutes, setDelayMinutes] = useState("0");
   const [channels, setChannels] = useState<("console" | "email" | "sms" | "whatsapp")[]>(["console", "sms"]);
@@ -252,7 +254,7 @@ export function NotificationRuleDrawer({
               <label className="block text-xs font-semibold text-slate-700">Timing Type</label>
               <select
                 value={timingType}
-                onChange={(e) => setTimingType(e.target.value as any)}
+                onChange={(e) => setTimingType(e.target.value as TimingType)}
                 className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-teal-600 focus:outline-none"
               >
                 {TIMING_OPTIONS.map((opt) => (

@@ -210,6 +210,18 @@
         "value": "apps/admin/src/components/bundle-drawer.tsx 421",
         "createdAt": "2026-09-03T20:58:44.370Z",
         "reason": "same reviewed false-positive as before, line shifted by one after adding the component-picker anchor"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/components/notification-rule-drawer.tsx 431",
+        "createdAt": "2026-09-05T08:08:39.217Z",
+        "reason": "pre-existing, unrelated to this edit: dark slate-700 text on light slate-100 background is normal high-contrast pairing, not washed-out gray-on-color; hover swaps both bg and text together"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "apps/admin/src/components/notification-template-drawer.tsx 218",
+        "createdAt": "2026-09-05T08:10:45.285Z",
+        "reason": "pre-existing, unrelated to this edit: same 'insert tag' button pattern as notification-rule-drawer.tsx -- dark slate-700 text on light slate-100 bg is normal high-contrast, hover swaps both together"
       }
     ]
   }

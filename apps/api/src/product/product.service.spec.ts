@@ -457,7 +457,7 @@ describe("ProductService", () => {
     it("attaches attributes untouched and the expiry/serial signals onto each nested variant", async () => {
       vi.mocked(products.findOne).mockResolvedValueOnce({ id: "p1", name: "Body Butter" } as Product);
       vi.mocked(variants.find).mockResolvedValueOnce([
-        { id: "v1", quantityOnHand: 1, attributes: { size: "30g" }, reorderPoint: null } as ProductVariant,
+        { id: "v1", quantityOnHand: 1, attributes: { size: "30g" }, reorderPoint: null } as unknown as ProductVariant,
       ]);
       batchesGetRawMany.mockResolvedValueOnce([{ variantId: "v1", nearestExpiryDate: null, soleSerialNumber: "SN-1" }]);
 

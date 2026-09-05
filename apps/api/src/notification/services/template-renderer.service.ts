@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import Handlebars from "handlebars";
-import { NotificationChannel } from "@salon/shared";
+import type { NotificationChannel } from "@salon/shared";
 
 type NotificationChannelString = "console" | "email" | "sms" | "whatsapp";
 
