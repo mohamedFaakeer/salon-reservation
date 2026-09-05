@@ -19,6 +19,7 @@ import {
   type RetailSaleCheckoutDto,
   type RetailSaleQueryDto,
 } from "@salon/shared";
+import { normalizePhone } from "../customer/phone.util";
 import { Branch } from "../entities/branch.entity";
 import { Payment } from "../entities/payment.entity";
 import { Product } from "../entities/product.entity";
@@ -352,19 +353,37 @@ export class RetailSaleService {
   /**
    * No auth, no `tenantId` from a session — this is what `GET
    * /retail-sale-receipts/:id` (a link texted to the customer) resolves.
-   * `saleId` is the only credential; deliberately trimmed to receipt-shaped
-   * facts (see `RetailSaleReceiptView`'s own doc comment).
+   * `phone` proves ownership the same way `BookingService.findByReferenceAndPhone`
+   * does for booking references: the id alone is not treated as a credential.
+   * A mismatch throws the same "not found" the missing-sale case throws, so
+   * no oracle distinguishes "wrong phone" from "no such sale."
    */
-  async getPublicReceipt(saleId: string): Promise<RetailSaleReceiptView> {
+  async getPublicReceipt(saleId: string, phone: string): Promise<RetailSaleReceiptView> {
     const sale = await this.sales.findOne({
       where: { id: saleId },
+      relations: { customer: true, soldBy: true, payment: true, tenant: true },
+    });
+    if (!sale || sale.customer.phone !== normalizePhone(phone)) {
+      throw new ApiError({ statusCode: 404, code: "RETAIL_SALE_NOT_FOUND", message: "Receipt not found." });
+    }
+    return this.buildReceiptView(sale);
+  }
+
+  /** The authenticated, tenant-scoped equivalent of `getPublicReceipt` — backs the staff receipt view in apps/admin. */
+  async getReceipt(tenantId: string, saleId: string): Promise<RetailSaleReceiptView> {
+    const sale = await this.sales.findOne({
+      where: { id: saleId, tenantId },
       relations: { customer: true, soldBy: true, payment: true, tenant: true },
     });
     if (!sale) {
       throw new ApiError({ statusCode: 404, code: "RETAIL_SALE_NOT_FOUND", message: "Receipt not found." });
     }
+    return this.buildReceiptView(sale);
+  }
+
+  private async buildReceiptView(sale: RetailSale): Promise<RetailSaleReceiptView> {
     const branch = await this.branches.findOne({ where: { tenantId: sale.tenantId } });
-    const lines = await this.sales.manager.getRepository(RetailSaleLine).find({ where: { saleId }, order: { createdAt: "ASC" } });
+    const lines = await this.sales.manager.getRepository(RetailSaleLine).find({ where: { saleId: sale.id }, order: { createdAt: "ASC" } });
 
     return {
       id: sale.id,

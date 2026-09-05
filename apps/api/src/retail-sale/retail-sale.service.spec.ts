@@ -510,7 +510,7 @@ describe("RetailSaleService", () => {
   });
 
   describe("getPublicReceipt", () => {
-    it("returns a receipt-shaped view keyed only by the sale id, no auth", async () => {
+    beforeEach(() => {
       savedSale = {
         id: "sale-1",
         tenantId: "tenant-1",
@@ -532,8 +532,10 @@ describe("RetailSaleService", () => {
           lineTotalCents: 590,
         } as RetailSaleLine,
       ];
+    });
 
-      const receipt = await service.getPublicReceipt("sale-1");
+    it("returns a receipt-shaped view once the phone matches the sale's customer", async () => {
+      const receipt = await service.getPublicReceipt("sale-1", "0771932264");
 
       expect(receipt).toMatchObject({
         id: "sale-1",
@@ -546,10 +548,51 @@ describe("RetailSaleService", () => {
       expect(receipt.lines).toEqual([expect.objectContaining({ nameSnapshot: "Sunsilk Black Shine Shampoo — 180ml", quantity: 1 })]);
     });
 
+    it("accepts an unnormalized phone (spaces/dashes) the same way the stored digits-only value would match", async () => {
+      const receipt = await service.getPublicReceipt("sale-1", "077-193-2264");
+      expect(receipt.id).toBe("sale-1");
+    });
+
+    it("404s on a phone that doesn't match the sale's customer, same as a missing sale", async () => {
+      await expect(service.getPublicReceipt("sale-1", "0119999999")).rejects.toMatchObject({
+        statusCode: 404,
+        code: "RETAIL_SALE_NOT_FOUND",
+      });
+    });
+
     it("404s rather than leaking whether a sale id exists", async () => {
       savedSale = null;
 
-      await expect(service.getPublicReceipt("no-such-sale")).rejects.toMatchObject({
+      await expect(service.getPublicReceipt("no-such-sale", "0771932264")).rejects.toMatchObject({
+        statusCode: 404,
+        code: "RETAIL_SALE_NOT_FOUND",
+      });
+    });
+  });
+
+  describe("getReceipt", () => {
+    it("returns the same receipt-shaped view for the sale's own tenant", async () => {
+      savedSale = {
+        id: "sale-1",
+        tenantId: "tenant-1",
+        subtotalCents: 1770,
+        totalCents: 1770,
+        createdAt: new Date("2026-08-23T10:42:00Z"),
+        tenant: { name: "Elegance Salon" },
+        customer: { firstName: "Faakeer", lastName: "Mohamed", phone: "0771932264", isWalkInPlaceholder: false },
+        soldBy: { name: "Priya Fernando" },
+        payment: { method: PaymentMethod.CASH },
+      } as unknown as RetailSale;
+      savedLines = [];
+
+      const receipt = await service.getReceipt("tenant-1", "sale-1");
+      expect(receipt.id).toBe("sale-1");
+    });
+
+    it("404s when no sale matches the given id and tenant", async () => {
+      savedSale = null;
+
+      await expect(service.getReceipt("tenant-1", "no-such-sale")).rejects.toMatchObject({
         statusCode: 404,
         code: "RETAIL_SALE_NOT_FOUND",
       });

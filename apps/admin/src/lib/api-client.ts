@@ -2976,7 +2976,7 @@ export interface RetailSaleListResult {
   meta: { total: number; limit: number; offset: number };
 }
 
-/** What the public, no-login `/retail-sale-receipts/:id` page renders — same shape a "Share" link opens for a customer. */
+/** Same shape the public, phone-verified `/retail-sale-receipts/:id` page (apps/web) renders — this app reads it via the authenticated `/retail-sales/:id/receipt` route instead. */
 export interface RetailSaleReceiptView {
   id: string;
   createdAt: string;
@@ -2997,9 +2997,9 @@ export interface RetailSaleReceiptView {
   totalCents: number;
 }
 
-/** No auth required by the endpoint itself — safe to call from an already-authenticated admin session too. */
+/** Authenticated, tenant-scoped receipt view for staff — the public `/retail-sale-receipts/:id` link is phone-verified instead and lives only in apps/web. */
 export function fetchRetailSaleReceipt(id: string): Promise<RetailSaleReceiptView> {
-  return request<RetailSaleReceiptView>(`/retail-sale-receipts/${id}`);
+  return request<RetailSaleReceiptView>(`/retail-sales/${id}/receipt`);
 }
 
 export interface RetailSaleCheckoutInput {
