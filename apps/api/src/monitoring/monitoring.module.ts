@@ -8,8 +8,10 @@ import { SecurityEventReview } from "../entities/security-event-review.entity";
 import { Tenant } from "../entities/tenant.entity";
 import { User } from "../entities/user.entity";
 import { AuditModule } from "../audit/audit.module";
+import { PlatformAlertModule } from "../alerting/platform-alert.module";
 import { MonitoringController } from "./monitoring.controller";
 import { MonitoringService } from "./monitoring.service";
+import { SystemHealthMonitorService } from "./system-health-monitor.service";
 
 /**
  * Registers the two tables the super-admin monitoring feature owns
@@ -18,13 +20,18 @@ import { MonitoringService } from "./monitoring.service";
  * specifically, from `main.ts` via `app.get(getRepositoryToken(ErrorLog))`:
  * `ApiExceptionFilter` needs one but is instantiated outside Nest's DI
  * container (see `main.ts`).
+ *
+ * `PlatformAlertModule` is imported for `SystemHealthMonitorService`'s
+ * database-outage alert — a real dependency-outage alert alongside the
+ * dashboard's passive `ErrorLog`/`SecurityEventReview` views.
  */
 @Module({
   imports: [
     TypeOrmModule.forFeature([ErrorLog, SecurityEventReview, Tenant, Appointment, Payment, User, NotificationQuota]),
     AuditModule,
+    PlatformAlertModule,
   ],
   controllers: [MonitoringController],
-  providers: [MonitoringService],
+  providers: [MonitoringService, SystemHealthMonitorService],
 })
 export class MonitoringModule {}
