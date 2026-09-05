@@ -132,6 +132,9 @@ export class SuperAdminService {
           passwordHash,
           name: dto.ownerName.trim(),
           status: UserStatus.ACTIVE,
+          // SUPER_ADMIN chose this password, not the owner who'll actually
+          // use it — same contract as User.mustChangePassword documents.
+          mustChangePassword: true,
         }),
       );
 
