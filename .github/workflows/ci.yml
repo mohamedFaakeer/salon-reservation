@@ -1,0 +1,54 @@
+name: CI
+
+# Resilience audit (docs/INFRASTRUCTURE_RESILIENCE_AUDIT.md §5/§6): the only
+# workflow in this repo before this one was keep-alive.yml, a Render
+# ping cron -- nothing ran typecheck/lint/test/audit automatically, despite
+# docs/SECURITY.md describing that gate as if it already existed. This is
+# that gate, for real.
+#
+# Runs on every push to main and every pull request targeting it, so a bad
+# change is caught before merge, not after Render has already redeployed it.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.0"
+          cache: "npm"
+
+      # --include=dev: every build tool here (nest, tsc, tailwind) is a
+      # devDependency, same reason docs/DEPLOYMENT.md's Render build
+      # commands need it (npm ci alone drops them under NODE_ENV=production,
+      # which GitHub Actions' default environment does not set, but this
+      # keeps local and CI installs identical regardless).
+      - name: Install dependencies
+        run: npm ci --include=dev
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm run test
+
+      # See scripts/audit-check.mjs for the two pre-existing, dev-tool-only,
+      # currently-unfixable-upstream findings this narrowly allowlists by
+      # exact advisory ID -- any other high/critical finding still fails
+      # this step.
+      - name: Audit (high/critical, narrow allowlist)
+        run: npm run audit:check
