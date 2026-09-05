@@ -15,7 +15,7 @@ import {
 import { Staff } from "../entities/staff.entity";
 import { StaffServiceAssignment } from "../entities/staff-service.entity";
 import { Service } from "../entities/service.entity";
-import { User } from "../entities/user.entity";
+import { UserTenantRole } from "../entities/user-tenant-role.entity";
 import { IncentivePlan } from "../entities/incentive-plan.entity";
 import { detectImage } from "../common/image.util";
 // CloudinaryService must stay a VALUE import: NestJS resolves constructor
@@ -41,7 +41,7 @@ export class StaffService {
     @InjectRepository(StaffServiceAssignment)
     private readonly assignments: Repository<StaffServiceAssignment>,
     @InjectRepository(Service) private readonly services: Repository<Service>,
-    @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectRepository(UserTenantRole) private readonly userTenantRoles: Repository<UserTenantRole>,
     @InjectRepository(IncentivePlan) private readonly incentivePlans: Repository<IncentivePlan>,
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly cloudinary: CloudinaryService,
@@ -260,14 +260,14 @@ export class StaffService {
     return staff;
   }
 
-  /** Validates the linked user exists and isn't already linked to another staff row in this tenant. */
+  /** Validates the linked user is a member of this tenant and isn't already linked to another staff row in it. */
   private async assertUserLinkable(
     tenantId: string,
     userId: string,
     excludeStaffId?: string,
   ): Promise<void> {
-    const user = await this.users.findOne({ where: { id: userId } });
-    if (!user) {
+    const membership = await this.userTenantRoles.findOne({ where: { userId, tenantId } });
+    if (!membership) {
       throw new ApiError({
         statusCode: 400,
         code: "USER_NOT_FOUND",
