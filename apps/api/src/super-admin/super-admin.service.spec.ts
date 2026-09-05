@@ -2,6 +2,7 @@ import type { DataSource, ObjectLiteral, Repository } from "typeorm";
 import { DEFAULT_TENANT_ENTITLEMENTS, UserRole } from "@salon/shared";
 import { SuperAdminService } from "./super-admin.service";
 import type { Appointment } from "../entities/appointment.entity";
+import type { Branch } from "../entities/branch.entity";
 import type { Tenant } from "../entities/tenant.entity";
 import type { User } from "../entities/user.entity";
 import type { UserTenantRole } from "../entities/user-tenant-role.entity";
@@ -108,6 +109,37 @@ describe("SuperAdminService", () => {
         "super-1",
         UserRole.SUPER_ADMIN,
       );
+    });
+  });
+
+  describe("provisionTenant", () => {
+    it("forces a first-login password change on the new owner, since SUPER_ADMIN chose the password, not them", async () => {
+      const txUsers = mockRepo<User>();
+      const txBranches = mockRepo<Branch>();
+      const txRoles = mockRepo<UserTenantRole>();
+      dataSource.transaction = vi.fn(async (cb: (m: unknown) => unknown) =>
+        cb({
+          getRepository: (entity: { name: string }) =>
+            entity.name === "User" ? txUsers : entity.name === "Branch" ? txBranches : txRoles,
+        }),
+      ) as unknown as DataSource["transaction"];
+      tenantService.createTenant = vi.fn(async () => baseTenant());
+      passwordService.hash = vi.fn(async () => "argon2-hash");
+
+      await service.provisionTenant(
+        {
+          slug: "eagle",
+          salonName: "Eagle Salon",
+          tier: "LITE",
+          ownerEmail: "owner@salon.lk",
+          ownerName: "Ruwanthi",
+          ownerPassword: "a-real-password",
+        } as never,
+        "super-1",
+      );
+
+      const created = vi.mocked(txUsers.create).mock.calls[0][0] as User;
+      expect(created.mustChangePassword).toBe(true);
     });
   });
 

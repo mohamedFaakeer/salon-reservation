@@ -100,6 +100,13 @@ describe("TeamService", () => {
       expect(JSON.stringify(created)).not.toContain("a-real-password");
     });
 
+    it("forces a first-login password change, since the owner/manager chose this password, not the new team member", async () => {
+      await service.create("tenant-1", dto, "owner-1", null);
+
+      const created = vi.mocked(txUsers.create).mock.calls[0][0] as User;
+      expect(created.mustChangePassword).toBe(true);
+    });
+
     it("keeps the raw password out of the audit trail", async () => {
       await service.create("tenant-1", dto, "owner-1", null);
 

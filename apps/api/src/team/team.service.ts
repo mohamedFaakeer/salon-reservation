@@ -123,6 +123,11 @@ export class TeamService {
             name: dto.name.trim(),
             passwordHash: await this.passwords.hash(dto.password),
             status: UserStatus.ACTIVE,
+            // The password on this account was set by the OWNER/MANAGER
+            // creating it, not by the person who'll actually use it — same
+            // reasoning as performPasswordReset, and required by the
+            // contract documented on User.mustChangePassword itself.
+            mustChangePassword: true,
           }),
         );
       }
