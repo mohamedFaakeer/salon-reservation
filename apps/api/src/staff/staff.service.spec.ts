@@ -3,7 +3,7 @@ import { StaffService } from "./staff.service";
 import type { Staff } from "../entities/staff.entity";
 import type { StaffServiceAssignment } from "../entities/staff-service.entity";
 import type { Service } from "../entities/service.entity";
-import type { User } from "../entities/user.entity";
+import type { UserTenantRole } from "../entities/user-tenant-role.entity";
 import type { IncentivePlan } from "../entities/incentive-plan.entity";
 import type { CloudinaryService } from "../cloudinary/cloudinary.service";
 
@@ -49,7 +49,7 @@ describe("StaffService", () => {
   let staff: Repository<Staff>;
   let assignments: Repository<StaffServiceAssignment>;
   let services: Repository<Service>;
-  let users: Repository<User>;
+  let userTenantRoles: Repository<UserTenantRole>;
   let incentivePlans: Repository<IncentivePlan>;
   let dataSource: DataSource;
   let cloudinary: CloudinaryService;
@@ -59,7 +59,7 @@ describe("StaffService", () => {
     staff = mockRepo<Staff>();
     assignments = mockRepo<StaffServiceAssignment>();
     services = mockRepo<Service>();
-    users = mockRepo<User>();
+    userTenantRoles = mockRepo<UserTenantRole>();
     incentivePlans = mockRepo<IncentivePlan>();
     dataSource = {
       transaction: vi.fn(async (cb: (manager: unknown) => Promise<void>) => {
@@ -70,7 +70,7 @@ describe("StaffService", () => {
     cloudinary = {
       uploadStaffPhoto: vi.fn(async () => "https://res.cloudinary.com/demo/staff.png"),
     } as unknown as CloudinaryService;
-    service = new StaffService(staff, assignments, services, users, incentivePlans, dataSource, cloudinary);
+    service = new StaffService(staff, assignments, services, userTenantRoles, incentivePlans, dataSource, cloudinary);
   });
 
   describe("create", () => {
@@ -84,15 +84,29 @@ describe("StaffService", () => {
     });
 
     it("validates a linked userId exists", async () => {
-      vi.mocked(users.findOne).mockResolvedValue(null);
+      vi.mocked(userTenantRoles.findOne).mockResolvedValue(null);
 
       await expect(
         service.create("tenant-1", { name: "Kasun", userId: "user-1" }, null),
       ).rejects.toMatchObject({ statusCode: 400, code: "USER_NOT_FOUND" });
     });
 
+    it("rejects a userId that belongs to a different tenant, same as a nonexistent user", async () => {
+      // The mock doesn't inspect `where`, so this also documents the real
+      // guarantee: a membership row is only ever returned for the caller's
+      // own tenantId, per the `{ userId, tenantId }` query in the service.
+      vi.mocked(userTenantRoles.findOne).mockResolvedValue(null);
+
+      await expect(
+        service.create("tenant-1", { name: "Kasun", userId: "user-from-tenant-2" }, null),
+      ).rejects.toMatchObject({ statusCode: 400, code: "USER_NOT_FOUND" });
+      expect(userTenantRoles.findOne).toHaveBeenCalledWith({
+        where: { userId: "user-from-tenant-2", tenantId: "tenant-1" },
+      });
+    });
+
     it("rejects a userId already linked to another staff member in the tenant", async () => {
-      vi.mocked(users.findOne).mockResolvedValue({ id: "user-1" } as User);
+      vi.mocked(userTenantRoles.findOne).mockResolvedValue({ userId: "user-1", tenantId: "tenant-1" } as UserTenantRole);
       vi.mocked(staff.findOne).mockResolvedValue(baseStaff());
 
       await expect(

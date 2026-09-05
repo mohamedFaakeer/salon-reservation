@@ -58,7 +58,7 @@ export class ScheduleService {
     });
 
     const existing = await this.schedules.findOne({
-      where: { staffId: dto.staffId, dayOfWeek: dto.dayOfWeek },
+      where: { tenantId, staffId: dto.staffId, dayOfWeek: dto.dayOfWeek },
     });
     if (existing) {
       throw new ApiError({
